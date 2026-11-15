@@ -46,7 +46,7 @@ public class WithdrawalFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         Assert.Equal(0, await StoredReviewsAsync(account.Id));
         var invalidation = Assert.Single(api.Edge.SentSince(sent));
         Assert.Equal("entry deleted", invalidation.Reason);
-        Assert.Equal([$"/u/{account.UserName}*"], invalidation.Paths);
+        Assert.Equal([$"/u/{account.PublicId}*"], invalidation.Paths);
     }
 
     [Fact]
@@ -62,6 +62,6 @@ public class WithdrawalFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         Assert.Equal(0, await StoredReviewsAsync(account.Id));
         var invalidation = Assert.Single(api.Edge.SentSince(sent));
         Assert.Equal("account deleted", invalidation.Reason);
-        Assert.Equal([$"/u/{account.UserName}*", "/sitemaps/profiles-*"], invalidation.Paths);
+        Assert.Equal([$"/u/{account.PublicId}*", "/sitemaps/profiles-*"], invalidation.Paths);
     }
 }

@@ -39,8 +39,8 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         return browser;
     }
 
-    private static Task<HttpResponseMessage> ReportAsync(HttpClient reader, string userName, int? gameId, string reason = ReportReason.Spam) =>
-        reader.SendAsync(HttpMethod.Post, "/api/reports", new ReportInputDto(userName, gameId, reason, null));
+    private static Task<HttpResponseMessage> ReportAsync(HttpClient reader, string publicId, int? gameId, string reason = ReportReason.Spam) =>
+        reader.SendAsync(HttpMethod.Post, "/api/reports", new ReportInputDto(publicId, gameId, reason, null));
 
     private async Task<int> ReportsAboutAsync(string accountId)
     {
@@ -56,8 +56,8 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var _ = author;
         using var reader = await ReaderAsync("reader");
 
-        await (await ReportAsync(reader, account.UserName, GameId)).ExpectAsync(HttpStatusCode.NoContent);
-        await (await ReportAsync(reader, account.UserName, GameId, ReportReason.Abuse)).ExpectAsync(HttpStatusCode.NoContent);
+        await (await ReportAsync(reader, account.PublicId, GameId)).ExpectAsync(HttpStatusCode.NoContent);
+        await (await ReportAsync(reader, account.PublicId, GameId, ReportReason.Abuse)).ExpectAsync(HttpStatusCode.NoContent);
 
         await using var db = api.Database();
         var report = await db.ContentReports.AsNoTracking().SingleAsync(r => r.Review!.UserId == account.Id);
@@ -71,7 +71,7 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var _ = author;
         using var nobody = api.CreateBrowser();
 
-        await (await ReportAsync(nobody, account.UserName, null)).ExpectAsync(HttpStatusCode.Unauthorized);
+        await (await ReportAsync(nobody, account.PublicId, null)).ExpectAsync(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -83,8 +83,8 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
             new UpdateProfileVisibilityDto(ProfileVisibility.Private))).ExpectAsync(HttpStatusCode.OK);
         using var reader = await ReaderAsync("reader");
 
-        await (await ReportAsync(reader, account.UserName, null)).ExpectAsync(HttpStatusCode.NotFound);
-        await (await ReportAsync(reader, account.UserName, GameId)).ExpectAsync(HttpStatusCode.NotFound);
+        await (await ReportAsync(reader, account.PublicId, null)).ExpectAsync(HttpStatusCode.NotFound);
+        await (await ReportAsync(reader, account.PublicId, GameId)).ExpectAsync(HttpStatusCode.NotFound);
         await (await ReportAsync(reader, "nobody_here", null)).ExpectAsync(HttpStatusCode.NotFound);
     }
 
@@ -94,8 +94,8 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         var (author, account) = await PublishedAsync("deletes");
         using var _ = author;
         using var reader = await ReaderAsync("reader");
-        await (await ReportAsync(reader, account.UserName, GameId)).ExpectAsync(HttpStatusCode.NoContent);
-        await (await ReportAsync(reader, account.UserName, null)).ExpectAsync(HttpStatusCode.NoContent);
+        await (await ReportAsync(reader, account.PublicId, GameId)).ExpectAsync(HttpStatusCode.NoContent);
+        await (await ReportAsync(reader, account.PublicId, null)).ExpectAsync(HttpStatusCode.NoContent);
 
         await (await author.SendAsync(HttpMethod.Delete, $"/api/entries/{GameId}/review")).ExpectAsync(HttpStatusCode.NoContent);
 
@@ -113,8 +113,8 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         var (author, account) = await PublishedAsync("reported");
         using var _ = author;
         using var reader = await ReaderAsync("reader");
-        await (await ReportAsync(reader, account.UserName, GameId)).ExpectAsync(HttpStatusCode.NoContent);
-        await (await ReportAsync(reader, account.UserName, null)).ExpectAsync(HttpStatusCode.NoContent);
+        await (await ReportAsync(reader, account.PublicId, GameId)).ExpectAsync(HttpStatusCode.NoContent);
+        await (await ReportAsync(reader, account.PublicId, null)).ExpectAsync(HttpStatusCode.NoContent);
         Assert.Equal(2, await ReportsAboutAsync(account.Id));
 
         await (await author.SendAsync(HttpMethod.Delete, "/api/user",
@@ -173,8 +173,8 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         await (await admin.SendAsync(HttpMethod.Post, $"/api/admin/moderation/profiles/{account.Id}/clear",
             new ClearProfileDto(DisplayName: true, AvatarUrl: true, Bio: true))).ExpectAsync(HttpStatusCode.NotFound);
 
-        Assert.Single((await author.GetJsonAsync<PublicReviewsDto>($"/api/users/{account.UserName}/reviews")).Reviews);
-        var profile = await author.GetJsonAsync<PublicProfileDto>($"/api/users/{account.UserName}");
+        Assert.Single((await author.GetJsonAsync<PublicReviewsDto>($"/api/users/{account.PublicId}/reviews")).Reviews);
+        var profile = await author.GetJsonAsync<PublicProfileDto>($"/api/users/{account.PublicId}");
         Assert.Equal(("Shown Name", "A bio."), (profile.DisplayName, profile.Bio));
         Assert.Empty(api.Edge.SentSince(sent));
     }
@@ -185,7 +185,7 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         var (author, account) = await PublishedAsync("hidden");
         using var _ = author;
         using var reader = await ReaderAsync("reader");
-        await (await ReportAsync(reader, account.UserName, GameId, ReportReason.Abuse)).ExpectAsync(HttpStatusCode.NoContent);
+        await (await ReportAsync(reader, account.PublicId, GameId, ReportReason.Abuse)).ExpectAsync(HttpStatusCode.NoContent);
         using var admin = api.CreateBrowser();
         api.Admins.Name((await admin.RegisterAsync(Browsers.NewUserName("admin"))).Id);
 
@@ -200,9 +200,9 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 
         // Off the edge, off the profile and off the game page, with its reports answered.
         var invalidation = Assert.Single(api.Edge.SentSince(sent));
-        Assert.Equal(("review hidden by an admin", $"/u/{account.UserName}*"), (invalidation.Reason, Assert.Single(invalidation.Paths)));
+        Assert.Equal(("review hidden by an admin", $"/u/{account.PublicId}*"), (invalidation.Reason, Assert.Single(invalidation.Paths)));
         Assert.True(invalidation.AtOnce);
-        Assert.Empty((await reader.GetJsonAsync<PublicReviewsDto>($"/api/users/{account.UserName}/reviews")).Reviews);
+        Assert.Empty((await reader.GetJsonAsync<PublicReviewsDto>($"/api/users/{account.PublicId}/reviews")).Reviews);
         Assert.Equal(0, (await reader.GetJsonAsync<GameReviewsDto>($"/api/games/{GameId}/reviews")).Reviews
             .Count(r => r.UserName == account.UserName));
         Assert.Equal(0, await ReportsAboutAsync(account.Id));
@@ -214,7 +214,7 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         await (await admin.SendAsync(HttpMethod.Delete, $"/api/admin/moderation/reviews/{item.ReviewId}/hidden"))
             .ExpectAsync(HttpStatusCode.NoContent);
 
-        Assert.Single((await reader.GetJsonAsync<PublicReviewsDto>($"/api/users/{account.UserName}/reviews")).Reviews);
+        Assert.Single((await reader.GetJsonAsync<PublicReviewsDto>($"/api/users/{account.PublicId}/reviews")).Reviews);
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         var (author, account) = await PublishedAsync("cleared");
         using var _ = author;
         using var reader = await ReaderAsync("reader");
-        await (await ReportAsync(reader, account.UserName, null, ReportReason.Impersonation)).ExpectAsync(HttpStatusCode.NoContent);
+        await (await ReportAsync(reader, account.PublicId, null, ReportReason.Impersonation)).ExpectAsync(HttpStatusCode.NoContent);
         using var admin = api.CreateBrowser();
         api.Admins.Name((await admin.RegisterAsync(Browsers.NewUserName("admin"))).Id);
 
@@ -236,9 +236,9 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
             new ClearProfileDto(DisplayName: true, AvatarUrl: false, Bio: false))).ExpectAsync(HttpStatusCode.NoContent);
 
         var invalidation = Assert.Single(api.Edge.SentSince(sent));
-        Assert.Equal(("profile details cleared by an admin", $"/u/{account.UserName}*"), (invalidation.Reason, Assert.Single(invalidation.Paths)));
+        Assert.Equal(("profile details cleared by an admin", $"/u/{account.PublicId}*"), (invalidation.Reason, Assert.Single(invalidation.Paths)));
         Assert.True(invalidation.AtOnce);
-        var profile = await reader.GetJsonAsync<PublicProfileDto>($"/api/users/{account.UserName}");
+        var profile = await reader.GetJsonAsync<PublicProfileDto>($"/api/users/{account.PublicId}");
         Assert.Equal((null, "A bio."), (profile.DisplayName, profile.Bio));
         Assert.Equal(0, await ReportsAboutAsync(account.Id));
 

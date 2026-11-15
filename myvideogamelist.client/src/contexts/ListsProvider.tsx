@@ -11,7 +11,7 @@ import {
 import { type SortState, DEFAULT_SORT, MANUAL_SORT, sortEntries } from '@/lib/listSort';
 import { moveInHandOrder } from '@/lib/handOrderMove';
 import { useAuth } from '@/hooks/useAuth';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, refusedWith } from '@/lib/api';
 import {
     ListsContext, type ListsContextValue, type ListsPending, type SaveListNamesResult, type SaveResult,
 } from './ListsContext';
@@ -294,7 +294,7 @@ async function refusal(res: Response, fallback: string): Promise<string> {
         const problem = (await res.json()) as { errors?: Record<string, string[]> };
         return Object.values(problem.errors ?? {}).flat()[0] ?? fallback;
     } catch {
-        return fallback;
+        return refusedWith(res, fallback);
     }
 }
 
@@ -644,11 +644,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
      */
     const saveListNames = useCallback(async (names: ListNames): Promise<SaveListNamesResult> => {
         const { session } = committed.current;
-        const failed: SaveListNamesResult = {
-            ok: false,
-            fieldErrors: {},
-            error: 'Failed to save your list names. Please try again.',
-        };
+        const failure = 'Failed to save your list names. Please try again.';
+        const failed: SaveListNamesResult = { ok: false, fieldErrors: {}, error: failure };
 
         try {
             const res = await apiFetch('/api/user/list-names', {
@@ -678,7 +675,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                     : failed;
             }
 
-            return failed;
+            return { ...failed, error: refusedWith(res, failure) };
         } catch {
             // Unreachable, or a body that was not the JSON it claimed to be.
             return failed;
@@ -719,7 +716,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         return settle(() => {
             const saved = res !== null && res.ok;
             if (saved) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to update list. Please try again.');
+            else rollBack(undo, refusedWith(res, 'Failed to update list. Please try again.'));
             endPending(game.id);
             return saved;
         });
@@ -742,7 +739,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         return settle(() => {
             const saved = res !== null && res.ok;
             if (saved) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to remove from list. Please try again.');
+            else rollBack(undo, refusedWith(res, 'Failed to remove from list. Please try again.'));
             endPending(gameId);
             return saved;
         });
@@ -878,7 +875,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         return settle(() => {
             const saved = res !== null && res.ok;
             if (saved) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else dispatch({ type: 'MUTATION_ERROR', session, error: failure });
+            else dispatch({ type: 'MUTATION_ERROR', session, error: refusedWith(res, failure) });
             endPending(gameId);
             return saved;
         });
@@ -929,7 +926,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             // 404 means there was nothing recorded, which is the state the caller wanted anyway.
             const deleted = res !== null && (res.ok || res.status === 404);
             if (deleted) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to remove your data. Please try again.');
+            else rollBack(undo, refusedWith(res, 'Failed to remove your data. Please try again.'));
             endPending(gameId);
             return deleted;
         });

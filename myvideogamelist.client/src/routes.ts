@@ -44,10 +44,11 @@ export default [
     // the API's policy rather than by that — see the release calendar spec, §7.
     route('admin', 'pages/AdminPage.tsx'),
 
-    // Somebody else's profile, and the only route addressed by a name the user chose. Under `/u/`
-    // rather than at the top level so that a username can never collide with a route — see the
-    // reserved list in `UserNamePolicy` for why that is belt as well as braces.
-    route('u/:userName', 'pages/ProfilePage.tsx'),
+    // Somebody else's profile, at its public id and then its username (ADR 0096). Only the id is looked
+    // up: it never changes and is never another account's, so a rename breaks no link and hands none to
+    // whoever claims the old name. The name is for people to read, and any other name, or none, is
+    // redirected to the one the profile has now. One segment after `/u/` is always an id, never a name.
+    route('u/:publicId/:userName?', 'pages/ProfilePage.tsx'),
 
     // What a crawler reads rather than a person. Resource routes: a loader and no component, so
     // each returns its own Response and none passes through `entry.server.tsx`. Routes rather than

@@ -96,7 +96,7 @@ export function ReportDialog({ target, subject, onClose }: ReportDialogProps) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    userName: target.userName,
+                    publicId: target.publicId,
                     gameId: target.gameId ?? null,
                     reason,
                     note: note.trim() === '' ? null : note,

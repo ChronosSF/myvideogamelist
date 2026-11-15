@@ -93,56 +93,50 @@ public sealed class ProfileWithdrawals(
     internal const string EveryProfile = "/u/*";
 
     /// <summary>
-    /// Everything the edge can hold for one profile: <c>/u/{name}</c>, <c>/u/{name}.data</c>, and
-    /// both again with any query string.
+    /// Everything the edge can hold for one profile, under every name it has had:
+    /// <c>/u/{id}/{name}</c>, its <c>.data</c> URL, and both again with any query string (ADR 0096). The
+    /// redirect every other name answers with is kept by nobody, so there is none to take back.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// One wildcard rather than the two paths the issue names, because the cache key holds
-    /// <c>page</c> (each page of reviews is its own document, ADR 0027 §9) and React Router's
-    /// <c>_routes</c>, and CloudFront invalidates a path with a query string only when that query
-    /// string is named or a <c>*</c> stands in for it. A withdrawn review on page three would
-    /// otherwise stay there. React Router 8 asks for a document's data at the same path with
-    /// <c>.data</c> on the end — <c>/u/alice.data</c>, <c>/u/alice.data?page=2</c>, and
-    /// <c>/u/alice/_.data</c> for the trailing-slash form — so the prefix covers those too.
+    /// One wildcard, because the cache key holds <c>page</c> (each page of reviews is its own
+    /// document, ADR 0027 §9) and React Router's <c>_routes</c>, and CloudFront invalidates a path
+    /// with a query string only when that query string is named or a <c>*</c> stands in for it. A
+    /// withdrawn review on page three would otherwise stay there. React Router 8 asks for a document's
+    /// data at the same path with <c>.data</c> on the end — <c>/u/{id}/alice.data</c>,
+    /// <c>/u/{id}/alice.data?page=2</c>, and <c>/u/{id}/alice/_.data</c> for the trailing-slash form —
+    /// so the prefix covers those too (ADR 0058 §2).
     /// </para>
     /// <para>
-    /// It also covers any other name that starts with this one: <c>/u/alice*</c> takes
-    /// <c>/u/alice_2</c> with it. That costs those pages one trip to the origin, which is cheaper
-    /// than counting pages to name each one, and a path is a path on the bill whatever it matches.
-    /// What it does not cover is the same name in other letter case: the lookup ignores case, so
-    /// <c>/u/ALICE</c> renders this profile, but an invalidation path is case-sensitive. The site
-    /// links only to the name as its owner wrote it, and a change of case invalidates both
-    /// spellings, so such a copy comes from a link somebody typed or kept from before a change of
-    /// case, and it keeps the old window. ADR 0058 records the trade.
-    /// </para>
-    /// <para>
-    /// Escaped although no name needs it — the alphabet is letters, digits and the underscore — so
-    /// that the day the alphabet grows, the path is still the one the page is cached under.
+    /// <b>The name is not in the path, so no name escapes it.</b> Every address of this profile starts
+    /// with its id, whatever name follows it: the page under its current name, and under every name it
+    /// had before a rename or a change of case. So those are one path, where they were one for each
+    /// spelling, and the copies an old name left at the edge are always within reach.
+    /// And it covers no other profile: every id is <see cref="PublicIdPolicy.Length"/> characters, which
+    /// the column's check holds, so no id is the start of another.
     /// </para>
     /// </remarks>
-    internal static string Profile(string userName) => $"/u/{Uri.EscapeDataString(userName)}*";
+    internal static string Profile(string publicId) => $"/u/{publicId}*";
 
     /// <summary>
     /// A public profile switched to anything that is not public. Sent at once, whatever its account
     /// has waiting: the consent act the window was closed for (ADR 0081 §3).
     /// </summary>
-    public void ProfileMadePrivate(string userId, string userName) =>
-        Send(userId, atOnce: true, "profile made private", Profile(userName), ProfileSitemaps);
+    public void ProfileMadePrivate(string userId, string publicId) =>
+        Send(userId, atOnce: true, "profile made private", Profile(publicId), ProfileSitemaps);
 
     /// <summary>
-    /// A public profile moved to a different name: the old one, which is released for somebody else
-    /// to claim, and the new one, whose edge may hold a 404 from before it was taken. Also a change
-    /// of letter case only, which releases nothing but leaves the old spelling's copies where no
-    /// later withdrawal, naming the new one, would reach them. Sent at once, since the old name is
-    /// free for somebody else to claim.
+    /// A public profile moved to a different name, or to the same name in other letter case. The edge
+    /// holds the page under the old name, where the origin now answers with a redirect to the new one,
+    /// and the sitemap names the old address. The profile's one path covers every name
+    /// (<see cref="Profile"/>). Sent at once, since the old name is free for somebody else to claim.
     /// </summary>
-    public void ProfileRenamed(string userId, string from, string to) =>
-        Send(userId, atOnce: true, "profile renamed", Profile(from), Profile(to), ProfileSitemaps);
+    public void ProfileRenamed(string userId, string publicId) =>
+        Send(userId, atOnce: true, "profile renamed", Profile(publicId), ProfileSitemaps);
 
     /// <summary>An account whose profile was public, deleted. Sent at once.</summary>
-    public void AccountDeleted(string userId, string userName) =>
-        Send(userId, atOnce: true, "account deleted", Profile(userName), ProfileSitemaps);
+    public void AccountDeleted(string userId, string publicId) =>
+        Send(userId, atOnce: true, "account deleted", Profile(publicId), ProfileSitemaps);
 
     /// <summary>
     /// A public profile's display name, avatar or bio rewritten or cleared: what its owner wrote
@@ -150,16 +144,16 @@ public sealed class ProfileWithdrawals(
     /// sitemap lists names, not what the page says, so it is left alone. Paced with the account's
     /// other withdrawals, since setting a detail and clearing it again can be repeated freely.
     /// </summary>
-    public void ProfileDetailsChanged(string userId, string userName) =>
-        Send(userId, atOnce: false, "profile details changed", Profile(userName));
+    public void ProfileDetailsChanged(string userId, string publicId) =>
+        Send(userId, atOnce: false, "profile details changed", Profile(publicId));
 
     /// <summary>
     /// The same event made by an admin: a display name, picture or bio cleared on a report (ADR 0076).
     /// Sent at once, as ADR 0081 §3 asks of a moderator's withdrawal: the owner cannot repeat an
     /// admin's clear, and what an admin takes down should not wait behind its owner's own loop.
     /// </summary>
-    public void ProfileDetailsCleared(string userId, string userName) =>
-        Send(userId, atOnce: true, "profile details cleared by an admin", Profile(userName));
+    public void ProfileDetailsCleared(string userId, string publicId) =>
+        Send(userId, atOnce: true, "profile details cleared by an admin", Profile(publicId));
 
     /// <summary>
     /// A review made private or edited while it was public, or deleted or hidden by an admin
@@ -214,10 +208,9 @@ public sealed class ProfileWithdrawals(
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The name and visibility are read here, after the write, rather than handed in from before
-    /// it. A rename landing between the two is then answered under the name the profile has now,
-    /// since the rename itself took the old one off the edge. And a profile made private between
-    /// them is left to the invalidation that change sent.
+    /// The id and visibility are read here, after the write, rather than handed in from before it.
+    /// The id never changes, but the visibility can: a profile made private between the two is left
+    /// to the invalidation that change sent.
     /// </para>
     /// <para>
     /// <b>No cancellation token, on purpose.</b> This runs after the write has committed, and the
@@ -233,16 +226,12 @@ public sealed class ProfileWithdrawals(
             var owner = await db.Users
                 .AsNoTracking()
                 .Where(u => u.Id == userId)
-                .Select(u => new { u.UserName, u.ProfileVisibility })
+                .Select(u => new { u.PublicId, u.ProfileVisibility })
                 .FirstOrDefaultAsync(CancellationToken.None);
 
-            if (owner?.UserName is not { } userName
-                || owner.ProfileVisibility != ProfileVisibility.Public)
-            {
-                return;
-            }
+            if (owner is null || owner.ProfileVisibility != ProfileVisibility.Public) return;
 
-            Send(userId, atOnce, reason, Profile(userName));
+            Send(userId, atOnce, reason, Profile(owner.PublicId));
         }
         catch (Exception e)
         {

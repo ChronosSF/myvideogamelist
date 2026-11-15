@@ -92,6 +92,7 @@ public class ModerationService(
             .Select(r => new
             {
                 r.Id,
+                r.User.PublicId,
                 r.User.UserName,
                 r.User.DisplayName,
                 r.Entry.GameId,
@@ -109,7 +110,7 @@ public class ModerationService(
         var items = ids
             .Select(id => id is int key && rows.TryGetValue(key, out var r)
                 ? new ReportedReviewDto(
-                    r.Id, r.UserName!, r.DisplayName, r.GameId, null, r.Body, r.HasSpoilers, r.Published,
+                    r.Id, r.PublicId, r.UserName!, r.DisplayName, r.GameId, null, r.Body, r.HasSpoilers, r.Published,
                     reports.GetValueOrDefault(r.Id) ?? [])
                 : null)
             .OfType<ReportedReviewDto>()
@@ -142,6 +143,7 @@ public class ModerationService(
             .Select(u => new
             {
                 u.Id,
+                u.PublicId,
                 u.UserName,
                 u.DisplayName,
                 u.AvatarUrl,
@@ -153,7 +155,7 @@ public class ModerationService(
         var items = ids
             .Select(id => id is not null && accounts.TryGetValue(id, out var u)
                 ? new ReportedProfileDto(
-                    u.Id, u.UserName!, u.DisplayName, u.AvatarUrl, u.Bio, u.Published,
+                    u.Id, u.PublicId, u.UserName!, u.DisplayName, u.AvatarUrl, u.Bio, u.Published,
                     reports.GetValueOrDefault(u.Id) ?? [])
                 : null)
             .OfType<ReportedProfileDto>()
@@ -185,7 +187,7 @@ public class ModerationService(
             .ThenByDescending(r => r.Id)
             .Take(PageSize)
             .Select(r => new HiddenReviewDto(
-                r.Id, r.User.UserName!, r.Entry.GameId, null, r.Body, r.HasSpoilers, r.HiddenAt!.Value))
+                r.Id, r.User.PublicId, r.User.UserName!, r.Entry.GameId, null, r.Body, r.HasSpoilers, r.HiddenAt!.Value))
             .ToListAsync(cancellationToken);
 
         return (items, total);
@@ -308,8 +310,8 @@ public class ModerationService(
 
         // Sent once the clear has committed, and before the reports are answered, so that a failure answering
         // them cannot keep what was cleared at the edge.
-        if (takesBack && account.ProfileVisibility == ProfileVisibility.Public && account.UserName is { } name)
-            withdrawals.ProfileDetailsCleared(account.Id, name);
+        if (takesBack && account.ProfileVisibility == ProfileVisibility.Public)
+            withdrawals.ProfileDetailsCleared(account.Id, account.PublicId);
 
         // Answered by the act, in a save of their own after it, with the dismissal's retry: a report that
         // went with its reporter's account would otherwise roll the clear back and pass for the owner's save.

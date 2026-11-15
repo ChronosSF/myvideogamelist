@@ -1,5 +1,5 @@
 # What CI's secret scan looks for (ADR 0061): gitleaks' own rules, four rules more for the shapes this
-# repository's secrets take and the default rules miss, and eight findings allowed, each by exactly
+# repository's secrets take and the default rules miss, and nine findings allowed, each by exactly
 # what it is rather than by a file or a rule turned off. This file is the one place a finding is
 # allowed: CI's scan ignores gitleaks:allow comments and refuses a .gitleaksignore.
 title = "MyVideoGameList"
@@ -139,6 +139,19 @@ id = "generic-api-key"
     regexTarget = "secret"
     regexes = ['''^TRIX3AO2dkZuRl7jtCfA29NMKYQ$''']
     paths = ['''^MyVideoGameList\.Server\.Tests/StoreLinksTests\.cs$''']
+
+# The rate rule's proof in infra/README.md sends its burst with a made-up basic-auth pair, so that the
+# web ACL's log shows the Authorization header redacted (ADR 0098). It opens nothing: the door's pair
+# is set by hand and is in no file. Exactly that pair, in that file, is allowed.
+[[rules]]
+id = "curl-auth-user"
+
+    [[rules.allowlists]]
+    description = "The made-up pair the rate rule's proof sends, to show the web ACL's log redacting it"
+    condition = "AND"
+    regexTarget = "secret"
+    regexes = ['''^nobody:nothing$''']
+    paths = ['''^infra/README\.md$''']
 
 # Visual Studio's IIS Express configuration, committed with the rest of .vs/ by baf18587 in March 2026
 # and deleted by f339fb45 in August; .vs/ has been ignored since. Its sessionKey attributes are that

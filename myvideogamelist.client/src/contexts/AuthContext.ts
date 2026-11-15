@@ -41,7 +41,7 @@ export interface AuthContextValue {
      * soon after the last change — because every one of those is a sentence written for the user.
      */
     updateUserName: (userName: string) => Promise<void>;
-    /** Turns the public profile at `/u/{userName}` on or off. */
+    /** Turns the public profile at `/u/{publicId}/{userName}` on or off. */
     updateProfileVisibility: (visibility: ProfileVisibility) => Promise<void>;
     /**
      * Replaces the display name, the avatar and the bio, all three at once; a null clears one.

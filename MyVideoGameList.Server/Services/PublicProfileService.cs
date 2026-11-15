@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -7,7 +6,7 @@ using MyVideoGameList.Server.Models;
 namespace MyVideoGameList.Server.Services;
 
 /// <summary>
-/// The public half of a profile: what a user has published, read by their username.
+/// The public half of a profile: what a user has published, read by its public id (ADR 0096).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -27,7 +26,6 @@ namespace MyVideoGameList.Server.Services;
 /// </remarks>
 public class PublicProfileService(
     ApplicationDbContext db,
-    ILookupNormalizer normalizer,
     IStatsService stats,
     IGameCacheService gameCache) : IPublicProfileService
 {
@@ -37,9 +35,9 @@ public class PublicProfileService(
     internal const int ReviewsPerPage = 20;
 
     public async Task<PublicProfileDto?> GetProfileAsync(
-        string userName, CancellationToken cancellationToken = default)
+        string publicId, CancellationToken cancellationToken = default)
     {
-        var user = await FindPublicAsync(userName, cancellationToken);
+        var user = await FindPublicAsync(publicId, cancellationToken);
         if (user is null) return null;
 
         var figures = await stats.GetStatsAsync(user.Id, cancellationToken);
@@ -61,6 +59,7 @@ public class PublicProfileService(
         // cast, a mapper or a subset attribute. The three things the owner wrote about themselves
         // come straight off the account row, as the handle does: nothing else is read to show them.
         return new PublicProfileDto(
+            PublicId: user.PublicId,
             UserName: user.UserName!,
             DisplayName: user.DisplayName,
             AvatarUrl: user.AvatarUrl,
@@ -81,9 +80,9 @@ public class PublicProfileService(
     }
 
     public async Task<PublicFavouritesDto?> GetFavouritesAsync(
-        string userName, CancellationToken cancellationToken = default)
+        string publicId, CancellationToken cancellationToken = default)
     {
-        var user = await FindPublicAsync(userName, cancellationToken);
+        var user = await FindPublicAsync(publicId, cancellationToken);
         if (user is null) return null;
 
         // Scoped on the favourite's own UserId, in the predicate — the same boundary the reviews
@@ -112,9 +111,9 @@ public class PublicProfileService(
     }
 
     public async Task<PublicReviewsDto?> GetReviewsAsync(
-        string userName, int page, CancellationToken cancellationToken = default)
+        string publicId, int page, CancellationToken cancellationToken = default)
     {
-        var user = await FindPublicAsync(userName, cancellationToken);
+        var user = await FindPublicAsync(publicId, cancellationToken);
         if (user is null) return null;
 
         // Scoped on the review's own UserId and on its own visibility, in the predicate rather than
@@ -175,34 +174,32 @@ public class PublicProfileService(
     }
 
     /// <summary>
-    /// The account behind a username, if it has a public profile.
+    /// The account behind a public id, if it has a public profile.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Matched on <c>NormalizedUserName</c> through Identity's own
-    /// <see cref="ILookupNormalizer"/> rather than with a hand-written <c>ToUpperInvariant</c>.
-    /// That column is what the unique index covers, so this is the lookup that uses it — and going
-    /// through the injected normalizer means a change to how Identity normalizes cannot leave this
-    /// query matching a different set of rows than the index enforces uniqueness over.
+    /// <b>Only the id is looked up, never a name</b> (ADR 0096). It is matched exactly, over the unique
+    /// index on the column: an id is lower case, so a spelling in capitals is a string nobody holds. A
+    /// string that could not be an id at all is answered without a query, as the same null. A username
+    /// that happens to be somebody's id changes nothing, because no name reaches this predicate.
     /// </para>
     /// <para>
     /// The visibility test is part of the same predicate rather than a check on the result.
     /// "Private" and "no such user" are then indistinguishable to the caller by construction, which
     /// is the point: a 403 for one and a 404 for the other would turn this endpoint into a way of
-    /// asking whether a given name has an account, which is precisely what somebody with a private
+    /// asking whether a given id has an account, which is precisely what somebody with a private
     /// profile has declined to say.
     /// </para>
     /// </remarks>
     private async Task<ApplicationUser?> FindPublicAsync(
-        string userName, CancellationToken cancellationToken)
+        string publicId, CancellationToken cancellationToken)
     {
-        var normalized = normalizer.NormalizeName(userName);
-        if (string.IsNullOrEmpty(normalized)) return null;
+        if (!PublicIdPolicy.IsWellFormed(publicId)) return null;
 
         return await db.Users
             .AsNoTracking()
             .FirstOrDefaultAsync(
-                u => u.NormalizedUserName == normalized
+                u => u.PublicId == publicId
                     && u.ProfileVisibility == ProfileVisibility.Public,
                 cancellationToken);
     }

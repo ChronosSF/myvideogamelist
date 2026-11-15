@@ -15,7 +15,11 @@ the profile sitemap files. §1's table gains a ninth event in
 [0076](0076-a-reader-reports-and-an-admin-withdraws.md) §5, a review an admin hid, which also makes
 the eighth from a second place, an admin's clear; both go at once, as 0081 §3 asks of a moderator's.
 And a tenth in [0095](0095-start-over-empties-the-library-and-keeps-the-account.md): a library emptied by a start over, the seventh event for every game at
-once, paced as the seventh is.
+once, paced as the seventh is. Since [0096](0096-a-profile-is-addressed-by-a-public-id-with-its-username-after-it.md)
+every profile path here, in 0056 §8, in 0076 §5 and in 0095 is `/u/{publicId}*`, the profile's id rather than its
+name: a rename and a change of case are that one path and the sitemap files, §2's copy under a spelling the site
+never linked to cannot exist, since every spelling redirects under the same id, and no id is the start of
+another's.
 
 ## Context
 
@@ -45,13 +49,17 @@ the sitemap files on the first three. Five things it left open, or did not know:
 
 | Event | Where | Paths | Sends nothing when |
 |---|---|---|---|
-| Profile made private | `UserController.UpdatePrivacy` | `/u/{name}*`, `/sitemaps/profiles-*` | it was not public before the save |
-| Profile renamed, including a change of letter case only | `UserController.UpdateUserName` | `/u/{old}*`, `/u/{new}*`, `/sitemaps/profiles-*` | the profile is private |
-| Account deleted | `UserController.DeleteAccount` | `/u/{name}*`, `/sitemaps/profiles-*` | the profile was private |
-| Review made private | `ReviewService.UpsertAsync` | `/u/{name}*` | the profile is not public now |
-| Review edited: its words or its spoiler warning changed | `ReviewService.UpsertAsync` | `/u/{name}*` | the review was not public before the save, it was saved again unchanged, or the profile is not public now |
-| Review deleted, public or not | `ReviewService.DeleteAsync` | `/u/{name}*` | the profile is not public now |
-| Everything recorded about a game deleted, whatever it held | `ListService.DeleteEntryAsync` | `/u/{name}*` | the profile is not public now |
+| Profile made private | `UserController.UpdatePrivacy` | `/u/{id}*`, `/sitemaps/profiles-*` | it was not public before the save |
+| Profile renamed, including a change of letter case only | `UserController.UpdateUserName` | `/u/{id}*`, `/sitemaps/profiles-*` | the profile is private |
+| Account deleted | `UserController.DeleteAccount` | `/u/{id}*`, `/sitemaps/profiles-*` | the profile was private |
+| Review made private | `ReviewService.UpsertAsync` | `/u/{id}*` | the profile is not public now |
+| Review edited: its words or its spoiler warning changed | `ReviewService.UpsertAsync` | `/u/{id}*` | the review was not public before the save, it was saved again unchanged, or the profile is not public now |
+| Review deleted, public or not | `ReviewService.DeleteAsync` | `/u/{id}*` | the profile is not public now |
+| Everything recorded about a game deleted, whatever it held | `ListService.DeleteEntryAsync` | `/u/{id}*` | the profile is not public now |
+
+> **Later note.** The paths were `/u/{name}*`, and a rename sent `/u/{old}*` and `/u/{new}*`, until
+> [0096](0096-a-profile-is-addressed-by-a-public-id-with-its-username-after-it.md) addressed a profile by its
+> public id. The paragraph below on a change of letter case, and §2's on other spellings, describe that time.
 
 **Only a write that takes back something published counts.** The before-state decides it, except
 for the two deletes, which decide nothing from what they read (below). A first review, or a

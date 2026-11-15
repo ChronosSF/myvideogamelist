@@ -20,6 +20,7 @@ import { LookProvider } from '@/contexts/LookProvider';
 import { PagePattern } from '@/components/PagePattern';
 import { Navbar } from '@/components/Navbar';
 import { SiteFooter } from '@/components/SiteFooter';
+import { RATE_LIMITED, isRateLimited } from '@/lib/api';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { LOOK_SCRIPT } from '@/lib/look';
 import { drawsTopPattern } from '@/lib/pagePattern';
@@ -171,7 +172,12 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     // from the same error while hydrating, so both sides show the same text.
     let reference: string | null = null;
 
-    if (isRouteErrorResponse(error)) {
+    if (isRateLimited(error)) {
+        // The edge refused a navigation's .data for the rate (ADR 0098). Its body is a page meant for a
+        // browser tab, not for this one, and over HTTP/2 there is no status text to put beside the 429.
+        title = 'Too many requests';
+        detail = RATE_LIMITED;
+    } else if (isRouteErrorResponse(error)) {
         title = error.status === 404 ? 'Page not found' : `${error.status} ${error.statusText}`;
 
         if (isUpstreamFailure(error.data)) {

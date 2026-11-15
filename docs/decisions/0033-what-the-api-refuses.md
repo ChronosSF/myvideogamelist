@@ -11,7 +11,9 @@ is no longer the only one: [0081](0081-a-withdrawal-is-never-refused-and-one-acc
 partitioned by the account rather than the address and on nothing a loader calls. The last
 consequence's password reset is [0090](0090-a-password-reset-works-once-for-an-hour-and-ends-every-session.md):
 it ends the lockout rather than counting towards it; its request is limited as login is, and its
-completion, which needs a token nobody can guess, is not.
+completion, which needs a token nobody can guess, is not. The edge §2 leaves volume control to has one
+rule on dev since [0098](0098-one-rate-rule-at-the-edge.md): past 300 requests in five minutes, an address
+is answered 429.
 
 ## Context
 

@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -20,6 +19,10 @@ public class PublicProfileServiceTests
 {
     private const string UserId = "user-1";
     private const string OtherUserId = "user-2";
+
+    /// <summary>The two accounts' public ids, which is what every read here is addressed by (ADR 0096).</summary>
+    private const string AlexId = "b4kz9q2mxw7c";
+    private const string SamId = "7tn3vjh8p0sd";
 
     private static readonly DateTimeOffset Now = new(2026, 9, 10, 12, 0, 0, TimeSpan.Zero);
 
@@ -46,7 +49,6 @@ public class PublicProfileServiceTests
     private static PublicProfileService NewService(
         ApplicationDbContext db, IGameCacheService? igdb = null) =>
         new(db,
-            new UpperInvariantLookupNormalizer(),
             new StatsService(db, new FixedClock(Now)),
             igdb ?? Substitute.For<IGameCacheService>());
 
@@ -57,13 +59,15 @@ public class PublicProfileServiceTests
         string visibility = ProfileVisibility.Public,
         string? displayName = null,
         string? avatarUrl = null,
-        string? bio = null)
+        string? bio = null,
+        string? publicId = null)
     {
         db.Users.Add(new ApplicationUser
         {
             Id = userId,
+            PublicId = publicId ?? (userId == UserId ? AlexId : SamId),
             UserName = userName,
-            // Set exactly as Identity would set it, because that is the column the lookup matches.
+            // Set as Identity would set it, so that a lookup by name, were there one, would find it.
             NormalizedUserName = userName.ToUpperInvariant(),
             Email = $"{userName}@test.local",
             ProfileVisibility = visibility,
@@ -152,9 +156,10 @@ public class PublicProfileServiceTests
         AddEntry(db, gameId: 11, status: ListStatusKeys.Finished, score: 8);
         AddEntry(db, gameId: 12, status: ListStatusKeys.Playing);
 
-        var profile = await NewService(db).GetProfileAsync("alex", default);
+        var profile = await NewService(db).GetProfileAsync(AlexId, default);
 
         Assert.NotNull(profile);
+        Assert.Equal(AlexId, profile.PublicId);
         Assert.Equal("alex", profile.UserName);
         Assert.Equal(2, profile.Library.Tracked);
         Assert.Equal(1, profile.Scores.Scored);
@@ -167,34 +172,80 @@ public class PublicProfileServiceTests
         AddAccount(db, UserId, "alex", ProfileVisibility.Private);
         AddEntry(db, gameId: 11, status: ListStatusKeys.Finished);
 
-        Assert.Null(await NewService(db).GetProfileAsync("alex", default));
+        Assert.Null(await NewService(db).GetProfileAsync(AlexId, default));
     }
 
     [Fact]
-    public async Task GetProfileAsync_UnknownUserName_ReturnsNull()
+    public async Task GetProfileAsync_AnIdNobodyHolds_ReturnsNull()
     {
         using var db = NewDb();
         AddAccount(db, UserId, "alex");
 
         // Indistinguishable from the private case above, and that is the design: telling them apart
-        // would answer "does this name have an account here" for somebody who declined to say.
-        Assert.Null(await NewService(db).GetProfileAsync("nobody", default));
+        // would answer "does this id have an account here" for somebody who declined to say.
+        Assert.Null(await NewService(db).GetProfileAsync("zzzzzzzzzzzz", default));
     }
 
     [Theory]
     [InlineData("alex")]
-    [InlineData("ALEX")]
-    [InlineData("AlEx")]
-    public async Task GetProfileAsync_AnyCasing_ResolvesTheSameProfile(string typed)
+    [InlineData("Alex")]
+    public async Task GetProfileAsync_TheUserName_IsNeverLookedUp(string typed)
     {
+        // ADR 0096: only the id is looked up. A name can change hands, so an address built on one could
+        // come to mean somebody else; the page puts the name after the id and redirects a wrong one.
         using var db = NewDb();
         AddAccount(db, UserId, "Alex");
 
-        var profile = await NewService(db).GetProfileAsync(typed, default);
+        Assert.Null(await NewService(db).GetProfileAsync(typed, default));
+    }
 
-        Assert.NotNull(profile);
-        // The stored capitalisation, not whatever was typed into the URL: it is the owner's name.
-        Assert.Equal("Alex", profile.UserName);
+    [Fact]
+    public async Task GetProfileAsync_AUserNameThatIsSomebodysId_ChangesNothing()
+    {
+        // The alphabets overlap, so a username can be the same string as another account's id. No name
+        // is ever looked up, so the id still answers with its own account, and the account with that
+        // name is still found by its own id.
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+        AddAccount(db, OtherUserId, AlexId);
+        AddEntry(db, gameId: 11, status: ListStatusKeys.Finished);
+
+        var byAlexsId = await NewService(db).GetProfileAsync(AlexId, default);
+        var bySamsId = await NewService(db).GetProfileAsync(SamId, default);
+
+        Assert.NotNull(byAlexsId);
+        Assert.Equal("alex", byAlexsId.UserName);
+        Assert.Equal(1, byAlexsId.Library.Tracked);
+        Assert.NotNull(bySamsId);
+        Assert.Equal(AlexId, bySamsId.UserName);
+        Assert.Equal(SamId, bySamsId.PublicId);
+    }
+
+    [Theory]
+    [InlineData("B4KZ9Q2MXW7C")]
+    [InlineData("B4kz9q2mxw7c")]
+    public async Task GetProfileAsync_TheIdInCapitals_ReturnsNull(string typed)
+    {
+        // An id is lower case and matched exactly: a spelling in capitals is a string nobody holds, as a
+        // copy of the link never has.
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+
+        Assert.Null(await NewService(db).GetProfileAsync(typed, default));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("b4kz9q2mxw7")]
+    [InlineData("b4kz9q2mxw7cc")]
+    [InlineData("b4kz9q2mxw7a")]
+    [InlineData("b4kz9q2mxw7l")]
+    public async Task GetProfileAsync_SomethingThatCannotBeAnId_ReturnsNull(string typed)
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+
+        Assert.Null(await NewService(db).GetProfileAsync(typed, default));
     }
 
     [Fact]
@@ -208,7 +259,7 @@ public class PublicProfileServiceTests
         AddEntry(db, gameId: 21, userId: OtherUserId, status: ListStatusKeys.Finished, score: 2);
         AddEntry(db, gameId: 22, userId: OtherUserId, status: ListStatusKeys.Playing);
 
-        var profile = await NewService(db).GetProfileAsync("alex", default);
+        var profile = await NewService(db).GetProfileAsync(AlexId, default);
 
         Assert.NotNull(profile);
         Assert.Equal(1, profile.Library.Tracked);
@@ -226,7 +277,7 @@ public class PublicProfileServiceTests
             avatarUrl: "https://i.imgur.com/removed.png",
             bio: "Mostly RPGs.\n\nSlowly.");
 
-        var profile = await NewService(db).GetProfileAsync("alex", default);
+        var profile = await NewService(db).GetProfileAsync(AlexId, default);
 
         Assert.NotNull(profile);
         // The handle travels as well, and is still the name the page is addressed by.
@@ -243,7 +294,7 @@ public class PublicProfileServiceTests
         using var db = NewDb();
         AddAccount(db, UserId, "alex");
 
-        var profile = await NewService(db).GetProfileAsync("alex", default);
+        var profile = await NewService(db).GetProfileAsync(AlexId, default);
 
         Assert.NotNull(profile);
         Assert.Null(profile.DisplayName);
@@ -262,7 +313,7 @@ public class PublicProfileServiceTests
             avatarUrl: "https://i.imgur.com/removed.png",
             bio: "Mostly RPGs.");
 
-        Assert.Null(await NewService(db).GetProfileAsync("alex", default));
+        Assert.Null(await NewService(db).GetProfileAsync(AlexId, default));
     }
 
     [Fact]
@@ -273,7 +324,7 @@ public class PublicProfileServiceTests
         AddReview(db, gameId: 11);
         AddReview(db, gameId: 12, visibility: ReviewVisibility.Private);
 
-        var profile = await NewService(db).GetProfileAsync("alex", default);
+        var profile = await NewService(db).GetProfileAsync(AlexId, default);
 
         Assert.NotNull(profile);
         Assert.Equal(1, profile.Reviews);
@@ -290,7 +341,7 @@ public class PublicProfileServiceTests
         AddEntry(db, gameId: 11, status: ListStatusKeys.Finished, score: 8);
 
         var igdb = Substitute.For<IGameCacheService>();
-        await NewService(db, igdb).GetProfileAsync("alex", default);
+        await NewService(db, igdb).GetProfileAsync(AlexId, default);
 
         await igdb.DidNotReceiveWithAnyArgs()
             .GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
@@ -317,7 +368,7 @@ public class PublicProfileServiceTests
         });
         db.SaveChanges();
 
-        var profile = await NewService(db).GetProfileAsync("alex", default);
+        var profile = await NewService(db).GetProfileAsync(AlexId, default);
 
         Assert.NotNull(profile);
         Assert.Equal(["2026-08", "2026-09"], profile.Activity.Months.Select(m => m.Month));
@@ -337,7 +388,7 @@ public class PublicProfileServiceTests
         AddReview(db, gameId: 12, body: "Private one.", visibility: ReviewVisibility.Private);
 
         var page = await NewService(db, IgdbKnowing(Game(11, "One"), Game(12, "Two")))
-            .GetReviewsAsync("alex", 1, default);
+            .GetReviewsAsync(AlexId, 1, default);
 
         Assert.NotNull(page);
         Assert.Equal(["Public one."], page.Reviews.Select(r => r.Body));
@@ -355,8 +406,8 @@ public class PublicProfileServiceTests
         AddReview(db, gameId: 12, body: "Hidden.", hiddenAt: Now);
         var service = NewService(db, IgdbKnowing(Game(11, "One"), Game(12, "Two")));
 
-        var page = await service.GetReviewsAsync("alex", 1, default);
-        var profile = await service.GetProfileAsync("alex");
+        var page = await service.GetReviewsAsync(AlexId, 1, default);
+        var profile = await service.GetProfileAsync(AlexId);
 
         Assert.NotNull(page);
         Assert.Equal(["Shown."], page.Reviews.Select(r => r.Body));
@@ -374,7 +425,7 @@ public class PublicProfileServiceTests
         AddReview(db, gameId: 21, userId: OtherUserId, body: "Theirs.");
 
         var page = await NewService(db, IgdbKnowing(Game(11, "One"), Game(21, "Two")))
-            .GetReviewsAsync("alex", 1, default);
+            .GetReviewsAsync(AlexId, 1, default);
 
         Assert.NotNull(page);
         Assert.Equal(["Mine."], page.Reviews.Select(r => r.Body));
@@ -391,7 +442,7 @@ public class PublicProfileServiceTests
         AddReview(db, gameId: 11);
 
         Assert.Null(await NewService(db, IgdbKnowing(Game(11, "One")))
-            .GetReviewsAsync("alex", 1, default));
+            .GetReviewsAsync(AlexId, 1, default));
     }
 
     [Fact]
@@ -403,7 +454,7 @@ public class PublicProfileServiceTests
         AddReview(db, gameId: 12, updatedAt: Now.AddDays(-1));
 
         var page = await NewService(db, IgdbKnowing(Game(11, "One"), Game(12, "Two")))
-            .GetReviewsAsync("alex", 1, default);
+            .GetReviewsAsync(AlexId, 1, default);
 
         Assert.NotNull(page);
         Assert.Equal((short)9, page.Reviews.Single(r => r.Game.Id == 11).Score);
@@ -421,7 +472,7 @@ public class PublicProfileServiceTests
         AddReview(db, gameId: 13, body: "Middle.", updatedAt: Now.AddDays(-5));
 
         var page = await NewService(db, IgdbKnowing(Game(11, "A"), Game(12, "B"), Game(13, "C")))
-            .GetReviewsAsync("alex", 1, default);
+            .GetReviewsAsync(AlexId, 1, default);
 
         Assert.NotNull(page);
         Assert.Equal(["Newest.", "Middle.", "Oldest."], page.Reviews.Select(r => r.Body));
@@ -435,7 +486,7 @@ public class PublicProfileServiceTests
         AddReview(db, gameId: 11);
 
         var page = await NewService(db, IgdbKnowing(Game(11, "One")))
-            .GetReviewsAsync("alex", 99, default);
+            .GetReviewsAsync(AlexId, 99, default);
 
         Assert.NotNull(page);
         Assert.Empty(page.Reviews);
@@ -454,7 +505,7 @@ public class PublicProfileServiceTests
         AddReview(db, gameId: 11);
         var igdb = IgdbKnowing(Game(11, "One"));
 
-        var page = await NewService(db, igdb).GetReviewsAsync("alex", int.MaxValue, default);
+        var page = await NewService(db, igdb).GetReviewsAsync(AlexId, int.MaxValue, default);
 
         Assert.NotNull(page);
         Assert.Empty(page.Reviews);
@@ -476,7 +527,7 @@ public class PublicProfileServiceTests
         AddReview(db, gameId: 12, body: "Vanished.", updatedAt: Now.AddDays(-1));
 
         var page = await NewService(db, IgdbKnowing(Game(11, "One")))
-            .GetReviewsAsync("alex", 1, default);
+            .GetReviewsAsync(AlexId, 1, default);
 
         Assert.NotNull(page);
         Assert.Equal(["Still known."], page.Reviews.Select(r => r.Body));
@@ -492,7 +543,7 @@ public class PublicProfileServiceTests
         AddAccount(db, UserId, "alex");
 
         var igdb = Substitute.For<IGameCacheService>();
-        var page = await NewService(db, igdb).GetReviewsAsync("alex", 1, default);
+        var page = await NewService(db, igdb).GetReviewsAsync(AlexId, 1, default);
 
         Assert.NotNull(page);
         Assert.Empty(page.Reviews);
@@ -529,7 +580,7 @@ public class PublicProfileServiceTests
         AddFavourite(db, gameId: 12);
         AddFavourite(db, gameId: 21, userId: OtherUserId);
 
-        var profile = await NewService(db).GetProfileAsync("alex", default);
+        var profile = await NewService(db).GetProfileAsync(AlexId, default);
 
         Assert.NotNull(profile);
         Assert.Equal(2, profile.Favourites);
@@ -545,7 +596,7 @@ public class PublicProfileServiceTests
         AddFavourite(db, gameId: 11);
 
         Assert.Null(await NewService(db, IgdbKnowing(Game(11, "One")))
-            .GetFavouritesAsync("alex", default));
+            .GetFavouritesAsync(AlexId, default));
     }
 
     [Fact]
@@ -558,7 +609,7 @@ public class PublicProfileServiceTests
         AddFavourite(db, gameId: 21, userId: OtherUserId);
 
         var favourites = await NewService(db, IgdbKnowing(Game(11, "Mine"), Game(21, "Theirs")))
-            .GetFavouritesAsync("alex", default);
+            .GetFavouritesAsync(AlexId, default);
 
         Assert.NotNull(favourites);
         Assert.Equal(["Mine"], favourites.Games.Select(g => g.Name));
@@ -574,7 +625,7 @@ public class PublicProfileServiceTests
         AddFavourite(db, gameId: 13, addedAt: Now.AddDays(-5));
 
         var favourites = await NewService(db, IgdbKnowing(Game(11, "A"), Game(12, "B"), Game(13, "C")))
-            .GetFavouritesAsync("alex", default);
+            .GetFavouritesAsync(AlexId, default);
 
         Assert.NotNull(favourites);
         Assert.Equal([12, 13, 11], favourites.Games.Select(g => g.Id));
@@ -594,7 +645,7 @@ public class PublicProfileServiceTests
         AddFavourite(db, gameId: 14, addedAt: Now.AddDays(-1));
 
         var favourites = await NewService(db, IgdbKnowing(Game(11, "A"), Game(12, "B"), Game(13, "C"), Game(14, "D")))
-            .GetFavouritesAsync("alex", default);
+            .GetFavouritesAsync(AlexId, default);
 
         Assert.NotNull(favourites);
         Assert.Equal([11, 13, 12, 14], favourites.Games.Select(g => g.Id));
@@ -609,7 +660,7 @@ public class PublicProfileServiceTests
         AddFavourite(db, gameId: 12);
 
         var favourites = await NewService(db, IgdbKnowing(Game(11, "Still known")))
-            .GetFavouritesAsync("alex", default);
+            .GetFavouritesAsync(AlexId, default);
 
         Assert.NotNull(favourites);
         Assert.Equal(["Still known"], favourites.Games.Select(g => g.Name));
@@ -622,7 +673,7 @@ public class PublicProfileServiceTests
         AddAccount(db, UserId, "alex");
 
         var igdb = Substitute.For<IGameCacheService>();
-        var favourites = await NewService(db, igdb).GetFavouritesAsync("alex", default);
+        var favourites = await NewService(db, igdb).GetFavouritesAsync(AlexId, default);
 
         Assert.NotNull(favourites);
         Assert.Empty(favourites.Games);

@@ -13,7 +13,8 @@ namespace MyVideoGameList.Server.DTOs;
 /// A field reaches this document only when somebody writes it into this record.
 /// </para>
 /// <para>
-/// What is deliberately absent: the email address, the account id, anything from the wishlist
+/// What is deliberately absent: the email address, the account id (the public id is a different value
+/// made to be shown, ADR 0096), anything from the wishlist
 /// beyond its size, the per-platform breakdown of hours, and the time-to-finish median. The first
 /// two are identity rather than activity; the rest are figures about how somebody spends their
 /// evenings that are interesting to their owner and nobody else's business.
@@ -24,9 +25,14 @@ namespace MyVideoGameList.Server.DTOs;
 /// <c>docs/decisions/0027-usernames-and-public-profiles.md</c>.
 /// </para>
 /// </remarks>
+/// <param name="PublicId">
+/// The half of the page's address that is looked up and never changes (ADR 0096), so that the page
+/// can build its own canonical address from what it was answered with.
+/// </param>
 /// <param name="UserName">
 /// As stored, so the page shows the capitalisation its owner chose rather than whatever the
-/// visitor happened to type into the URL.
+/// visitor happened to type into the URL. The other half of the address, which a page under any other
+/// name redirects to.
 /// </param>
 /// <param name="DisplayName">
 /// The name they are shown by, or null. Published because it exists to be: the owner wrote it for
@@ -50,6 +56,7 @@ namespace MyVideoGameList.Server.DTOs;
 /// the wishlist, whose size is all that appears here.
 /// </param>
 public record PublicProfileDto(
+    string PublicId,
     string UserName,
     string? DisplayName,
     string? AvatarUrl,

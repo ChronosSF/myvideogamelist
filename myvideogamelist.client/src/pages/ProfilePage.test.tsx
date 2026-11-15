@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, RouterContextProvider, createRoutesStub, type LoaderFunction } from 'react-router';
 import { ErrorBoundary, ProfilePage, headers, loader, meta } from '@/pages/ProfilePage';
+import { RATE_LIMITED } from '@/lib/api';
 import { CACHE_NOT_FOUND, CACHE_PROFILE, PRIVATE_NO_STORE } from '@/lib/cache';
 import type { PublicActivity, PublicProfile } from '@/types/profile';
 import type { Route } from './+types/ProfilePage';
@@ -16,6 +17,7 @@ const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
  * component's business and is left out, which is what the cast is for.
  */
 function tagsFor({
+    publicId = 'b4kz9q2mxw7c',
     userName = 'AliceInChains',
     displayName = null as string | null,
     page = 1,
@@ -23,6 +25,7 @@ function tagsFor({
     favourites = 0,
 } = {}): Tag[] {
     const profile = {
+        publicId,
         userName,
         displayName,
         favourites,
@@ -37,15 +40,15 @@ const title = (tags: Tag[]) => tags.find(tag => tag.title !== undefined)?.title;
 const noindex = (tags: Tag[]) => tags.some(tag => tag.name === 'robots' && tag.content?.includes('noindex'));
 
 describe('ProfilePage meta', () => {
-    it('calls itself by the name as its owner wrote it, not as the URL was typed', () => {
-        // The lookup ignores case, so `/u/aliceinchains` and `/u/ALICEINCHAINS` both render. The
-        // name here is the API's answer, and it is the spelling the sitemap lists too.
-        expect(canonical(tagsFor())).toBe('https://myvideogamelist.net/u/AliceInChains');
+    it('calls itself by its id and the name as its owner wrote it, from the data and never the URL', () => {
+        // ADR 0096: the id is what is looked up, and the name is the API's answer, the spelling the
+        // sitemap lists too. Any other name was redirected here before this runs.
+        expect(canonical(tagsFor())).toBe('https://myvideogamelist.net/u/b4kz9q2mxw7c/AliceInChains');
     });
 
     it('gives each page of reviews its own canonical URL, and the first page none of the query', () => {
-        expect(canonical(tagsFor({ page: 3 }))).toBe('https://myvideogamelist.net/u/AliceInChains?page=3');
-        expect(canonical(tagsFor({ page: 1 }))).toBe('https://myvideogamelist.net/u/AliceInChains');
+        expect(canonical(tagsFor({ page: 3 }))).toBe('https://myvideogamelist.net/u/b4kz9q2mxw7c/AliceInChains?page=3');
+        expect(canonical(tagsFor({ page: 1 }))).toBe('https://myvideogamelist.net/u/b4kz9q2mxw7c/AliceInChains');
     });
 
     it('says whose profile it is in Open Graph terms', () => {
@@ -96,10 +99,13 @@ describe('ProfilePage meta', () => {
         // The display name is in no URL and belongs to nobody exclusively (ADR 0027).
         const tags = tagsFor({ displayName: 'Alice Cooper' });
 
-        expect(canonical(tags)).toBe('https://myvideogamelist.net/u/AliceInChains');
+        expect(canonical(tags)).toBe('https://myvideogamelist.net/u/b4kz9q2mxw7c/AliceInChains');
         expect(tags).toContainEqual({ property: 'profile:username', content: 'AliceInChains' });
     });
 });
+
+/** The imported profile's public id, the half of its address that is looked up (ADR 0096). */
+const CHRONOS = 'k3f9x2m7bq4z';
 
 /**
  * A published profile whose library came by import and has never been moved here: games on every
@@ -108,6 +114,7 @@ describe('ProfilePage meta', () => {
  */
 function importedProfile(activity: Partial<PublicActivity> = {}, recorded = 606): PublicProfile {
     return {
+        publicId: CHRONOS,
         userName: 'ChronosSF',
         displayName: null,
         avatarUrl: null,
@@ -252,10 +259,10 @@ function stubProfileApi(answers: { profile: Array<number | 'unreachable'>; revie
 describe('ProfilePage when there is no profile to show', () => {
     afterEach(() => vi.unstubAllGlobals());
 
-    function renderRoute(path = '/u/ChronosSF') {
+    function renderRoute(path = `/u/${CHRONOS}/ChronosSF`) {
         const Stub = createRoutesStub([{
             id: 'profile',
-            path: '/u/:userName',
+            path: '/u/:publicId/:userName?',
             Component: ProfilePage as unknown as React.ComponentType,
             ErrorBoundary,
             loader: loader as unknown as LoaderFunction,
@@ -263,15 +270,13 @@ describe('ProfilePage when there is no profile to show', () => {
         render(<Stub initialEntries={[path]} />);
     }
 
-    it('says what would put one here, in words that fit a private profile and an unclaimed name alike', async () => {
+    it('says what would put one here, in words that fit a private profile and an id nobody holds alike', async () => {
         // The two are one 404 on purpose (ADR 0027 §7), so nothing here may tell them apart.
         stubProfileApi({ profile: [404] });
         renderRoute();
 
         expect(await screen.findByRole('heading', { level: 1, name: 'There is no profile to show here' })).toBeInTheDocument();
-        expect(screen.getByText(
-            'A profile shows here once its owner makes it public, and only under the username they have now.',
-        )).toBeInTheDocument();
+        expect(screen.getByText('A profile shows here once its owner makes it public.')).toBeInTheDocument();
         expect(screen.queryByText(/private profile|no such user|does not exist/i)).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
     });
@@ -279,18 +284,51 @@ describe('ProfilePage when there is no profile to show', () => {
     it('says a page of reviews past the last is not there, and offers the first', async () => {
         // The profile has already answered as public, so saying so gives nothing away.
         stubProfileApi({ profile: [200], total: 3 });
-        renderRoute('/u/ChronosSF?page=7');
+        renderRoute(`/u/${CHRONOS}/ChronosSF?page=7`);
 
         expect(await screen.findByRole('heading', { level: 1, name: 'There is no such page of reviews' })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Go to the first page' })).toHaveAttribute('href', '/u/ChronosSF');
+        expect(screen.getByRole('link', { name: 'Go to the first page' })).toHaveAttribute('href', `/u/${CHRONOS}/ChronosSF`);
     });
 
     it('says the same of a page that is not a number, before the profile is asked about at all', async () => {
         const fetchMock = stubProfileApi({ profile: [200] });
-        renderRoute('/u/ChronosSF?page=two');
+        renderRoute(`/u/${CHRONOS}/ChronosSF?page=two`);
 
         expect(await screen.findByRole('heading', { level: 1, name: 'There is no such page of reviews' })).toBeInTheDocument();
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('is the same 404 for a segment that could not be an id, without asking the API', async () => {
+        // One segment after /u/ is always an id (ADR 0096): a name there is a string nobody holds.
+        const fetchMock = stubProfileApi({ profile: [200] });
+        renderRoute('/u/ChronosSF');
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'There is no profile to show here' })).toBeInTheDocument();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('draws the profile at its own address after redirecting another name there', async () => {
+        stubProfileApi({ profile: [200] });
+        renderRoute(`/u/${CHRONOS}/OldName`);
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'ChronosSF' })).toBeInTheDocument();
+    });
+
+    it("says the edge refused this reader's address for the rate, and blames nobody on our side", async () => {
+        // What React Router throws when the rate rule answers a navigation's .data (ADR 0098).
+        const Stub = createRoutesStub([{
+            id: 'profile',
+            path: '/u/:publicId/:userName?',
+            Component: ProfilePage as unknown as React.ComponentType,
+            ErrorBoundary,
+            loader: () => { throw new Response('<!doctype html><h1>Too many requests</h1>', { status: 429 }); },
+        }]);
+        render(<Stub initialEntries={[`/u/${CHRONOS}/ChronosSF`]} />);
+
+        expect(await screen.findByText(RATE_LIMITED)).toBeInTheDocument();
+        expect(screen.queryByText(/our side|doctype/)).not.toBeInTheDocument();
+        // Asking again at once only prolongs it.
+        expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
     });
 
     it('says a failure as the lists page does, and asks again when told to', async () => {
@@ -308,11 +346,81 @@ describe('ProfilePage caching', () => {
     afterEach(() => vi.unstubAllGlobals());
 
     // With a context, which the loader's calls are traced through (ADR 0059).
-    const args = (search = '') => ({
-        params: { userName: 'ChronosSF' },
-        request: new Request(`https://myvideogamelist.net/u/ChronosSF${search}`),
+    // `null` for an address with no name after the id, since `undefined` would take the default.
+    const args = (search = '', userName: string | null = 'ChronosSF', publicId = CHRONOS) => ({
+        params: { publicId, userName: userName ?? undefined },
+        request: new Request(`https://myvideogamelist.net/u/${publicId}${userName === null ? '' : `/${userName}`}${search}`),
         context: new RouterContextProvider(),
     }) as unknown as Route.LoaderArgs;
+
+    /** The redirect the loader threw, or a failure saying it threw something else. */
+    async function redirectFor(search: string, userName: string | null) {
+        const outcome = await loader(args(search, userName)).catch((error: unknown) => error);
+        if (!(outcome instanceof Response)) throw new Error('The loader answered rather than redirecting.');
+        return outcome;
+    }
+
+    it.each([
+        ['an old name', 'OldName'],
+        ['the name in other letter case', 'chronossf'],
+        ['no name at all', null],
+    ])('redirects %s to the address the profile has now, for good', async (_, userName) => {
+        // Only the id was looked up; the name is the owner's to change (ADR 0096).
+        stubProfileApi({ profile: [200] });
+
+        const redirect = await redirectFor('', userName);
+
+        expect(redirect.status).toBe(301);
+        expect(redirect.headers.get('Location')).toBe(`/u/${CHRONOS}/ChronosSF`);
+    });
+
+    it('keeps the page of reviews it was asked for when it redirects', async () => {
+        stubProfileApi({ profile: [200], total: 45 });
+
+        expect((await redirectFor('?page=2', 'OldName')).headers.get('Location')).toBe(`/u/${CHRONOS}/ChronosSF?page=2`);
+    });
+
+    it('lets nobody keep the redirect, neither a browser nor the edge', async () => {
+        // A 301 kept anywhere could meet a page rendered under the other name after a rename, and the
+        // two would send a reader round in a loop (ADR 0096 §4).
+        stubProfileApi({ profile: [200] });
+
+        const redirect = await redirectFor('', 'OldName');
+
+        expect(redirect.headers.get('Cache-Control')).toBe(PRIVATE_NO_STORE);
+        expect(redirect.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    });
+
+    it('calls off the reviews and favourites when it redirects, so the API does no work for nobody', async () => {
+        const fetchMock = stubProfileApi({ profile: [200] });
+
+        await redirectFor('', 'OldName');
+
+        const signals = fetchMock.mock.calls
+            .filter(([input]) => /\/(reviews|favourites)/.test(String(input)))
+            // The stub is typed with one parameter; the loader passes the init beside it.
+            .map(call => ((call as unknown[])[1] as RequestInit | undefined)?.signal);
+        expect(signals).toHaveLength(2);
+        expect(signals.every(signal => signal?.aborted)).toBe(true);
+    });
+
+    it('does not redirect the name the profile has, as its owner spells it', async () => {
+        stubProfileApi({ profile: [200] });
+
+        const outcome = await loader(args('', 'ChronosSF')).catch((error: unknown) => error);
+
+        expect(outcome).not.toBeInstanceOf(Response);
+    });
+
+    it('answers a private profile and an id nobody holds before any redirect, as the same 404', async () => {
+        // A wrong name on a private profile must not be told where the profile is.
+        stubProfileApi({ profile: [404] });
+
+        const outcome = await loader(args('', 'OldName')).catch((error: unknown) => error) as Response;
+
+        expect(outcome.status).toBe(404);
+        expect(outcome.headers.get('Location')).toBeNull();
+    });
 
     const policyOf = (init: { loaderHeaders?: HeadersInit; errorHeaders?: HeadersInit }) => headers({
         loaderHeaders: new Headers(init.loaderHeaders),

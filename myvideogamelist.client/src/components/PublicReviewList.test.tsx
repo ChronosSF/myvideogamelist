@@ -29,10 +29,10 @@ function page(overrides: Partial<PublicReviews> = {}): PublicReviews {
     };
 }
 
-function renderList(props: Partial<Parameters<typeof PublicReviewList>[0]> = {}, url = '/u/alex') {
+function renderList(props: Partial<Parameters<typeof PublicReviewList>[0]> = {}, url = '/u/b4kz9q2mxw7c/alex') {
     return render(
         <MemoryRouter initialEntries={[url]}>
-            <PublicReviewList userName="alex" reviews={page()} total={1} {...props} />
+            <PublicReviewList publicId="b4kz9q2mxw7c" userName="alex" reviews={page()} total={1} {...props} />
         </MemoryRouter>,
     );
 }
@@ -172,7 +172,7 @@ describe('PublicReviewList counts', () => {
         expect(screen.getByText('Showing 1–2 of 4.')).toBeInTheDocument();
         // Two pages at this page size, not the fifteen the profile's count would imply.
         expect(screen.getByText('Page 1 of 2')).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Older reviews' })).toHaveAttribute('href', '/u/alex?page=2');
+        expect(screen.getByRole('link', { name: 'Older reviews' })).toHaveAttribute('href', '/u/b4kz9q2mxw7c/alex?page=2');
     });
 
     it('says nothing about counts when the whole set is on screen', () => {
@@ -195,7 +195,7 @@ describe('PublicReviewList pages', () => {
                 }),
                 total,
             },
-            pageNumber > 1 ? `/u/alex?page=${pageNumber}` : '/u/alex',
+            pageNumber > 1 ? `/u/b4kz9q2mxw7c/alex?page=${pageNumber}` : '/u/b4kz9q2mxw7c/alex',
         );
     }
 
@@ -204,8 +204,8 @@ describe('PublicReviewList pages', () => {
         // server can render. The first page is the bare profile URL, so it stays one URL.
         renderPage(2);
 
-        expect(screen.getByRole('link', { name: 'Newer reviews' })).toHaveAttribute('href', '/u/alex');
-        expect(screen.getByRole('link', { name: 'Older reviews' })).toHaveAttribute('href', '/u/alex?page=3');
+        expect(screen.getByRole('link', { name: 'Newer reviews' })).toHaveAttribute('href', '/u/b4kz9q2mxw7c/alex');
+        expect(screen.getByRole('link', { name: 'Older reviews' })).toHaveAttribute('href', '/u/b4kz9q2mxw7c/alex?page=3');
         expect(screen.getByText('Page 2 of 3')).toBeInTheDocument();
         expect(screen.getByText('Showing 3–4 of 5.')).toBeInTheDocument();
     });
@@ -214,13 +214,13 @@ describe('PublicReviewList pages', () => {
         renderPage(1);
 
         expect(screen.queryByRole('link', { name: 'Newer reviews' })).not.toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Older reviews' })).toHaveAttribute('href', '/u/alex?page=2');
+        expect(screen.getByRole('link', { name: 'Older reviews' })).toHaveAttribute('href', '/u/b4kz9q2mxw7c/alex?page=2');
     });
 
     it('offers only newer pages from the last', () => {
         renderPage(3);
 
-        expect(screen.getByRole('link', { name: 'Newer reviews' })).toHaveAttribute('href', '/u/alex?page=2');
+        expect(screen.getByRole('link', { name: 'Newer reviews' })).toHaveAttribute('href', '/u/b4kz9q2mxw7c/alex?page=2');
         expect(screen.queryByRole('link', { name: 'Older reviews' })).not.toBeInTheDocument();
     });
 
@@ -237,7 +237,7 @@ describe('PublicReviewList pages', () => {
                 reviews: page({ reviews: [review()], total: 5, page: 2, pageSize: 2 }),
                 total: 5,
             },
-            '/u/alex?page=2',
+            '/u/b4kz9q2mxw7c/alex?page=2',
         );
 
         expect(screen.getByText('Showing 1 of the 2 on this page. Some could not be matched to a game.'))

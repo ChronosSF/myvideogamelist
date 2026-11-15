@@ -18,7 +18,7 @@ public sealed class Edge : Construct
     public Distribution Distribution { get; }
 
     public Edge(Construct scope, string id, Site site, ApplicationLoadBalancer alb, ICertificate certificate,
-        IKeyValueStore basicAuthStore, string originVerifyValue)
+        string webAclArn, IKeyValueStore basicAuthStore, string originVerifyValue)
         : base(scope, id)
     {
         var origin = new LoadBalancerV2Origin(alb, new LoadBalancerV2OriginProps
@@ -185,6 +185,10 @@ public sealed class Edge : Construct
             MinimumProtocolVersion = SecurityPolicyProtocol.TLS_V1_2_2021,
             HttpVersion = HttpVersion.HTTP2_AND_3,
             PriceClass = PriceClass.PRICE_CLASS_100,
+            // The web ACL's one rule: an address over its limit is answered 429, before the basic-auth
+            // function and before the cache, so a 401 and an edge hit count too (ADR 0098). Its ARN, as
+            // AWS WAF's current version asks; the ACL lives in us-east-1, in WafStack.
+            WebAclId = webAclArn,
             // `/games`, `/games/{id}`, `/u/*`, robots.txt, the sitemaps, every 404, and their .data forms,
             // the home page's included: each cached for exactly what @/lib/cache says, and nothing else.
             DefaultBehavior = Behaviour(pages, hostOnly),

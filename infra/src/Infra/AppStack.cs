@@ -33,7 +33,7 @@ public sealed class AppStack : Stack
     private const int BalancerIdleTimeoutSeconds = 60;
 
     public AppStack(Construct scope, string id, IStackProps props, Site site, IHostedZone zone, DataStack data,
-        ICertificate edgeCertificate, string imageTag)
+        ICertificate edgeCertificate, string webAclArn, string imageTag)
         : base(scope, id, props)
     {
         var albSubnets = data.Vpc.SelectSubnets(new SubnetSelection { SubnetGroupName = "alb" });
@@ -115,7 +115,7 @@ public sealed class AppStack : Stack
             TargetGroups = [ssrTargets],
         });
 
-        var edge = new Edge(this, "Edge", site, alb, edgeCertificate, data.BasicAuthStore, originVerify);
+        var edge = new Edge(this, "Edge", site, alb, edgeCertificate, webAclArn, data.BasicAuthStore, originVerify);
 
         // The API takes a withdrawn profile off the edge itself, after the write that withdrew it
         // (ADR 0058), so it is told which distribution - a resume makes a new one with a new id -

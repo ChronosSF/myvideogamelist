@@ -55,8 +55,8 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
 | `docker compose down` | Stops it, keeping data. **`down -v` destroys the data volume** |
 | `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
-| `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database and gates the pipeline off; `resume` is the reverse at the newest pushed tag, migrating the database at that tag first, since a parked environment skips the pipeline's migrations, and proving the site answers through the door. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044, 0046 |
-| `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door |
+| `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database, destroys the web ACL's stack and gates the pipeline off; `resume` is the reverse at the newest pushed tag, migrating the database at that tag first, since a parked environment skips the pipeline's migrations, and proving the site answers through the door. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044, 0046 |
+| `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door; with the `mvgl-dev` profile signed in, also that the web ACL is on the distribution (ADR 0098) |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -80,7 +80,7 @@ MyVideoGameList.Server.IntegrationTests/  The API over PostgreSQL in a container
 myvideogamelist.client/
   src/root.tsx                  HTML document, providers, global ErrorBoundary
   src/entry.server.tsx          Owned, not generated. Where every document response gets its headers
-  src/routes.ts                 Route table. `/u/:userName` is the one public per-person page
+  src/routes.ts                 Route table. `/u/:publicId/:userName?` is the one public per-person page
   src/pages/                    Route modules (default export + optional loader/meta)
   src/resources/                Resource routes: robots.txt, the sitemaps and /version. A loader, no component
   src/lib/                      apiUrl(), useHydrated(), pageMeta(); loaderFetch() in trace.server.ts
@@ -129,6 +129,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   CloudFront's prefix list and nothing else, and its listener answers only the distribution that
   sends the origin-verify header; the site is behind basic auth at the edge, with three public
   aggregate endpoints exempt. See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
+  **The distribution's web ACL is `Mvgl-<env>-Waf`, in `us-east-1`, which the pipeline never deploys**:
+  `resume` makes it before `App`, which reads its ARN when it deploys and fails without it, and `park`
+  destroys it after. A change to its one rate rule is deployed by hand. See `docs/decisions/0098-*`.
 
 - **The SSR server holds an idle connection 5 seconds longer than the balancer, which the stack tells it,
   and it does not start without being told.** The server has to be the side that holds on longer. When Node
@@ -303,7 +306,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   wraps both writes and turns that into the same `DuplicateUserName`, so go through it; never call
   `CreateAsync` or `SetUserNameAsync` for a username directly. After a real rename, refresh the
   sign-in: `SetUserNameAsync` rotates the security stamp, and the validator signs the user out within
-  thirty minutes otherwise. See `docs/decisions/0027-*`.
+  thirty minutes otherwise. **A name is never an address**: a profile is `/u/{publicId}/{userName}`,
+  only the id is looked up (`PublicIdPolicy`), any other name is a 301 to the current one, and the id
+  is never Identity's account id. Build an address with `profilePath`, and never look a profile up by
+  name. See `docs/decisions/0027-*` and `0096-*`.
 
 - **A profile is private by default, and the public document is hand-assembled.**
   `ProfileVisibility` defaults to `private` for new accounts as well as backfilled ones, on ADR
@@ -311,8 +317,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   review on a private profile is visible to nobody. `PublicProfileService` reuses `StatsService`
   rather than re-deriving anything, but copies fields into `PublicProfileDto` **one at a time** —
   returning `UserStatsDto` would publish every figure ever added to the private profile, by nobody's
-  decision. A private profile and an unclaimed name are the same 404, so the endpoint cannot be used
-  to ask whether a name has an account.
+  decision. A private profile, an id nobody holds and a segment that cannot be an id are the same
+  404, before any redirect, so the endpoint cannot be used to ask whether an id has an account.
 
 - **A page loads images only from the hosts its policy names, and an avatar's host is in two
   lists.** The document policy's `img-src` is `IMAGE_SOURCES` in `@/lib/securityHeaders`: this
@@ -777,11 +783,12 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   and the API sends `X-Robots-Tag: noindex` so that `/api/` can stay crawlable — a crawler rendering
   a game page has to be able to fetch the member reviews the page fetches. An indexable route
   returns `pageMeta(...)` from `@/lib/seo` with a `path` **built from loader data, never from the
-  request** (`/u/ALICE` renders, and has to say it is `/u/alice`), and carries `site` in its loader
+  request** (`/games/0012` renders, and has to say it is `/games/12`), and carries `site` in its loader
   data because `meta` runs in the browser too. The sitemap reads `CachedGames` and public,
   non-empty profiles and makes no IGDB call; the empty-profile test lives in both
   `SitemapService.ListedProfiles` and `ProfilePage`'s `meta`, and they must agree. Resource routes
-  bypass `entry.server.tsx`, so they go out through `resourceResponse`. See
+  bypass `entry.server.tsx`, so they go out through `resourceResponse`, and so does a loader's
+  redirect, through `redirectResponse`, with a `Cache-Control` of its own. See
   `docs/decisions/0036-*`. Structured data is a `script:ld+json` descriptor returned from `meta`,
   which `<Meta>` escapes — never a script tag of our own — says only what the page shows, and rates
   a game by its members' score alone, at `MIN_MEMBER_SCORES`; see `docs/decisions/0069-*`.

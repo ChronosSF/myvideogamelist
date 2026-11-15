@@ -39,6 +39,9 @@ public class SitemapServiceTests
         db.SaveChanges();
     }
 
+    /// <summary>Each test account's public id, the first half of its profile's address (ADR 0096).</summary>
+    private static string PublicIdOf(string userId) => userId == "user-1" ? "b4kz9q2mxw7c" : "7tn3vjh8p0sd";
+
     private static void AddAccount(
         ApplicationDbContext db,
         string userId,
@@ -48,6 +51,7 @@ public class SitemapServiceTests
         db.Users.Add(new ApplicationUser
         {
             Id = userId,
+            PublicId = PublicIdOf(userId),
             UserName = userName,
             NormalizedUserName = userName.ToUpperInvariant(),
             Email = $"{userName}@test.local",
@@ -120,11 +124,11 @@ public class SitemapServiceTests
         var service = new SitemapService(db);
 
         Assert.Empty(await service.GetGameIdsAsync(int.MaxValue));
-        Assert.Empty(await service.GetProfileNamesAsync(int.MaxValue));
+        Assert.Empty(await service.GetProfilesAsync(int.MaxValue));
     }
 
     [Fact]
-    public async Task GetProfileNamesAsync_NeverListsAPrivateProfile()
+    public async Task GetProfilesAsync_NeverListsAPrivateProfile()
     {
         using var db = NewDb();
         AddAccount(db, "user-1", "alice");
@@ -134,7 +138,7 @@ public class SitemapServiceTests
 
         var service = new SitemapService(db);
 
-        Assert.Equal(["alice"], await service.GetProfileNamesAsync(1));
+        Assert.Equal([new("b4kz9q2mxw7c", "alice")], await service.GetProfilesAsync(1));
         Assert.Equal(1, (await service.GetSummaryAsync()).Profiles);
     }
 
@@ -143,14 +147,14 @@ public class SitemapServiceTests
     /// marked <c>noindex</c> is reported as an error by every search console there is.
     /// </summary>
     [Fact]
-    public async Task GetProfileNamesAsync_LeavesOutAPublicProfileWithNothingOnIt()
+    public async Task GetProfilesAsync_LeavesOutAPublicProfileWithNothingOnIt()
     {
         using var db = NewDb();
         AddAccount(db, "user-1", "alice");
         AddAccount(db, "user-2", "bob");
         AddEntry(db, "user-1", 1);
 
-        Assert.Equal(["alice"], await new SitemapService(db).GetProfileNamesAsync(1));
+        Assert.Equal([new("b4kz9q2mxw7c", "alice")], await new SitemapService(db).GetProfilesAsync(1));
     }
 
     /// <summary>
@@ -158,27 +162,27 @@ public class SitemapServiceTests
     /// tracked. That page has something on it.
     /// </summary>
     [Fact]
-    public async Task GetProfileNamesAsync_ListsAProfileWhoseOnlyContentIsFavourites()
+    public async Task GetProfilesAsync_ListsAProfileWhoseOnlyContentIsFavourites()
     {
         using var db = NewDb();
         AddAccount(db, "user-1", "alice");
         AddFavourite(db, "user-1", 1);
 
-        Assert.Equal(["alice"], await new SitemapService(db).GetProfileNamesAsync(1));
+        Assert.Equal([new("b4kz9q2mxw7c", "alice")], await new SitemapService(db).GetProfilesAsync(1));
     }
 
     /// <summary>
-    /// The name as its owner capitalised it, because that is the spelling the profile page gives
-    /// as its canonical URL and the two have to be the same string.
+    /// The id, and the name as its owner capitalised it, because those are what the profile page builds
+    /// its canonical URL from and the two have to be the same string.
     /// </summary>
     [Fact]
-    public async Task GetProfileNamesAsync_ReturnsTheNameAsItsOwnerWroteIt()
+    public async Task GetProfilesAsync_ReturnsTheIdAndTheNameAsItsOwnerWroteIt()
     {
         using var db = NewDb();
         AddAccount(db, "user-1", "AliceInChains");
         AddEntry(db, "user-1", 1);
 
-        Assert.Equal(["AliceInChains"], await new SitemapService(db).GetProfileNamesAsync(1));
+        Assert.Equal([new("b4kz9q2mxw7c", "AliceInChains")], await new SitemapService(db).GetProfilesAsync(1));
     }
 
     [Fact]

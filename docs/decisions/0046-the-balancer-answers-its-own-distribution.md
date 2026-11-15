@@ -2,6 +2,8 @@
 
 **Status:** Implemented; verified against the environment on 2026-10-06 by `scripts/dev-check.mjs`, all checks passing
 **Amends:** [0044](0044-what-the-deployment-walkthrough-settled.md), the CloudFront section
+**Amended by:** [0098](0098-one-rate-rule-at-the-edge.md): the distribution now names a web ACL, the WAF that
+"Not here" leaves out, with one rate rule
 
 ## Context
 
