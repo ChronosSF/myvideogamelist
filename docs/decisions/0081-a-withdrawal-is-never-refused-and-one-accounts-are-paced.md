@@ -5,7 +5,9 @@
 now carries one account's withdrawals over a pace, rather than one event's. Amends
 [0033](0033-what-the-api-refuses.md) §2: two writes are limited per account, alongside the per-address
 limit on the two that take a password. [0095](0095-start-over-empties-the-library-and-keeps-the-account.md)'s start over, a game's deletion for every game at once,
-is paced with the five in §2.
+is paced with the five in §2. Since [0096](0096-a-profile-is-addressed-by-a-public-id-with-its-username-after-it.md) a
+profile's path is its id rather than its name, so a change of case or a rename sends two paths rather than three: §4's
+allowance stays, and §5's day comes to about 146.
 
 ## Context
 
@@ -151,8 +153,8 @@ shows, beside the switch or under the name, through the reader it already has fo
 |---|---|
 | Paced withdrawals: twenty, then one every fifteen minutes, one path each | 116 |
 | The profile made private, ten times | 20 |
-| Changes of case, three | 9 |
-| A full rename, at most monthly | 3 |
+| Changes of case, three | 6 (9 before 0096) |
+| A full rename, at most monthly | 2 (3 before 0096) |
 | The account deleted, once | 2 |
 
 A task's start adds two paths of its own, once per task rather than per account.

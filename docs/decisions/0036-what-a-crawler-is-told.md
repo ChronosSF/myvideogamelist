@@ -9,7 +9,10 @@ profile files as `/sitemaps/profiles-*`. The `/sitemaps/profiles-*.xml` in the c
 describes the files; as an invalidation path it would match nothing, because CloudFront reads a `*`
 that is not the last character literally. The search console's record, and the holding page that
 answers at the domain until production does, are
-[0066](0066-a-holding-page-until-production-takes-the-domain.md).
+[0066](0066-a-holding-page-until-production-takes-the-domain.md). A profile's address is
+`/u/{publicId}/{userName}` since [0096](0096-a-profile-is-addressed-by-a-public-id-with-its-username-after-it.md):
+the profile is looked up by its id alone, any other name or spelling is a 301 to its own, and §6's canonical URL
+and the sitemap's entry are both built from the id and the name the API answered with.
 
 ## Context
 
@@ -129,7 +132,11 @@ profile for longer than the profile's own page could have been served.
 
 `/games/{id}` from the game the API answered with; `/u/{name}` from the name as its owner
 capitalised it, plus `?page=N` past the first page of reviews, each of which is a document of its
-own. The sitemap writes the same strings. A page that is `noindex` — a filtered `/games`, an empty
+own. The sitemap writes the same strings.
+
+> **Later note.** A profile's is `/u/{publicId}/{userName}` since
+> [0096](0096-a-profile-is-addressed-by-a-public-id-with-its-username-after-it.md), from the id and the name the
+> API answered with, and the page no longer renders under another spelling: it redirects there. A page that is `noindex` — a filtered `/games`, an empty
 profile — gets no canonical URL: the two together say different things about the page.
 
 `meta` runs in the browser as well, where the environment does not exist, so `site` travels as
