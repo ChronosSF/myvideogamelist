@@ -326,7 +326,8 @@ for i in $(seq 1 1000); do curl -s -o /dev/null -w "%{http_code}\n" -u nobody:no
 
 Expect 401s for the first 300 or so, and for as many more as arrive while AWS catches up (it checks the rate
 about every ten seconds, and says blocking usually starts within thirty), then 429s to the end.
-`curl -s https://dev.myvideogamelist.net/` from the same address then shows the rule's page. The log names
+`curl -si https://dev.myvideogamelist.net/` from the same address then shows the rule's page, with
+`Retry-After: 60`. The log names
 that address under `httpRequest.clientIp`, with `terminatingRuleId` `requests-per-address` and the
 `authorization` header redacted: `xxx` by AWS's guide, `REDACTED` by its API reference, and this run says
 which. After the next `park`, no web ACL is left:
@@ -434,7 +435,7 @@ route's `Cache-Control`, where the cache hits and where it never may, that a 404
 that the write guard survives the edge. `--alb <dns name>` adds the check that the balancer does
 not answer directly. With the `mvgl-dev` profile signed in it first asks AWS whether the web ACL is
 on the distribution, and last whether the run itself stayed under half the rate rule's limit; it
-sends 43 requests with the pair.
+sends 42 requests the rule counts with the pair.
 
 ## Things that will bite you
 

@@ -156,14 +156,21 @@ the API's for what it is:
   carrying the status and the body as text. Before this, the root's boundary printed "429 " (HTTP/2 has no
   status text) over the page's raw HTML, and the game page's and the profile's boundaries said "Something went
   wrong on our side". Now each says `RATE_LIMITED` from `@/lib/api`: "Too many requests have come from your
-  network address in the last few minutes. Wait a few minutes, then try again."
+  network address in the last few minutes. Wait a few minutes, then try again." The game page and the
+  profile offer no "Try again" for it, since asking again at once only prolongs it.
 - **A write.** `bodyOf` reads a 429 that is not JSON as a `ProblemDetails` carrying that sentence, so every
   write that reports its refusal through it says so. The API's own 429, the login limiter's, is a
-  `ProblemDetails` with its own sentence, and still wins. The lists', the wishlist's and the favourites'
-  optimistic writes keep their fixed sentences ("Failed to update list. Please try again."), which blame
-  nobody.
+  `ProblemDetails` with its own sentence, and still wins. The writes that show a fixed sentence instead (the
+  lists', the wishlist's, the favourites' and the hand orders') take it from `refusedWith`, which gives the
+  same sentence for a 429, so one refusal reads the same whichever control was pressed.
 - **The navbar's search**, which held for a 429 already, says the same sentence instead of "Search is
-  unavailable right now".
+  unavailable right now", read through `bodyOf` as the writes are.
+
+**The refusal also says `Retry-After: 60`.** The search holds for a 429's `Retry-After`, up to its own
+thirty seconds, and for five without one, so without it a blocked reader's typing asked again every five
+seconds. A minute is a guess at how soon the rate falls back under the limit; AWS says only that it checks
+about every ten seconds. Its `CustomResponse` takes any header but `content-type` (the WAF guide); the next
+resume shows it arrives as written.
 
 Seen in the browser on 2026-11-15, behind a stand-in that answered with the synthesised ACL's own page: a
 game page's `.data`, the games page's `.data` at the root's boundary, a profile-visibility write that changed
@@ -210,8 +217,8 @@ answers 429, and whether it logs to the group above with those four fields redac
 looks the same with it as without it, so the site cannot say. Without the profile those checks are skipped,
 and the summary says how many were.
 
-It also counts what it sends through the distribution: 8 without the basic-auth pair, 43 with it, 54 with
-`--limiter`. Its last check fails if a run used more than half the rule's limit, which leaves the person
+It also counts what it sends through the distribution that the rule counts: 8 without the basic-auth pair,
+42 with it, 53 with `--limiter`. Its last check fails if a run used more than half the rule's limit, which leaves the person
 running it room to browse from the same address. `resume`'s own probe of `/healthz` sends at most 18, ten
 seconds apart, and Deploy dev's smoke test sends three.
 

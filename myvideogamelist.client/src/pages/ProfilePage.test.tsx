@@ -307,6 +307,8 @@ describe('ProfilePage when there is no profile to show', () => {
 
         expect(await screen.findByText(RATE_LIMITED)).toBeInTheDocument();
         expect(screen.queryByText(/our side|doctype/)).not.toBeInTheDocument();
+        // Asking again at once only prolongs it.
+        expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
     });
 
     it('says a failure as the lists page does, and asks again when told to', async () => {

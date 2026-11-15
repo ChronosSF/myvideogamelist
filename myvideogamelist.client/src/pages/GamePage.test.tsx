@@ -866,6 +866,8 @@ describe('GamePage when there is no game to show', () => {
 
         expect(await screen.findByText(RATE_LIMITED)).toBeInTheDocument();
         expect(screen.queryByText(/our side|doctype/)).not.toBeInTheDocument();
+        // Asking again at once only prolongs it.
+        expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
     });
 
     it('says there is no game at this address and offers browsing, because asking again will not help', async () => {

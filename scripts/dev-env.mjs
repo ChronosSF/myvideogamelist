@@ -54,6 +54,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runAws } from './aws-cli.mjs';
 
 const ARGS = process.argv.slice(2);
 const COMMAND = ARGS[0];
@@ -118,16 +119,10 @@ function show(cmd, args) {
 
 /** `raw` for a command whose answer is text rather than JSON, such as `logs tail`: its value is the text. */
 function aws(args, { allowFailure = false, raw = false } = {}) {
-    const full = ['--profile', PROFILE, '--output', 'json', ...args];
-    show('aws', full);
-    const r = spawnSync('aws', full, { encoding: 'utf8' });
-    if (r.status !== 0) {
-        if (allowFailure) return { ok: false, error: (r.stderr || '').trim() };
-        fail(`aws ${args.slice(0, 2).join(' ')} failed:\n${(r.stderr || '').trim()}`);
-    }
-    const text = (r.stdout || '').trim();
-    if (raw) return { ok: true, value: text };
-    return { ok: true, value: text === '' ? null : JSON.parse(text) };
+    show('aws', ['--profile', PROFILE, '--output', 'json', ...args]);
+    const r = runAws(PROFILE, args, { raw });
+    if (!r.ok && !allowFailure) fail(`aws ${args.slice(0, 2).join(' ')} failed:\n${r.error}`);
+    return r;
 }
 
 /**
@@ -314,12 +309,16 @@ function status() {
     console.log(`  newest tag in both repositories: ${tag ?? 'none pushed yet'}`);
     console.log(`  ${NAMES.gateVariable}: ${gateNow ?? 'not set (no pipeline environment yet)'}`);
 
-    const appUp = app !== null && !/DELETE/.test(app);
+    // DELETE_FAILED is still there, and still bills: up, for the cost row as for the notes below.
+    const appUp = app !== null && !/DELETE_(IN_PROGRESS|COMPLETE)/.test(app);
     const wafUp = waf !== null && !/DELETE_COMPLETE/.test(waf);
     const dbUp = db === 'available';
     const row = appUp && dbUp ? COST.awake : appUp ? COST.broken : dbUp ? COST.appOnly : COST.parked;
     console.log(`  cost row: ${row}`);
-    if (wafUp && !appUp) console.log(`  note: ${COST.aclLeft}.`);
+    if (wafUp && app === null) console.log(`  note: ${COST.aclLeft}.`);
+    if (app === 'DELETE_FAILED') {
+        console.log(`  note: ${NAMES.appStack} failed to delete and still bills. CloudFormation's events say why; park again once that is fixed.`);
+    }
     if (db === 'stopped') {
         console.log('  note: RDS restarts a stopped instance by itself after seven days; park again or schedule a stop for longer.');
     }

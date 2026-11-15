@@ -65,6 +65,16 @@ export function isRateLimited(error: unknown): boolean {
 }
 
 /**
+ * The sentence for a write that shows a fixed one rather than reading the body - the lists', the
+ * wishlist's, the favourites' and the hand orders' - given the response it got, or null for a request
+ * that never arrived: the edge's `RATE_LIMITED` for a 429, the write's own `fallback` for anything
+ * else, so that one refusal reads the same whichever control was pressed.
+ */
+export function refusedWith(response: Response | null, fallback: string): string {
+    return response?.status === 429 ? RATE_LIMITED : fallback;
+}
+
+/**
  * A failed response's body, or null when it is not JSON at all — a proxy error page, or an empty
  * 500. Read once, because a body can only be read once.
  *

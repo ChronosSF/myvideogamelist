@@ -23,10 +23,10 @@
  * it refuses (ADR 0098); without it, those checks are skipped, and the run says so. Every request this
  * script sends through the distribution is counted, and when the rule's limit is known the last check
  * is that the run stayed under half of it, which leaves the rest for whoever runs it to browse with
- * from the same address. A run sends 43 with the pair, 54 with --limiter, and 8 without.
+ * from the same address. A run sends 42 such requests with the pair, 53 with --limiter, and 8 without.
  */
 
-import { spawnSync } from 'node:child_process';
+import { runAws } from './aws-cli.mjs';
 
 const ARGS = process.argv.slice(2);
 function option(name, fallback) {
@@ -55,11 +55,14 @@ function skip(what, why) {
     console.log(`skip ${what}: ${why}`);
 }
 
-/** Requests sent through the distribution, which the edge's rate rule counts: everything but /assets/. */
+/**
+ * Requests sent through the distribution that the edge's rate rule counts: everything but /assets/, which
+ * this script never asks for, and /__manifest (WafStack.UncountedPrefix and UncountedPath).
+ */
 let throughTheEdge = 0;
 
 async function get(path, { auth = false, method = 'GET', headers = {}, payload = undefined, redirect = 'follow', base = SITE } = {}) {
-    if (base === SITE || base === `http://${HOST}`) throughTheEdge++;
+    if ((base === SITE || base === `http://${HOST}`) && !path.startsWith('/__manifest')) throughTheEdge++;
     const response = await fetch(`${base}${path}`, {
         method,
         redirect,
@@ -85,12 +88,10 @@ const WAF_STACK = `Mvgl-${ENV}-Waf`;
 const APP_STACK = `Mvgl-${ENV}-App`;
 const WEB_ACL_LOG_GROUP = `aws-waf-logs-mvgl-${ENV}-edge`;
 
-/** `aws` with the profile, its answer as JSON, or null when it failed. No shell, as in dev-env.mjs. */
+/** `aws` with the profile, its answer as JSON, or null when it failed or answered with anything else. */
 function aws(args) {
-    const r = spawnSync('aws', ['--profile', PROFILE, '--output', 'json', ...args], { encoding: 'utf8' });
-    if (r.status !== 0) return null;
-    const text = (r.stdout || '').trim();
-    return text === '' ? null : JSON.parse(text);
+    const r = runAws(PROFILE, args);
+    return r.ok ? r.value : null;
 }
 
 function stackOutput(stack, key, region = []) {
@@ -100,8 +101,9 @@ function stackOutput(stack, key, region = []) {
 
 /** The rule's limit and window when the ACL could be read, so the run can be held to it at the end. */
 async function theFirewall() {
-    if (aws(['sts', 'get-caller-identity']) === null) {
-        skip("the edge's web ACL", `the ${PROFILE} profile is not signed in (aws sso login --profile ${PROFILE})`);
+    const who = runAws(PROFILE, ['sts', 'get-caller-identity']);
+    if (!who.ok) {
+        skip("the edge's web ACL", who.missing ? who.error : `the ${PROFILE} profile is not signed in (aws sso login --profile ${PROFILE})`);
         return null;
     }
 
@@ -317,9 +319,14 @@ async function writeGuard() {
 }
 
 console.log(`Checking ${SITE}${AUTH ? '' : ' (no MVGL_DEV_BASIC_AUTH: credential-free checks only)'}`);
+// Apart from the site's own checks, so that nothing AWS answers can keep them from running.
 let rule = null;
 try {
     rule = await theFirewall();
+} catch (error) {
+    report(false, "the edge's web ACL could be read", error.message);
+}
+try {
     await theDoor();
     if (AUTH) {
         await health();

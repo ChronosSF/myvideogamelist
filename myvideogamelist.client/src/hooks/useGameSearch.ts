@@ -2,7 +2,7 @@ import { useContext, useEffect, useReducer, useState, useSyncExternalStore } fro
 import { SearchPacerContext } from '@/contexts/SearchPacerContext';
 import type { GameDto } from '@/types/game';
 import { searchApiPath } from '@/lib/gameBrowse';
-import { RATE_LIMITED } from '@/lib/api';
+import { bodyOf, messageIn } from '@/lib/api';
 
 /**
  * How a search for a game spends IGDB's budget: the navbar's typeahead, and the search an import's
@@ -210,21 +210,12 @@ function reducer(state: State, action: Action): State {
 const failed = (term: string, message: string, retryable = true): Action =>
     ({ type: 'failed', failure: { term, message, retryable, busy: false } });
 
-/** The sentence a failed response carries, or a plain one when it carries none. */
+/**
+ * The sentence a failed response carries, or a plain one when it carries none — a balancer's 503 has no
+ * body. Read as every write reads its refusal, so the edge's 429 says what it is here too (ADR 0098).
+ */
 async function problem(response: Response): Promise<string> {
-    try {
-        const body: unknown = await response.json();
-        if (typeof body === 'object' && body !== null) {
-            const { detail, title } = body as { detail?: unknown; title?: unknown };
-            if (typeof detail === 'string' && detail !== '') return detail;
-            if (typeof title === 'string' && title !== '') return title;
-        }
-    } catch {
-        // Not a ProblemDetails — a balancer's 503 has no body — which leaves the plain sentence. A 429
-        // that is not one is the edge's rate rule, and says so (ADR 0098).
-        if (response.status === 429) return RATE_LIMITED;
-    }
-    return SEARCH_UNREACHABLE;
+    return messageIn(await bodyOf(response), SEARCH_UNREACHABLE);
 }
 
 /**

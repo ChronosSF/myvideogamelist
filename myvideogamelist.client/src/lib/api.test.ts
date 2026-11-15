@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UNSAFE_ErrorResponseImpl } from 'react-router';
-import { RATE_LIMITED, REQUEST_HEADER, apiFetch, bodyOf, isRateLimited, problemMessage } from '@/lib/api';
+import { RATE_LIMITED, REQUEST_HEADER, apiFetch, bodyOf, isRateLimited, problemMessage, refusedWith } from '@/lib/api';
 
 function lastCall() {
     const mock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
@@ -98,5 +98,12 @@ describe("the edge's 429", () => {
         expect(isRateLimited(new UNSAFE_ErrorResponseImpl(429, '', '<!doctype html>'))).toBe(true);
         expect(isRateLimited(new UNSAFE_ErrorResponseImpl(503, 'Service Unavailable', 'busy'))).toBe(false);
         expect(isRateLimited(new Error('429'))).toBe(false);
+    });
+
+    it("is what a write with a fixed sentence says, in place of that sentence", () => {
+        expect(refusedWith(page(), 'Failed to update list. Please try again.')).toBe(RATE_LIMITED);
+        expect(refusedWith(new Response(null, { status: 500 }), 'Failed to update list. Please try again.'))
+            .toBe('Failed to update list. Please try again.');
+        expect(refusedWith(null, 'Failed to update list. Please try again.')).toBe('Failed to update list. Please try again.');
     });
 });

@@ -68,6 +68,9 @@ public sealed class WafStack : Stack
 
     private const string ResponseBodyKey = "rate-limited";
 
+    /// <summary>What the refusal's <c>Retry-After</c> says, in seconds.</summary>
+    private const string RetryAfterSeconds = "60";
+
     /// <summary>
     /// What a refused request is answered with. HTML, because the reader most likely to meet it is a
     /// person, and a person meets it as a page they asked for: twenty tabs opened at once are twenty
@@ -126,6 +129,14 @@ public sealed class WafStack : Stack
                             {
                                 ResponseCode = 429,
                                 CustomResponseBodyKey = ResponseBodyKey,
+                                // So that the client waits rather than asking again within seconds: the
+                                // navbar's search holds for a 429's Retry-After, up to its own thirty
+                                // seconds, and five without one. A minute is a guess at how soon the rate
+                                // falls back under the limit; AWS says only that it checks every ten.
+                                ResponseHeaders = new object[]
+                                {
+                                    new CfnWebACL.CustomHTTPHeaderProperty { Name = "Retry-After", Value = RetryAfterSeconds },
+                                },
                             },
                         },
                     },

@@ -430,7 +430,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                     <ErrorState
                         title="Failed to load this profile"
                         titleAs="h1"
-                        onRetry={() => void revalidator.revalidate()}
+                        // Not for the edge's 429, which asking again at once only prolongs (ADR 0098).
+                        onRetry={isRateLimited(error) ? undefined : () => void revalidator.revalidate()}
                         retrying={revalidator.state === 'loading'}
                         reference={reference}
                     >

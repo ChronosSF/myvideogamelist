@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 import { GameEntryProvider } from '@/contexts/GameEntryProvider';
+import { RATE_LIMITED } from '@/lib/api';
 import { GameTrackingRow } from '@/components/GameTrackingRow';
 import { GameYours } from '@/components/GameYours';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
@@ -797,6 +798,18 @@ describe("GameEntryProvider and the members' view of the game", () => {
 
         await screen.findByRole('alert');
         expect(ctx.onCommunityChange).not.toHaveBeenCalled();
+    });
+
+    it("says the edge refused the review's save for the rate, not that the save failed", async () => {
+        // The rate rule's own page, which is not a ProblemDetails (ADR 0098).
+        stubEntryFetch(null, 200, [], () => new Response('<!doctype html><h1>Too many requests</h1>', { status: 429 }));
+        renderPanel();
+        await settled();
+
+        await userEvent.type(screen.getByLabelText('What you thought'), 'Superb.');
+        await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(RATE_LIMITED);
     });
 
     it('asks for it again once a review has been deleted', async () => {
