@@ -7,6 +7,7 @@
  * function, the balancer's prefix-list rule and origin-verify rule, and the two processes.
  *
  *   node scripts/dev-check.mjs [--env dev] [--game <igdb id>] [--alb <balancer dns name>] [--limiter]
+ *                              [--profile mvgl-dev]
  *
  * Without MVGL_DEV_BASIC_AUTH it checks only what needs no credential: that the door is on, that
  * the three exempt paths answer, that plain HTTP redirects, and - with --alb - that the balancer
@@ -16,7 +17,16 @@
  * --limiter, that the eleventh wrong password is a 429, at the cost of the caller's own login
  * budget for five minutes. Prints one line per check and exits 1 if any failed. Nothing here
  * writes anything anywhere: the one POST that reaches the API is a sign-out by nobody.
+ *
+ * With the environment's AWS profile signed in (--profile, mvgl-<env> by default), it first asks AWS,
+ * read only, whether the edge's web ACL is on the distribution, holds its one rate rule and logs what
+ * it refuses (ADR 0098); without it, those checks are skipped, and the run says so. Every request this
+ * script sends through the distribution is counted, and when the rule's limit is known the last check
+ * is that the run stayed under half of it, which leaves the rest for whoever runs it to browse with
+ * from the same address. A run sends 43 with the pair, 54 with --limiter, and 8 without.
  */
+
+import { spawnSync } from 'node:child_process';
 
 const ARGS = process.argv.slice(2);
 function option(name, fallback) {
@@ -25,6 +35,7 @@ function option(name, fallback) {
 }
 
 const ENV = option('--env', 'dev');
+const PROFILE = option('--profile', `mvgl-${ENV}`);
 const HOST = `${ENV}.myvideogamelist.net`;
 const SITE = `https://${HOST}`;
 const GAME = option('--game', '1942');
@@ -33,12 +44,22 @@ const PAIR = process.env.MVGL_DEV_BASIC_AUTH;
 const AUTH = PAIR ? { authorization: `Basic ${Buffer.from(PAIR).toString('base64')}` } : null;
 
 let failed = 0;
+let skipped = 0;
 function report(ok, what, detail = '') {
     if (!ok) failed++;
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}${detail ? `: ${detail}` : ''}`);
 }
 
+function skip(what, why) {
+    skipped++;
+    console.log(`skip ${what}: ${why}`);
+}
+
+/** Requests sent through the distribution, which the edge's rate rule counts: everything but /assets/. */
+let throughTheEdge = 0;
+
 async function get(path, { auth = false, method = 'GET', headers = {}, payload = undefined, redirect = 'follow', base = SITE } = {}) {
+    if (base === SITE || base === `http://${HOST}`) throughTheEdge++;
     const response = await fetch(`${base}${path}`, {
         method,
         redirect,
@@ -53,6 +74,65 @@ async function get(path, { auth = false, method = 'GET', headers = {}, payload =
 const cache = (r) => r.headers.get('cache-control') ?? '(none)';
 const xcache = (r) => (r.headers.get('x-cache') ?? '(none)').replace(' from cloudfront', '');
 const stamp = () => Math.random().toString(36).slice(2, 10);
+
+// ---------------------------------------------------------------------------------------------
+// The edge's web ACL, asked of AWS rather than of the site (ADR 0098): a request it allows looks the
+// same with it as without it. Read only, through the environment's profile.
+// ---------------------------------------------------------------------------------------------
+
+const EDGE_REGION = 'us-east-1';
+const WAF_STACK = `Mvgl-${ENV}-Waf`;
+const APP_STACK = `Mvgl-${ENV}-App`;
+const WEB_ACL_LOG_GROUP = `aws-waf-logs-mvgl-${ENV}-edge`;
+
+/** `aws` with the profile, its answer as JSON, or null when it failed. No shell, as in dev-env.mjs. */
+function aws(args) {
+    const r = spawnSync('aws', ['--profile', PROFILE, '--output', 'json', ...args], { encoding: 'utf8' });
+    if (r.status !== 0) return null;
+    const text = (r.stdout || '').trim();
+    return text === '' ? null : JSON.parse(text);
+}
+
+function stackOutput(stack, key, region = []) {
+    const outputs = aws(['cloudformation', 'describe-stacks', '--stack-name', stack, ...region, '--query', 'Stacks[0].Outputs']);
+    return outputs?.find((o) => o.OutputKey === key)?.OutputValue ?? null;
+}
+
+/** The rule's limit and window when the ACL could be read, so the run can be held to it at the end. */
+async function theFirewall() {
+    if (aws(['sts', 'get-caller-identity']) === null) {
+        skip("the edge's web ACL", `the ${PROFILE} profile is not signed in (aws sso login --profile ${PROFILE})`);
+        return null;
+    }
+
+    const arn = stackOutput(WAF_STACK, 'WebAclArn', ['--region', EDGE_REGION]);
+    const distribution = stackOutput(APP_STACK, 'DistributionId');
+    const named = distribution
+        ? aws(['cloudfront', 'get-distribution-config', '--id', distribution, '--query', 'DistributionConfig.WebACLId'])
+        : null;
+    report(arn !== null && named === arn, `the distribution names ${WAF_STACK}'s web ACL`,
+        arn === null ? `${WAF_STACK} has no WebAclArn output in ${EDGE_REGION}` : `${named || '(none)'}`);
+    if (arn === null) return null;
+
+    // arn:aws:wafv2:us-east-1:<account>:global/webacl/<name>/<id>
+    const [, , name, id] = arn.split(':').at(-1).split('/');
+    const acl = aws(['wafv2', 'get-web-acl', '--scope', 'CLOUDFRONT', '--region', EDGE_REGION, '--name', name, '--id', id])?.WebACL;
+    const rule = acl?.Rules?.length === 1 ? acl.Rules[0] : null;
+    const rate = rule?.Statement?.RateBasedStatement;
+    const answer = rule?.Action?.Block?.CustomResponse?.ResponseCode;
+    report(rate?.AggregateKeyType === 'IP' && answer === 429 && acl?.DefaultAction?.Allow !== undefined,
+        'the web ACL allows everything but one rate rule, keyed on the address, that answers 429',
+        rate ? `${rate.Limit} requests in ${rate.EvaluationWindowSec} s, answering ${answer}` : `${acl?.Rules?.length ?? 0} rules`);
+
+    const logging = aws(['wafv2', 'get-logging-configuration', '--resource-arn', arn, '--region', EDGE_REGION])?.LoggingConfiguration;
+    const redacted = (logging?.RedactedFields ?? []).map((f) => f.SingleHeader?.Name?.toLowerCase());
+    report((logging?.LogDestinationConfigs ?? []).some((d) => d.endsWith(`:log-group:${WEB_ACL_LOG_GROUP}`))
+        && redacted.includes('authorization') && redacted.includes('cookie'),
+        `the web ACL logs what it refuses to ${WEB_ACL_LOG_GROUP}, with Authorization and Cookie redacted`,
+        logging ? `${logging.LogDestinationConfigs.join(', ')}; redacted: ${redacted.join(', ') || 'nothing'}` : 'no logging configuration');
+
+    return rate ? { limit: rate.Limit, window: rate.EvaluationWindowSec } : null;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Without credentials.
@@ -236,7 +316,9 @@ async function writeGuard() {
 }
 
 console.log(`Checking ${SITE}${AUTH ? '' : ' (no MVGL_DEV_BASIC_AUTH: credential-free checks only)'}`);
+let rule = null;
 try {
+    rule = await theFirewall();
     await theDoor();
     if (AUTH) {
         await health();
@@ -249,5 +331,12 @@ try {
 } catch (error) {
     report(false, 'a request failed outright', error.cause?.code ?? error.message);
 }
-console.log(failed === 0 ? '\nAll checks passed.' : `\n${failed} check(s) failed.`);
+// The acceptance test must never be what trips the rule it checks, nor leave the person running it
+// too little of the limit to browse with from the same address.
+if (rule) {
+    report(throughTheEdge <= rule.limit / 2, 'this run stayed under half the rate rule\'s limit',
+        `${throughTheEdge} requests through the distribution, against ${rule.limit} in ${rule.window} s`);
+}
+const skips = skipped === 0 ? '' : ` ${skipped} skipped.`;
+console.log(failed === 0 ? `\nAll checks passed.${skips}` : `\n${failed} check(s) failed.${skips}`);
 process.exit(failed === 0 ? 0 : 1);
