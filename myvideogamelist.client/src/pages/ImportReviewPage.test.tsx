@@ -22,7 +22,11 @@ const auth: AuthContextValue = {
     user: null,
     loading: true,
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
@@ -275,6 +279,19 @@ describe('ImportReviewPage', () => {
 
         await userEvent.click(screen.getByRole('button', { name: /^All / }));
         expect(screen.getByRole('checkbox', { name: 'Import Metal Gear Solid 3' })).not.toBeChecked();
+    });
+
+    it('says before the commit which rows will have their notes cut', async () => {
+        // ADR 0083: the text cut is usually a review its owner wrote, so it is said, not discovered.
+        review.review = loaded([
+            row({ id: 1, title: 'Long Notes', hasNotes: true, notesCut: true }),
+            row({ id: 2, title: 'Short Notes', hasNotes: true }),
+        ]);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: /^All / }));
+        expect(screen.getAllByText('Notes cut to 2,000 characters')).toHaveLength(1);
+        expect(screen.getAllByText('Notes')).toHaveLength(1);
     });
 
     it('will not let an unmatched row be ticked', async () => {

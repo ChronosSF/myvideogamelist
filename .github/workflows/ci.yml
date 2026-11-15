@@ -387,6 +387,9 @@ jobs:
     # public repository, and on a push to master the build holds a token that can write the cache.
     env:
       DOCKER_BUILD_RECORD_UPLOAD: false
+      # What the App stack gives the SSR task, and without which its server does not start (ADR 0093). Any
+      # valid value does here: no balancer stands in front of the container in this job.
+      BALANCER_IDLE_TIMEOUT_SECONDS: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -413,11 +416,29 @@ jobs:
           tags: mvgl-ssr:ci
           cache-from: type=gha,scope=ssr
 
-      # With the image's own command and user, and none of the configuration a task definition adds:
-      # a robots.txt asks nothing of the API.
+      # Started with none of a task definition's configuration, the server has to refuse, and to say why:
+      # a deploy whose task definition misspells the variable then fails and is rolled back, rather than
+      # serving with a keep-alive the balancer may have outgrown (ADR 0093). Exits within seconds; still
+      # running after thirty is the failure.
+      - name: Check the SSR image refuses to start without the balancer's idle timeout
+        run: |
+          docker run --detach --name ssr-unset mvgl-ssr:ci > /dev/null
+          code=$(timeout 30 docker wait ssr-unset || echo running)
+          logs=$(docker logs ssr-unset 2>&1 || true)
+          docker rm --force ssr-unset > /dev/null
+          echo "$logs" | tail -n 5
+          if [ "$code" != running ] && [ "$code" != 0 ] && grep -q BALANCER_IDLE_TIMEOUT_SECONDS <<< "$logs"; then
+            echo "The SSR image exited with ${code}, naming the variable."
+            exit 0
+          fi
+          echo "::error::The SSR image did not refuse to start without BALANCER_IDLE_TIMEOUT_SECONDS (${code})."
+          exit 1
+
+      # With the image's own command and user, and of the configuration a task definition adds only what
+      # the server will not start without: a robots.txt asks nothing of the API.
       - name: Start the SSR image
         run: |
-          docker run --detach --name ssr --publish 127.0.0.1:3000:3000 mvgl-ssr:ci
+          docker run --detach --name ssr --publish 127.0.0.1:3000:3000 --env BALANCER_IDLE_TIMEOUT_SECONDS mvgl-ssr:ci
           for attempt in $(seq 1 30); do
             if curl --silent --fail --max-time 2 --output /dev/null http://127.0.0.1:3000/robots.txt; then
               echo "The SSR server answered /robots.txt within ${attempt} s."
@@ -430,6 +451,22 @@ jobs:
             sleep 1
           done
           docker logs ssr
+          exit 1
+
+      # The keep-alive the image's server announces, against the balancer's idle timeout it was given. The
+      # server has to keep an idle connection longer, or the balancer sends requests down connections the
+      # server is closing, and viewers get a 502 (ADR 0093).
+      - name: Check the SSR image's keep-alive
+        run: |
+          idle="$BALANCER_IDLE_TIMEOUT_SECONDS"
+          keep=$(curl --silent --fail --max-time 2 --output /dev/null --dump-header - http://127.0.0.1:3000/robots.txt \
+            | tr -d '\r' | sed -n 's/^keep-alive: *timeout=\([0-9]*\).*/\1/Ip')
+          echo "Given a balancer that closes an idle connection after ${idle:-?} s, the SSR server keeps one ${keep:-?} s."
+          # Passes only on two numbers in the right order: a missing or unreadable one fails.
+          if [ -n "$idle" ] && [ -n "$keep" ] && [ "$keep" -gt "$idle" ]; then
+            exit 0
+          fi
+          echo "::error::The SSR server's keep-alive has to outlast the balancer's idle timeout (ADR 0093)."
           exit 1
 
   # The CDK app compiles, so a construct renamed by a library bump or a stack edited without

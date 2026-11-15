@@ -5,7 +5,7 @@ import { AuthDialogProvider } from '@/contexts/AuthDialogProvider';
 import { GamePage } from '@/pages/GamePage';
 import GameOverviewPage from '@/pages/GameOverviewPage';
 import GameYoursPage from '@/pages/GameYoursPage';
-import { MIN_MEMBER_SCORES, ratingPercent } from '@/lib/score';
+import { MIN_DISTRIBUTION_SCORES, MIN_MEMBER_SCORES, ratingPercent } from '@/lib/score';
 import type { CommunityScores, GameReviews } from '@/types/community';
 import type { GameDto } from '@/types/game';
 import type { ReviewDto, ReviewInputDto } from '@/types/playthrough';
@@ -17,8 +17,8 @@ import { type ApiCall, type ApiRoutes, empty, held, json, settle, signedInRoutes
 /**
  * The game page around the reader's own entry, with the entry, the hero's row, the Your game tab, the
  * members' section and the providers all real, and the API played by a small model of the server: the
- * members' score counts the reader's own, and the reviews list theirs once it is for anyone on a public
- * profile.
+ * members' score counts the reader's own, behind the server's floors (ADR 0094), and the reviews list
+ * theirs once it is for anyone on a public profile.
  *
  * The page fetches the members' view once, after hydration, and never caches it (ADR 0028). So a
  * reader's own score or review shows on the page only if the page asks again once it has saved, or the
@@ -42,10 +42,13 @@ function theApi(): ApiRoutes {
 
     const scores = (): CommunityScores => {
         const all = score === null ? OTHERS : [...OTHERS, score];
+        // The count always; the mean from the floor, and the columns from the higher bar.
         return {
             scored: all.length,
-            mean: all.reduce((sum, each) => sum + each, 0) / all.length,
-            distribution: Array.from({ length: 10 }, (_, i) => all.filter(each => each === i + 1).length),
+            mean: all.length >= MIN_MEMBER_SCORES ? all.reduce((sum, each) => sum + each, 0) / all.length : null,
+            distribution: all.length >= MIN_DISTRIBUTION_SCORES
+                ? Array.from({ length: 10 }, (_, i) => all.filter(each => each === i + 1).length)
+                : [],
             tracked: all.length,
         };
     };

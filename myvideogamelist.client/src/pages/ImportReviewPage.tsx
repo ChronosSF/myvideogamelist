@@ -465,7 +465,11 @@ export function ImportReviewPage() {
                                             )}
                                             {row.wishlist && <Badge>Wishlist</Badge>}
                                             {row.favourite && <Badge>Favourite</Badge>}
-                                            {row.hasNotes && <Badge>Notes</Badge>}
+                                            {/* A cut note says so before the commit, since the text
+                                                lost is usually a review its owner wrote (ADR 0083). */}
+                                            {row.notesCut
+                                                ? <Badge tone="warning">Notes cut to 2,000 characters</Badge>
+                                                : row.hasNotes && <Badge>Notes</Badge>}
                                             {row.alreadyTracked && <Badge tone="warning">Already in your library</Badge>}
                                             {row.matchKind === IMPORT_MATCH.ambiguous && (
                                                 <Badge tone="warning">Which one is it?</Badge>

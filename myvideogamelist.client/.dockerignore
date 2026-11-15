@@ -13,6 +13,8 @@ Dockerfile
 .vscode
 # The visual suite, which the image never runs, and the signed-in session it keeps in visual/.auth.
 visual
+# The server's tests, which the image never runs and which would otherwise be copied in with it.
+server/**/*.test.ts
 
 # Vite reads .env files during `npm run build` and bakes VITE_* values into the bundle, and
 # `COPY . .` would hand a developer's local ones to the builder. The repository ignores them for

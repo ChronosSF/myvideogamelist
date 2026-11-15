@@ -3,6 +3,7 @@ import { lastPage, pageSearch } from '@/lib/paging';
 import { formatDate } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
 import { CoverImage } from '@/components/CoverImage';
+import { ReportButton } from '@/components/ReportButton';
 import { ReviewCard } from '@/components/ReviewCard';
 import type { PublicReview, PublicReviews } from '@/types/profile';
 
@@ -82,7 +83,7 @@ export function PublicReviewList({ userName, reviews, total }: PublicReviewListP
 
             <ol className="review-list">
                 {reviews.reviews.map(review => (
-                    <PublicReviewCard key={review.game.id} review={review} />
+                    <PublicReviewCard key={review.game.id} userName={userName} review={review} />
                 ))}
             </ol>
 
@@ -115,7 +116,7 @@ export function PublicReviewList({ userName, reviews, total }: PublicReviewListP
 }
 
 /** One review, headed by the game it is about. */
-function PublicReviewCard({ review }: { review: PublicReview }) {
+function PublicReviewCard({ userName, review }: { userName: string; review: PublicReview }) {
     return (
         <ReviewCard
             head={
@@ -156,6 +157,13 @@ function PublicReviewCard({ review }: { review: PublicReview }) {
             body={review.body}
             hasSpoilers={review.hasSpoilers}
             revealLabel={`Show review of ${review.game.title} — the author marked it as containing spoilers`}
+            actions={
+                <ReportButton
+                    target={{ userName, gameId: review.game.id }}
+                    subject={`${userName}'s review of ${review.game.title}`}
+                    label={`Report the review of ${review.game.title}`}
+                />
+            }
         />
     );
 }

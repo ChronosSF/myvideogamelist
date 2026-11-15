@@ -184,7 +184,9 @@ function SignedInHero({ user }: { user: UserProfile | null }) {
 
                 <section className="flex-[1_1_18rem] min-w-0 rule-heavy pt-4" aria-labelledby="play-next-heading">
                     <h2 id="play-next-heading" className="type-kicker text-fg-muted mb-4">Play next</h2>
-                    {user !== null ? <PlayNextPicker /> : <PlayNextSkeleton />}
+                    {/* Keyed on the account, so a pick, or a start still out, never outlives the account
+                        it was drawn for. */}
+                    {user !== null ? <PlayNextPicker key={user.id} /> : <PlayNextSkeleton />}
                 </section>
             </div>
 

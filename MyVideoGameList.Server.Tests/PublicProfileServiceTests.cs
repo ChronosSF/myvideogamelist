@@ -105,7 +105,8 @@ public class PublicProfileServiceTests
         string body = "Played it.",
         string visibility = ReviewVisibility.Public,
         short? score = null,
-        DateTimeOffset? updatedAt = null)
+        DateTimeOffset? updatedAt = null,
+        DateTimeOffset? hiddenAt = null)
     {
         var entry = AddEntry(db, gameId, userId, score: score);
 
@@ -117,7 +118,8 @@ public class PublicProfileServiceTests
             HasSpoilers = false,
             Visibility = visibility,
             CreatedAt = Now,
-            UpdatedAt = updatedAt ?? Now
+            UpdatedAt = updatedAt ?? Now,
+            HiddenAt = hiddenAt
         });
 
         db.SaveChanges();
@@ -340,6 +342,26 @@ public class PublicProfileServiceTests
         Assert.NotNull(page);
         Assert.Equal(["Public one."], page.Reviews.Select(r => r.Body));
         Assert.Equal(1, page.Total);
+    }
+
+    [Fact]
+    public async Task GetReviewsAsync_AReviewAnAdminHid_IsNeitherListedNorCounted()
+    {
+        // A third gate, and the narrowest: hidden is published nowhere, whatever its author chose
+        // (ADR 0076). Left in the total, "2 reviews" over one card would announce it.
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+        AddReview(db, gameId: 11, body: "Shown.");
+        AddReview(db, gameId: 12, body: "Hidden.", hiddenAt: Now);
+        var service = NewService(db, IgdbKnowing(Game(11, "One"), Game(12, "Two")));
+
+        var page = await service.GetReviewsAsync("alex", 1, default);
+        var profile = await service.GetProfileAsync("alex");
+
+        Assert.NotNull(page);
+        Assert.Equal(["Shown."], page.Reviews.Select(r => r.Body));
+        Assert.Equal(1, page.Total);
+        Assert.Equal(1, profile!.Reviews);
     }
 
     [Fact]

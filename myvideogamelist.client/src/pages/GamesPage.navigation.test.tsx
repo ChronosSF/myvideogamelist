@@ -5,7 +5,7 @@ import { RouterProvider, createMemoryRouter, useLoaderData } from 'react-router'
 import { GamesPage } from '@/pages/GamesPage';
 import { browseFrom } from '@/lib/gameBrowse';
 import type { GameDto, GenreDto, PagedGamesResponse, PlatformDto } from '@/types/game';
-import { game, platform } from '@/test/factories';
+import { game, listPending, platform } from '@/test/factories';
 import type { Route } from './+types/GamesPage';
 
 /*
@@ -19,7 +19,7 @@ import type { Route } from './+types/GamesPage';
 // answering their fetches too. Stable objects, since a fresh one per render re-runs every effect that
 // depends on it.
 const signedOut = { user: null, loading: false };
-const noLists = { isInList: () => false, isPending: () => false, nameFor: (id: string) => id, addToList: vi.fn(), removeFromList: vi.fn() };
+const noLists = { getListFor: () => null, pending: listPending(), nameFor: (id: string) => id, addToList: vi.fn(), removeFromList: vi.fn() };
 const noWishlist = { isWishlisted: () => false, isPending: () => false, add: vi.fn(), remove: vi.fn() };
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => signedOut }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => noLists }));

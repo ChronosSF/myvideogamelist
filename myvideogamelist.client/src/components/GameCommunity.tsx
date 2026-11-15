@@ -5,11 +5,19 @@ import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import type { CommunityScores, GameReview } from '@/types/community';
 import { formatCount } from '@/lib/format';
 import { formatDate } from '@/lib/stats';
-import { hasMemberScore, MAX_SCORE, MIN_MEMBER_SCORES, ratingPercent } from '@/lib/score';
+import {
+    hasMemberDistribution,
+    hasMemberScore,
+    MAX_SCORE,
+    MIN_DISTRIBUTION_SCORES,
+    MIN_MEMBER_SCORES,
+    ratingPercent,
+} from '@/lib/score';
 import { Avatar } from '@/components/Avatar';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
+import { ReportButton } from '@/components/ReportButton';
 import { ReviewCard } from '@/components/ReviewCard';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreColumns } from '@/components/ScoreColumns';
@@ -17,6 +25,8 @@ import { SectionHeading } from '@/components/SectionHeading';
 import { Skeleton } from '@/components/Skeleton';
 
 interface GameCommunityProps {
+    /** The game the reviews are about, which is half of what names one to report (ADR 0076). */
+    gameId: number;
     /** From `useGameCommunity`, which the page calls so the hero's badge and this share one fetch. */
     community: UseGameCommunityResult;
     /**
@@ -45,8 +55,9 @@ const BODY_HEIGHT = 'min-h-[13rem]';
  * crosses — every score, but only a review marked public on a public profile — and this component
  * never sees a row that failed either gate. See `docs/decisions/0028-*`.
  *
- * **Every figure carries its sample size**, and ours go behind a floor (ADR 0016): under
- * `MIN_MEMBER_SCORES` there is a count and no number, and no distribution either.
+ * **Every figure carries its sample size**, and ours go behind floors, which the server applies
+ * (ADR 0016, ADR 0094): under `MIN_MEMBER_SCORES` there is a count and no number, and the columns
+ * wait for `MIN_DISTRIBUTION_SCORES`. Either figure missing is said in words, never left a gap.
  *
  * Always there, in the lists page's pattern (issue 127): a skeleton until both requests have
  * answered, so the section appears once rather than growing twice; then what members have said, or
@@ -54,18 +65,18 @@ const BODY_HEIGHT = 'min-h-[13rem]';
  * again. It used to render nothing in those last cases, which a reader cannot tell from a section
  * that never loaded. See `docs/decisions/0070-*`, which amends ADR 0028 §3 to say so.
  */
-export function GameCommunity({ community, viewer }: GameCommunityProps) {
+export function GameCommunity({ gameId, community, viewer }: GameCommunityProps) {
     return (
         <section aria-labelledby={HEADING_ID} className="space-y-5">
             <SectionHeading id={HEADING_ID} focusable>Member scores &amp; reviews</SectionHeading>
-            <CommunityBody community={community} viewer={viewer} />
+            <CommunityBody gameId={gameId} community={community} viewer={viewer} />
         </section>
     );
 }
 
 const HEADING_ID = 'member-reviews-heading';
 
-function CommunityBody({ community, viewer }: GameCommunityProps) {
+function CommunityBody({ gameId, community, viewer }: GameCommunityProps) {
     const { settled, scores, reviews, total, reloading, reload } = community;
 
     // Every "Try again" here gives way to something else — the skeleton, or what loaded — and focus
@@ -128,7 +139,7 @@ function CommunityBody({ community, viewer }: GameCommunityProps) {
             {total === null ? (
                 <HalfFailed what="Reviews" retrying={reloading} onRetry={retry} />
             ) : total > 0 ? (
-                <MemberReviews community={community} viewer={viewer} total={total} reviews={reviews} />
+                <MemberReviews gameId={gameId} community={community} viewer={viewer} total={total} reviews={reviews} />
             ) : (
                 <p className="text-sm text-fg-muted">
                     No reviews yet. They show here as members publish them.
@@ -183,7 +194,10 @@ function CommunitySkeleton() {
     );
 }
 
-/** The members' score out of 100 and its distribution — or, under the floor, only how many. */
+/**
+ * The members' score out of 100 and its distribution — or, under the floors, how many there are and
+ * what would show the rest.
+ */
 function MemberScore({ scores }: { scores: CommunityScores }) {
     if (!hasMemberScore(scores)) {
         return (
@@ -210,11 +224,20 @@ function MemberScore({ scores }: { scores: CommunityScores }) {
                 </p>
             </div>
 
-            <ScoreColumns
-                distribution={scores.distribution}
-                label={`Member scores, from 1 to ${MAX_SCORE}`}
-                unit={{ one: 'member', other: 'members' }}
-            />
+            {/* The columns wait for a higher bar than the badge: near the member floor they are a
+                handful of people's scores laid out one by one (ADR 0094 §3). The API sends none
+                under it. */}
+            {hasMemberDistribution(scores) ? (
+                <ScoreColumns
+                    distribution={scores.distribution}
+                    label={`Member scores, from 1 to ${MAX_SCORE}`}
+                    unit={{ one: 'member', other: 'members' }}
+                />
+            ) : (
+                <p className="text-sm text-fg-muted">
+                    {`How the scores spread is shown once ${MIN_DISTRIBUTION_SCORES} members have scored this.`}
+                </p>
+            )}
         </div>
     );
 }
@@ -232,7 +255,7 @@ interface MemberReviewsProps extends GameCommunityProps {
  * rendered by nobody's server, on purpose, so a URL per page would name nothing a crawler could
  * read.
  */
-function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps) {
+function MemberReviews({ gameId, community, viewer, reviews, total }: MemberReviewsProps) {
     const { hasMore, loadingMore, moreFailed, loadMore } = community;
     const list = useRef<HTMLOListElement>(null);
     const more = useRef<HTMLButtonElement>(null);
@@ -277,6 +300,7 @@ function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps
                     // state — a spoiler already revealed — to the other.
                     <GameReviewCard
                         key={`${review.userName}@${review.createdAt}`}
+                        gameId={gameId}
                         review={review}
                         isViewer={review.userName === viewer}
                     />
@@ -312,7 +336,7 @@ function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps
 }
 
 /** One review, headed by its author. */
-function GameReviewCard({ review, isViewer }: { review: GameReview; isViewer: boolean }) {
+function GameReviewCard({ gameId, review, isViewer }: { gameId: number; review: GameReview; isViewer: boolean }) {
     return (
         <ReviewCard
             head={
@@ -359,6 +383,13 @@ function GameReviewCard({ review, isViewer }: { review: GameReview; isViewer: bo
             // The handle, not the display name: it is what says whose review this is, and a
             // display name is anybody's to choose.
             revealLabel={`Show ${review.userName}'s review — they marked it as containing spoilers`}
+            actions={
+                <ReportButton
+                    target={{ userName: review.userName, gameId }}
+                    subject={`${review.userName}'s review`}
+                    label={`Report ${review.userName}'s review`}
+                />
+            }
         />
     );
 }

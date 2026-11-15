@@ -165,8 +165,7 @@ public class AuthFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         // only Identity's check can refuse that.
         using var browser = api.CreateBrowser();
         var userName = Browsers.NewUserName("stamped");
-        var registered = await browser.PostAsJsonAsync(
-            "/api/auth/register", new RegisterDto($"{userName}@test.local", Browsers.Password, userName));
+        var (_, registered) = await browser.RegisterAndSignInAsync(userName);
         var account = await registered.ReadAsync<UserProfileDto>(HttpStatusCode.OK);
 
         var cookieName = $".AspNetCore.{IdentityConstants.ApplicationScheme}";

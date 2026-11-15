@@ -8,7 +8,7 @@ import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
-import { calendarEvents, userProfile } from '@/test/factories';
+import { calendarEvents, listPending, userProfile } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
 import type { HomeResponse, NewsItemDto } from '@/types/news';
 import type { CalendarCuratedEvent, CalendarEvents, ComingSoonGame, JustOutGame } from '@/types/releases';
@@ -16,7 +16,11 @@ import type { Route } from './+types/HomePage';
 
 const authActions = {
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
@@ -46,7 +50,19 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth.current }));
 // line stands in as a landmark, so that a test can see it is the line that is there.
 vi.mock('@/components/HomeStatsStrip', () => ({ HomeStatsStrip: () => null }));
 vi.mock('@/components/ContinuePlayingRail', () => ({ ContinuePlayingRail: () => null }));
-vi.mock('@/components/PlayNextPicker', () => ({ PlayNextPicker: () => null }));
+/** How many pickers have been mounted, so a test can tell one drawn anew from one handed on. */
+const pickers = vi.hoisted(() => ({ mounted: 0 }));
+vi.mock('@/components/PlayNextPicker', async () => {
+    const { useEffect } = await import('react');
+    return {
+        PlayNextPicker: () => {
+            useEffect(() => {
+                pickers.mounted += 1;
+            }, []);
+            return null;
+        },
+    };
+});
 vi.mock('@/components/ReleaseLine', () => ({
     ReleaseLine: () => <section aria-label="Coming up" />,
 }));
@@ -63,7 +79,7 @@ const lists = {
     loading: false,
     error: null,
     getListFor: (gameId: number) => inList.get(gameId) ?? null,
-    isPending: () => false,
+    pending: listPending(),
     nameFor: (listId: ListId) => LIST_NAMES[listId],
     addToList: vi.fn(async () => {}),
 } as unknown as ListsContextValue;
@@ -588,6 +604,22 @@ describe('HomePage for somebody signed in', () => {
         auth.current = { ...SIGNED_IN, user: userProfile({ id: 'user-2', userName: 'carol' }) };
         rerender(page());
         expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('draws the play-next card anew for another account, so neither its pick nor a start still out carries over', () => {
+        auth.current = SIGNED_IN;
+        const home: HomeResponse = { news: [], events: calendarEvents(), comingSoon: [], justOut: [], degraded: false };
+        const page = () => {
+            const props = { loaderData: { ...home, site: SITE, today: TODAY } } as unknown as Route.ComponentProps;
+            return <MemoryRouter><AuthDialogProvider><HomePage {...props} /></AuthDialogProvider></MemoryRouter>;
+        };
+        const { rerender } = render(page());
+        const mounted = pickers.mounted;
+
+        auth.current = { ...SIGNED_IN, user: userProfile({ id: 'user-2', userName: 'carol' }) };
+        rerender(page());
+
+        expect(pickers.mounted).toBe(mounted + 1);
     });
 });
 

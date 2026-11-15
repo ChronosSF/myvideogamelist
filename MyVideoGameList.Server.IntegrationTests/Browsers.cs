@@ -20,14 +20,48 @@ internal static class Browsers
     /// </summary>
     public static string NewUserName(string prefix) => $"{prefix}_{Interlocked.Increment(ref names)}";
 
-    /// <summary>Registers an account, which also signs this browser in as it.</summary>
+    /// <summary>
+    /// Registers an account, confirms its address through the link it was sent, and signs this
+    /// browser in as it, persistently, as a person signing up and choosing to be remembered would be.
+    /// </summary>
     public static async Task<UserProfileDto> RegisterAsync(this HttpClient browser, string userName)
     {
-        var response = await browser.PostAsJsonAsync(
-            "/api/auth/register", new RegisterDto($"{userName}@test.local", Password, userName));
-
-        return await response.ReadAsync<UserProfileDto>(HttpStatusCode.OK);
+        var (_, login) = await browser.RegisterAndSignInAsync(userName);
+        return await login.ReadAsync<UserProfileDto>(HttpStatusCode.OK);
     }
+
+    /// <summary>
+    /// <see cref="RegisterAsync"/>, handing back the sign-in's own response, for a test that reads its
+    /// cookies.
+    /// </summary>
+    public static async Task<(string Email, HttpResponseMessage Login)> RegisterAndSignInAsync(
+        this HttpClient browser, string userName)
+    {
+        var email = $"{userName}@test.local";
+        var registered = await browser.SignUpAsync(email, userName);
+        var result = await registered.ReadAsync<RegisterResultDto>(HttpStatusCode.OK);
+        if (!result.EmailSent) throw new InvalidOperationException($"No confirmation went to {email}.");
+
+        var link = RecordingEmail.Of(browser).LatestConfirmationTo(email);
+        var confirmed = await browser.SendAsync(
+            HttpMethod.Post, "/api/auth/confirm-email", new ConfirmEmailDto(link.UserId, link.Token));
+        await confirmed.ExpectAsync(HttpStatusCode.NoContent);
+
+        var login = await browser.PostAsJsonAsync("/api/auth/login", new LoginDto(email, Password, RememberMe: true));
+        return (email, login);
+    }
+
+    /// <summary>
+    /// Makes an account with <see cref="Password"/>, and nothing more: unconfirmed, nobody signed in. A
+    /// person's, unless <paramref name="turnstileToken"/> says otherwise (<see cref="JudgingTurnstile"/>).
+    /// </summary>
+    public static Task<HttpResponseMessage> SignUpAsync(
+        this HttpClient browser, string email, string userName, string turnstileToken = JudgingTurnstile.Person) =>
+        browser.PostAsJsonAsync("/api/auth/register", new RegisterDto(email, Password, userName, turnstileToken));
+
+    /// <summary>Signs in by an address or a username, as the sign-in dialog does, not remembered.</summary>
+    public static Task<HttpResponseMessage> LoginAsync(this HttpClient browser, string emailOrUserName, string password) =>
+        browser.PostAsJsonAsync("/api/auth/login", new LoginDto(emailOrUserName, password));
 
     /// <summary>
     /// Uploads a Grouvee export with one shelved game per id, each naming its IGDB id, which makes

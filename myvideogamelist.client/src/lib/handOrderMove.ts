@@ -33,6 +33,12 @@ export interface HandOrderMove {
     saved: () => void;
     /** What `fail` is given when the save does not land. */
     failed: string;
+    /**
+     * Runs what the move does once the save has answered — `saved` or the undo, then every lock released —
+     * and answers what that answers. The lists provider commits it there and then, because its writes read
+     * the render last committed (ADR 0086); without it, it simply runs.
+     */
+    settle?: <T>(complete: () => T) => T;
 }
 
 /**
@@ -70,29 +76,28 @@ export async function moveInHandOrder(move: HandOrderMove): Promise<boolean> {
     for (const write of writes) move.lock(write.id);
     move.show(next);
 
-    const undo = () => {
-        move.show(previous);
-        move.fail(move.failed);
-    };
-
+    let landed: boolean;
     try {
         const res = await apiFetch(move.endpoint, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ positions: next }),
         });
-
-        if (!res.ok) {
-            undo();
-            return false;
-        }
-        move.saved();
-        return true;
+        landed = res.ok;
     } catch {
         // A request that never arrived, which `fetch` reports by rejecting rather than with a status.
-        undo();
-        return false;
-    } finally {
-        for (const write of writes) move.unlock(write.id);
+        landed = false;
     }
+
+    const complete = () => {
+        if (landed) {
+            move.saved();
+        } else {
+            move.show(previous);
+            move.fail(move.failed);
+        }
+        for (const write of writes) move.unlock(write.id);
+        return landed;
+    };
+    return move.settle ? move.settle(complete) : complete();
 }

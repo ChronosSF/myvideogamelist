@@ -90,7 +90,8 @@ public class GamesController(
     /// </para>
     /// <para>
     /// Always 200. A game nobody has logged returns three buckets of zero samples, which is an
-    /// answer — a 404 would be indistinguishable from the game not existing.
+    /// answer — a 404 would be indistinguishable from the game not existing. A tier with fewer runs
+    /// than the floor carries its count and no median (ADR 0094).
     /// </para>
     /// </remarks>
     [HttpGet("{id:int}/community-times")]
@@ -108,7 +109,8 @@ public class GamesController(
     /// <remarks>
     /// <para>
     /// Public and unauthenticated for the reason the community times are: an aggregate over
-    /// everybody that names nobody. Always 200; a game nobody has scored is ten empty buckets.
+    /// everybody that names nobody. Always 200. Under the floors it is the count with no mean and
+    /// no distribution, since a figure over a handful of scores would name them (ADR 0094).
     /// </para>
     /// <para>
     /// <c>no-store</c>, so that nothing between here and the browser serves somebody an old figure

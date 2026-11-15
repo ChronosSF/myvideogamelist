@@ -74,6 +74,11 @@
     overflow-wrap: anywhere;
 }
 
+/* Under who this is, quiet, for what the owner wrote about themselves. */
+.public-profile-report {
+    margin-top: -0.5rem;
+}
+
 .public-profile-since {
     margin-top: 0.25rem;
     font-size: 0.875rem;

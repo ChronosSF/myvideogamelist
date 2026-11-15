@@ -1,8 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
+    InvalidResetLinkError,
     ProfileDetailsError,
+    UnconfirmedEmailError,
     type ProfileDetails,
     type ProfileVisibility,
+    type RegisterResult,
     type UserProfile,
 } from '@/types/auth';
 import type { Look } from '@/types/look';
@@ -64,6 +67,14 @@ function messageIn(body: unknown, fallback: string): string {
 
 async function problem(response: Response, fallback: string): Promise<string> {
     return messageIn(await bodyOf(response), fallback);
+}
+
+/**
+ * Whether a refusal's body sets `flag` to true: how the API says which refusal it is, where the status
+ * alone cannot, as `unconfirmed` on a sign-in's 403 and `invalidLink` on a reset's 400.
+ */
+function flagIn(body: unknown, flag: string): boolean {
+    return typeof body === 'object' && body !== null && (body as Record<string, unknown>)[flag] === true;
 }
 
 const DETAIL_FIELDS = ['displayName', 'avatarUrl', 'bio'] as const;
@@ -151,20 +162,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, rememberMe }),
         });
-        if (!res.ok) throw new Error(await problem(res, 'Login failed'));
+        if (!res.ok) {
+            // A 403 means the password was right and the address waits for its confirmation; the body
+            // says so in `unconfirmed`. Read once, since a body can only be read once.
+            const body = await bodyOf(res);
+            const message = messageIn(body, 'Login failed');
+            throw res.status === 403 && flagIn(body, 'unconfirmed') ? new UnconfirmedEmailError(message) : new Error(message);
+        }
 
         setUser(await res.json() as UserProfile);
     };
 
-    const register = async (email: string, password: string, userName: string) => {
+    /** Signs nobody in, so `user` is untouched: the account waits for its confirmation (ADR 0089). */
+    const register = async (email: string, password: string, userName: string, turnstileToken: string) => {
         const res = await send('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, userName }),
+            body: JSON.stringify({ email, password, userName, turnstileToken }),
         });
+        // Cloudflare not answering the API's question about the token is a 502 whose detail says so (ADR
+        // 0092), read like any other refusal. A 502 with no such body is the edge's, with the API away.
         if (!res.ok) throw new Error(await problem(res, 'Registration failed'));
 
-        setUser(await res.json() as UserProfile);
+        return await res.json() as RegisterResult;
+    };
+
+    const resendConfirmation = async (emailOrUserName: string) => {
+        const res = await send('/api/auth/resend-confirmation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailOrUserName }),
+        });
+        if (!res.ok) throw new Error(await problem(res, 'Could not send the link again. Please try again.'));
+    };
+
+    const confirmEmail = async (userId: string, token: string) => {
+        const res = await send('/api/auth/confirm-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, token }),
+        });
+        if (!res.ok) throw new Error(await problem(res, 'Could not confirm your address. Please try again.'));
+    };
+
+    const requestPasswordReset = async (emailOrUserName: string) => {
+        const res = await send('/api/auth/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailOrUserName }),
+        });
+        if (!res.ok) throw new Error(await problem(res, 'Could not send the link. Please try again.'));
+    };
+
+    /**
+     * Signs nobody in. The reset ends every session the account had, at each one's next request, so a
+     * browser signed in as that account, this one included, is signed out here at once rather than at its
+     * next request (ADR 0090).
+     */
+    const resetPassword = async (userId: string, token: string, password: string) => {
+        const res = await send('/api/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, token, password }),
+        });
+        if (!res.ok) {
+            // A refused link says so in `invalidLink`; a refused password carries Identity's sentences.
+            const body = await bodyOf(res);
+            const message = messageIn(body, 'Could not set your new password. Please try again.');
+            throw res.status === 400 && flagIn(body, 'invalidLink') ? new InvalidResetLinkError(message) : new Error(message);
+        }
+
+        setUser(current => (current !== null && current.id === userId ? null : current));
     };
 
     /**
@@ -274,6 +342,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 loading,
                 login,
                 register,
+                resendConfirmation,
+                confirmEmail,
+                requestPasswordReset,
+                resetPassword,
                 logout,
                 updateUserName,
                 updateProfileVisibility,

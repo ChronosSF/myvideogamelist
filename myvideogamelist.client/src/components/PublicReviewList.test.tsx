@@ -38,6 +38,13 @@ function renderList(props: Partial<Parameters<typeof PublicReviewList>[0]> = {},
 }
 
 describe('PublicReviewList', () => {
+    it('offers to report each review, naming the review it reports', () => {
+        // The same for every reader, so a shared-cached profile stays one document (ADR 0076).
+        renderList();
+
+        expect(screen.getByRole('button', { name: 'Report the review of A Game' })).toBeInTheDocument();
+    });
+
     it('shows the review and links it to the game', () => {
         renderList();
 

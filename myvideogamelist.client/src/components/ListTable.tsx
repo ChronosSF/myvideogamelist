@@ -1,16 +1,9 @@
-import { Link } from 'react-router';
 import type { ListEntryDto } from '@/types/list';
 import type { TagDto } from '@/types/tag';
 import { type SortKey, type SortState, SORT_OPTIONS, sortOption } from '@/lib/listSort';
-import { releaseYear } from '@/lib/releaseDate';
-import { hasCriticScore, ratingPercent } from '@/lib/score';
-import { CoverImage } from '@/components/CoverImage';
-import { ScoreBadge } from '@/components/ScoreBadge';
-import { ScoreInput } from '@/components/ScoreInput';
-import { ReorderHandle } from '@/components/ReorderHandle';
-import { FavouriteMark } from '@/components/FavouriteMark';
+import { ListTableRow } from '@/components/ListTableRow';
 import type { Reorder } from '@/hooks/useReorder';
-import { TagChips } from '@/components/TagChips';
+import type { ListsPending } from '@/contexts/ListsContext';
 import './ListTable.css';
 
 interface ListTableProps {
@@ -19,7 +12,8 @@ interface ListTableProps {
     onSortChange: (sort: SortState) => void;
     onScoreChange: (gameId: number, score: number | null) => void;
     onRemove: (gameId: number) => void;
-    isPending: (gameId: number) => boolean;
+    /** The lists' per-game locks, which each row reads for its own game (`ListsContextValue.pending`). */
+    locks: ListsPending;
     /** Which games are the reader's favourites, marked after their titles (`docs/decisions/0064-*`). */
     isFavourite: (gameId: number) => boolean;
     /** Names the table for screen readers — "Playing", "Backlog" and so on. */
@@ -43,15 +37,6 @@ const SORTABLE: { key: SortKey; className: string }[] = [
     { key: 'added', className: 'col-added' },
 ];
 
-function year(date: string | null): string {
-    return date === null ? '—' : String(releaseYear(date));
-}
-
-function shortDate(date: string | null): string {
-    if (date === null) return '—';
-    return new Date(date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
 /**
  * The condensed view: one row per game, with the poster kept as a small thumbnail so the list is
  * still scannable by cover art rather than by title alone.
@@ -66,7 +51,7 @@ export function ListTable({
     onSortChange,
     onScoreChange,
     onRemove,
-    isPending,
+    locks,
     isFavourite,
     listName,
     reorder,
@@ -117,110 +102,22 @@ export function ListTable({
                     </tr>
                 </thead>
                 <tbody {...reorder?.listProps()}>
-                    {entries.map((entry, index) => {
-                        const { game } = entry;
-                        const pending = isPending(game.id);
-
-                        return (
-                            <tr
-                                key={game.id}
-                                className={pending ? 'pending' : undefined}
-                                {...reorder?.itemProps(game.id)}
-                            >
-                                {reorder && (
-                                    <td className="col-order">
-                                        <ReorderHandle
-                                            handle={reorder.handleProps(game.id)}
-                                            rank={index + 1}
-                                            variant="inline"
-                                        />
-                                    </td>
-                                )}
-
-                                <td className="col-cover">
-                                    <Link to={`/games/${game.id}`} tabIndex={-1} aria-hidden="true">
-                                        {/* `.col-cover img` draws it 2.25rem wide. */}
-                                        {game.coverImageUrl ? (
-                                            <CoverImage url={game.coverImageUrl} alt="" sizes="2.25rem" />
-                                        ) : (
-                                            <span className="list-table-nocover" />
-                                        )}
-                                    </Link>
-                                </td>
-
-                                <td className="col-title">
-                                    <Link to={`/games/${game.id}`}>{game.title}</Link>
-                                    {/* After the title rather than on a thumbnail too small to carry it,
-                                        and named itself, since it is not inside the link. */}
-                                    {isFavourite(game.id) && <FavouriteMark variant="inline" />}
-                                    {tagsFor && (
-                                        <div className="list-table-tags">
-                                            <TagChips tags={tagsFor(entry)} max={4} />
-                                        </div>
-                                    )}
-                                </td>
-
-                                <td className="col-score">
-                                    <ScoreInput
-                                        size="sm"
-                                        score={entry.score}
-                                        gameTitle={game.title}
-                                        disabled={pending}
-                                        onChange={score => onScoreChange(game.id, score)}
-                                    />
-                                </td>
-
-                                <td className="col-rating num">
-                                    {game.rating === null ? '—' : (
-                                        <ScoreBadge
-                                            variant="plain"
-                                            kind="players"
-                                            percent={ratingPercent(game.rating)}
-                                            count={game.ratingCount}
-                                        />
-                                    )}
-                                </td>
-
-                                <td className="col-critic num">
-                                    {hasCriticScore(game) ? (
-                                        <ScoreBadge
-                                            variant="plain"
-                                            kind="critics"
-                                            percent={game.criticScore!}
-                                            count={game.criticScoreCount}
-                                        />
-                                    ) : '—'}
-                                </td>
-
-                                <td className="col-released num">{year(game.releaseDate)}</td>
-
-                                <td className="col-added num">{shortDate(entry.addedAt)}</td>
-
-                                <td className="col-platforms">
-                                    <span className="list-table-platforms">
-                                        {game.platforms.length === 0
-                                            ? '—'
-                                            : game.platforms.map(p => p.abbreviation).join(', ')}
-                                    </span>
-                                </td>
-
-                                <td className="col-actions">
-                                    <button
-                                        type="button"
-                                        className="list-table-remove"
-                                        disabled={pending}
-                                        onClick={() => onRemove(game.id)}
-                                        title={`Take ${game.title} out of this list`}
-                                        aria-label={`Take ${game.title} out of this list`}
-                                    >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                        </svg>
-                                    </button>
-                                </td>
-                            </tr>
-                        );
-                    })}
+                    {entries.map((entry, index) => (
+                        <ListTableRow
+                            key={entry.game.id}
+                            entry={entry}
+                            locks={locks}
+                            favourite={isFavourite(entry.game.id)}
+                            onScoreChange={onScoreChange}
+                            onRemove={onRemove}
+                            handles={reorder?.handles}
+                            lifted={reorder?.movingId === entry.game.id}
+                            // Drawn only beside a handle. Elsewhere a constant, or a row taken out above
+                            // would renumber, and so redraw, every row below it.
+                            rank={reorder ? index + 1 : 0}
+                            tagsFor={tagsFor}
+                        />
+                    ))}
                 </tbody>
             </table>
         </div>

@@ -16,13 +16,51 @@ public class AuthController(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
     IUserNameClaimService claims,
+    AccountConfirmation confirmation,
+    PasswordReset reset,
     AdminAccounts admins,
+    ITurnstile turnstile,
     TimeProvider clock) : ControllerBase
 {
+    /// <summary>
+    /// The same answer for every wrong combination, deliberately: telling "no such account" from
+    /// "wrong password" turns sign-in into a way to ask whether an address has an account here.
+    /// </summary>
+    private static readonly object WrongCredentials = new { message = "Invalid email, username or password." };
+
+    /// <summary>
+    /// Makes an account and sends the link that confirms its address. It signs nobody in: an account
+    /// can sign in only once its address is confirmed (ADR 0089).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Cloudflare is asked first</b> whether a person sent it (ADR 0092), because what registration does
+    /// next is send an email to whatever address it was given, from the account whose reputation the site's
+    /// mail depends on. Before anything else, too, so that a bot learns nothing, not even whether a name is
+    /// taken. Cloudflare unreachable is a 502, from <c>UpstreamFailureHandler</c>: nobody signs up unchecked.
+    /// A deployment with no keys is a 503, <see cref="SignUpUnavailable"/>.
+    /// </para>
+    /// <para>
+    /// An email that did not go is not a failed registration: the account is written by then, and a
+    /// second attempt would only be told the name is taken. So the answer says whether it went, and
+    /// the page offers to send it again.
+    /// </para>
+    /// </remarks>
     [HttpPost("register")]
     [EnableRateLimiting(RateLimiting.AuthWrites)]
-    public async Task<ActionResult<UserProfileDto>> Register([FromBody] RegisterDto dto)
+    public async Task<ActionResult<RegisterResultDto>> Register(
+        [FromBody] RegisterDto dto, CancellationToken cancellationToken)
     {
+        // The only step the reader's leaving cancels: nothing is written until it has answered.
+        switch (await turnstile.VerifyAsync(dto.TurnstileToken, HttpContext.Connection.RemoteIpAddress, cancellationToken))
+        {
+            case TurnstileVerdict.Refused:
+                return BadRequest(new AuthMessageDto(
+                    "We could not confirm that you are a person. Please complete the check again."));
+            case TurnstileVerdict.NotConfigured:
+                return SignUpUnavailable();
+        }
+
         // The shape of the username has already been checked by [UserName]; what is left is
         // whether it is free. Identity answers that with a read before the write, which covers
         // everybody except two people claiming the same name at once — the unique index over
@@ -40,9 +78,36 @@ public class AuthController(
         if (!result.Succeeded)
             return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
 
-        await signInManager.SignInAsync(user, isPersistent: true);
-        return Ok(Profile(user));
+        var sent = await confirmation.SendAsync(user);
+        return Ok(new RegisterResultDto(EmailSent: sent == EmailSend.Sent));
     }
+
+    /// <summary>
+    /// The site key the sign-up page's Turnstile widget draws with (ADR 0092).
+    /// </summary>
+    /// <remarks>
+    /// From here rather than built into the page, so that one build serves every environment and each
+    /// environment's pair of keys is set in one place, beside each other. The key is public, and the page
+    /// asks for it only when the sign-up form opens. A deployment with no keys answers 503, as its
+    /// registration would.
+    /// </remarks>
+    [HttpGet("turnstile")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public ActionResult<TurnstileSiteKeyDto> TurnstileSiteKey() =>
+        turnstile.SiteKey is { } siteKey ? Ok(new TurnstileSiteKeyDto(siteKey)) : SignUpUnavailable();
+
+    /// <summary>
+    /// What a deployment with no Turnstile keys answers, to a sign-up and to the page asking for the site
+    /// key: it can check nobody, so it takes no sign-ups (ADR 0092).
+    /// </summary>
+    /// <remarks>
+    /// A <c>ProblemDetails</c> from MVC's factory, so that it carries the trace id like every other failure
+    /// of ours (ADR 0034), where this controller's refusals of a person's input are a sentence alone.
+    /// </remarks>
+    private ObjectResult SignUpUnavailable() => Problem(
+        title: "Signing up is not available",
+        detail: "Signing up is not available just now. Please try again later.",
+        statusCode: StatusCodes.Status503ServiceUnavailable);
 
     /// <summary>
     /// Signs in with an email address or a username, and a password.
@@ -66,23 +131,220 @@ public class AuthController(
     [EnableRateLimiting(RateLimiting.AuthWrites)]
     public async Task<ActionResult<UserProfileDto>> Login([FromBody] LoginDto dto)
     {
-        var user = await userManager.FindByEmailAsync(dto.Email)
-            ?? await userManager.FindByNameAsync(dto.Email);
+        var user = await FindByEmailOrNameAsync(dto.Email);
 
-        // The same message for "no such account" as for "wrong password", deliberately: telling
-        // them apart turns this endpoint into a way to ask whether an address has an account here.
         if (user is null)
-            return Unauthorized(new { message = "Invalid email, username or password." });
+            return Unauthorized(WrongCredentials);
 
         // Counting failures is what makes the lockout configured in Program.cs happen at all.
         // A lockout answers exactly as a wrong password does, for the reason recorded there.
         var result = await signInManager.PasswordSignInAsync(
             user, dto.Password, dto.RememberMe, lockoutOnFailure: true);
 
+        if (result.IsNotAllowed && !await userManager.IsEmailConfirmedAsync(user))
+            return await UnconfirmedAsync(user, dto.Password);
+
         if (!result.Succeeded)
-            return Unauthorized(new { message = "Invalid email, username or password." });
+            return Unauthorized(WrongCredentials);
 
         return Ok(Profile(user));
+    }
+
+    /// <summary>
+    /// An account whose address is not confirmed: told so, but only once the password is right.
+    /// </summary>
+    /// <remarks>
+    /// Identity refuses an unconfirmed account before it looks at the password, and counts nothing. Said
+    /// as it stands, that refusal would tell anybody who typed an address that it has an account waiting
+    /// for confirmation, and would let them guess its password with no lockout at all. So the password
+    /// is checked here, a wrong one counts towards the lockout as it would on a confirmed account, and
+    /// both a wrong one and a lockout answer as any wrong combination does. Only the owner, with the
+    /// password, learns that the address waits, and is sent the link again, at the account's pace.
+    /// </remarks>
+    private async Task<ActionResult<UserProfileDto>> UnconfirmedAsync(ApplicationUser user, string password)
+    {
+        if (await userManager.IsLockedOutAsync(user))
+            return Unauthorized(WrongCredentials);
+
+        if (!await userManager.CheckPasswordAsync(user, password))
+        {
+            await userManager.AccessFailedAsync(user);
+            return Unauthorized(WrongCredentials);
+        }
+
+        await userManager.ResetAccessFailedCountAsync(user);
+
+        // The owner is here, with the password, and has not confirmed: send the link, at the account's
+        // pace. Somebody whose first email was lost, or who registered on the revision before
+        // confirmation existed and was sent none, has one waiting without having to ask.
+        var sent = await confirmation.SendAsync(user);
+        return StatusCode(StatusCodes.Status403Forbidden, new
+        {
+            message = sent == EmailSend.Failed
+                ? "Confirm your email address first. We could not send you a new link just now, so ask for one again in a moment."
+                : "Confirm your email address first, with the link we have sent you. If it does not arrive, we can send another.",
+            unconfirmed = true,
+        });
+    }
+
+    /// <summary>
+    /// The account an identifier names: an address first, the unique-by-configuration column, then a
+    /// username. Signing in, asking for the confirmation again and asking for a reset resolve it the same
+    /// way, here.
+    /// </summary>
+    private async Task<ApplicationUser?> FindByEmailOrNameAsync(string emailOrUserName) =>
+        await userManager.FindByEmailAsync(emailOrUserName)
+            ?? await userManager.FindByNameAsync(emailOrUserName);
+
+    /// <summary>
+    /// Confirms an address from the two halves of the link in its email. Signs nobody in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <c>POST</c>, sent by the page the link opens once it has read the link's fragment, never a
+    /// <c>GET</c> the link itself reaches: a state change behind a <c>GET</c> is forgeable and cacheable
+    /// (ADR 0033), and a mail scanner that opens every link would confirm the address for its owner.
+    /// </para>
+    /// <para>
+    /// It does not sign in, because the link outlives its use: a token stays valid for its whole day,
+    /// so a link forwarded or left in a shared inbox would be a way into the account. Signing in still
+    /// takes the password. A link pressed twice confirms twice, harmlessly.
+    /// </para>
+    /// <para>
+    /// No such account and a wrong or expired token are the same answer. The id is the account's, which
+    /// nothing public shows, but there is no reason to say which half was wrong.
+    /// </para>
+    /// </remarks>
+    [HttpPost("confirm-email")]
+    public async Task<ActionResult<AuthMessageDto>> ConfirmEmail(
+        [FromBody] ConfirmEmailDto dto, CancellationToken cancellationToken)
+    {
+        // UserManager takes no token of its own, so the request's is checked between its steps: a reader
+        // who has gone is not confirmed on their behalf.
+        var user = await userManager.FindByIdAsync(dto.UserId);
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = user is null ? null : await userManager.ConfirmEmailAsync(user, dto.Token);
+
+        if (result?.Succeeded != true)
+        {
+            return BadRequest(new AuthMessageDto(
+                "This link has expired or is not complete. Sign in and we will offer to send a new one."));
+        }
+
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Sends the confirmation again to an account that has not confirmed its address.
+    /// </summary>
+    /// <remarks>
+    /// Always a 202, whether or not anything was sent: an account that does not exist, one already
+    /// confirmed, and one sent a link within the last few minutes answer as one that was just sent
+    /// another. The pace is per account, in <see cref="EmailPace"/>, which is what stops this
+    /// being a way to fill somebody's inbox; the rate limit is per network address, which stops it
+    /// being a way to ask about many addresses quickly. Registration already says whether an address is
+    /// taken, so the time this takes to answer tells nothing that cannot be learned there.
+    /// </remarks>
+    [HttpPost("resend-confirmation")]
+    [EnableRateLimiting(RateLimiting.AuthWrites)]
+    public async Task<ActionResult<AuthMessageDto>> ResendConfirmation(
+        [FromBody] ResendConfirmationDto dto, CancellationToken cancellationToken)
+    {
+        var user = await FindByEmailOrNameAsync(dto.Email);
+
+        // As in ConfirmEmail: checked before the send, which ignores it once begun, so nobody who has
+        // gone is sent an email.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (user is not null && !await userManager.IsEmailConfirmedAsync(user))
+            await confirmation.SendAsync(user);
+
+        return Accepted();
+    }
+
+    /// <summary>
+    /// Sends the link that sets a new password to the account an address or a username names.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Always a 202, whether or not anything was sent: no such account, and one sent a reset within the
+    /// last few minutes, answer as one that was just sent a link (ADR 0033, ADR 0090). The pace is per
+    /// account, in <see cref="EmailPace"/>, which keeps this from filling an inbox; the rate limit is
+    /// per network address, which keeps it from asking about many accounts quickly. A send makes the
+    /// answer slower, but registration already says whether an address is taken, so the time tells
+    /// nothing that cannot be learned there (ADR 0089 §5).
+    /// </para>
+    /// <para>
+    /// An unconfirmed account is sent one too. The reset confirms the address, so it is what lets in
+    /// somebody who has neither confirmed nor kept the password they chose.
+    /// </para>
+    /// </remarks>
+    [HttpPost("forgot-password")]
+    [EnableRateLimiting(RateLimiting.AuthWrites)]
+    public async Task<ActionResult<AuthMessageDto>> ForgotPassword(
+        [FromBody] ForgotPasswordDto dto, CancellationToken cancellationToken)
+    {
+        var user = await FindByEmailOrNameAsync(dto.Email);
+
+        // As in ResendConfirmation: checked before the send, which ignores it once begun.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (user is not null)
+            await reset.SendAsync(user);
+
+        return Accepted();
+    }
+
+    /// <summary>
+    /// Sets a new password from the two halves of the link in a reset email, and the password itself.
+    /// Signs nobody in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The reset confirms the address, ends any lockout and ends every session the account had, at each
+    /// one's next request (see <see cref="PasswordReset.ResetAsync"/>). It does not sign in: signing in is
+    /// one way, the sign-in dialog's, with its lockout, its confirmation check and its choice to be
+    /// remembered, rather than a second way beside it that each of those would have to be kept in step
+    /// with. The page offers the sign-in at once.
+    /// </para>
+    /// <para>
+    /// No such account and a wrong, expired or used token are the same answer, as for a confirmation. A
+    /// password the rules refuse is answered as registration answers one, and spends nothing: the link
+    /// still works for another try.
+    /// </para>
+    /// <para>
+    /// <b>Not rate-limited</b>, unlike the endpoints around it (ADR 0090 §7). The limit is there to stop
+    /// guessing and to stop sends; this guesses nothing, since it needs a token nobody can guess, and sends
+    /// nothing. Limited, it spent the budget somebody had just used up failing to sign in, and refused
+    /// them the sign-in with their new password.
+    /// </para>
+    /// </remarks>
+    [HttpPost("reset-password")]
+    public async Task<ActionResult<ResetLinkRefusedDto>> ResetPassword(
+        [FromBody] ResetPasswordDto dto, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByIdAsync(dto.UserId);
+
+        // UserManager takes no token of its own, so the request's is checked before the one write.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var result = user is null ? null : await reset.ResetAsync(user, dto.Token, dto.Password);
+
+        if (result is null || result.Errors.Any(error => error.Code == nameof(IdentityErrorDescriber.InvalidToken)))
+        {
+            return BadRequest(new ResetLinkRefusedDto(
+                "This link has expired or has already been used. Ask for a new one.", InvalidLink: true));
+        }
+
+        // Another write to the account landed first: nothing was saved and the link still works, so it is
+        // a moment to try again, not a password to change. Identity's own sentence is written for a log.
+        if (result.Errors.Any(error => error.Code == nameof(IdentityErrorDescriber.ConcurrencyFailure)))
+            return Conflict(new AuthMessageDto("Your account changed at the same moment. Please try again."));
+
+        if (!result.Succeeded)
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+        return NoContent();
     }
 
     [HttpPost("logout")]

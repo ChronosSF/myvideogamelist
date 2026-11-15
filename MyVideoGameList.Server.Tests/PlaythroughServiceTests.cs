@@ -429,14 +429,15 @@ public class PlaythroughServiceTests
         // contribute. Counting either would inflate a sample size behind a figure it did not help
         // produce, which is exactly what ADR 0016 says a count is for.
         using var db = NewDb();
-        await AddFor(db, "a", input: Input(minutesPlayed: 600));
-        await AddFor(db, "b", input: Input(type: null, minutesPlayed: 6000));
-        await AddFor(db, "c", input: Input(minutesPlayed: null));
+        foreach (var user in new[] { "a", "b", "c" })
+            await AddFor(db, user, input: Input(minutesPlayed: 600));
+        await AddFor(db, "d", input: Input(type: null, minutesPlayed: 6000));
+        await AddFor(db, "e", input: Input(minutesPlayed: null));
 
         var times = await NewService(db).GetCommunityTimesAsync(GameId);
 
         var normally = Bucket(times, PlaythroughTypeKeys.Normally);
-        Assert.Equal(1, normally.Samples);
+        Assert.Equal(3, normally.Samples);
         Assert.Equal(600, normally.MedianMinutes);
         Assert.Equal(3, times.Buckets.Count);
     }
@@ -445,9 +446,12 @@ public class PlaythroughServiceTests
     public async Task GetCommunityTimesAsync_CountsEachTierSeparately()
     {
         using var db = NewDb();
-        await AddFor(db, "a", input: Input(type: PlaythroughTypeKeys.Rushed, minutesPlayed: 300));
-        await AddFor(db, "b", input: Input(type: PlaythroughTypeKeys.Normally, minutesPlayed: 900));
-        await AddFor(db, "c", input: Input(type: PlaythroughTypeKeys.Completionist, minutesPlayed: 2400));
+        foreach (var user in new[] { "a", "b", "c" })
+        {
+            await AddFor(db, $"{user}1", input: Input(type: PlaythroughTypeKeys.Rushed, minutesPlayed: 300));
+            await AddFor(db, $"{user}2", input: Input(type: PlaythroughTypeKeys.Normally, minutesPlayed: 900));
+            await AddFor(db, $"{user}3", input: Input(type: PlaythroughTypeKeys.Completionist, minutesPlayed: 2400));
+        }
 
         var times = await NewService(db).GetCommunityTimesAsync(GameId);
 
@@ -467,6 +471,55 @@ public class PlaythroughServiceTests
         Assert.Equal(0, normally.Samples);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(CommunityFloors.PlaythroughSamples - 1)]
+    public async Task GetCommunityTimesAsync_UnderTheFloor_IsTheCountWithNoMedian(int count)
+    {
+        // Every member's runs count, private profiles included, and a median over one run is that
+        // member's time. The count still travels (ADR 0016); the figure does not (ADR 0094).
+        using var db = NewDb();
+        for (var i = 0; i < count; i++)
+            await AddFor(db, $"member{i}", input: Input(minutesPlayed: 600));
+
+        var normally = Bucket(await NewService(db).GetCommunityTimesAsync(GameId), PlaythroughTypeKeys.Normally);
+
+        Assert.Equal(count, normally.Samples);
+        Assert.Null(normally.MedianMinutes);
+    }
+
+    [Theory]
+    [InlineData(CommunityFloors.PlaythroughSamples)]
+    [InlineData(CommunityFloors.PlaythroughSamples + 1)]
+    public async Task GetCommunityTimesAsync_AtOrOverTheFloor_IsTheMedian(int count)
+    {
+        using var db = NewDb();
+        for (var i = 0; i < count; i++)
+            await AddFor(db, $"member{i}", input: Input(minutesPlayed: 600));
+
+        var normally = Bucket(await NewService(db).GetCommunityTimesAsync(GameId), PlaythroughTypeKeys.Normally);
+
+        Assert.Equal(count, normally.Samples);
+        Assert.Equal(600, normally.MedianMinutes);
+    }
+
+    [Fact]
+    public async Task GetCommunityTimesAsync_EachTier_HasAFloorOfItsOwn()
+    {
+        // A tier over the floor carries no other tier with it: the rushed run here is still one
+        // member's time.
+        using var db = NewDb();
+        for (var i = 0; i < CommunityFloors.PlaythroughSamples; i++)
+            await AddFor(db, $"member{i}", input: Input(minutesPlayed: 600));
+        await AddFor(db, "rusher", input: Input(type: PlaythroughTypeKeys.Rushed, minutesPlayed: 300));
+
+        var times = await NewService(db).GetCommunityTimesAsync(GameId);
+
+        Assert.Equal(600, Bucket(times, PlaythroughTypeKeys.Normally).MedianMinutes);
+        Assert.Equal(1, Bucket(times, PlaythroughTypeKeys.Rushed).Samples);
+        Assert.Null(Bucket(times, PlaythroughTypeKeys.Rushed).MedianMinutes);
+    }
+
     [Fact]
     public async Task GetCommunityTimesAsync_AfterAnAdd_ReflectsItRatherThanServingTheCachedFigure()
     {
@@ -475,13 +528,17 @@ public class PlaythroughServiceTests
         using var db = NewDb();
         var cache = NewCache();
         await AddFor(db, "a", input: Input(minutesPlayed: 600));
+        await AddFor(db, "b", input: Input(minutesPlayed: 900));
 
         var before = Bucket(await NewService(db, cache).GetCommunityTimesAsync(GameId), PlaythroughTypeKeys.Normally);
         await NewService(db, cache).AddAsync(UserId, GameId, Input(minutesPlayed: 1200));
         var after = Bucket(await NewService(db, cache).GetCommunityTimesAsync(GameId), PlaythroughTypeKeys.Normally);
 
-        Assert.Equal(1, before.Samples);
-        Assert.Equal(2, after.Samples);
+        // The run that carries the tier over the floor brings its median with it, rather than the
+        // answer cached from under the floor.
+        Assert.Equal(2, before.Samples);
+        Assert.Null(before.MedianMinutes);
+        Assert.Equal(3, after.Samples);
         Assert.Equal(900, after.MedianMinutes);
     }
 
@@ -490,6 +547,8 @@ public class PlaythroughServiceTests
     {
         using var db = NewDb();
         var cache = NewCache();
+        await AddFor(db, "a", input: Input(minutesPlayed: 1200));
+        await AddFor(db, "b", input: Input(minutesPlayed: 2000));
         var added = await NewService(db, cache).AddAsync(UserId, GameId, Input(minutesPlayed: 600));
 
         await NewService(db, cache).GetCommunityTimesAsync(GameId);

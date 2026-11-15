@@ -11,6 +11,7 @@ const SIGNED_OUT: [string, string][] = [
     ['game-multiplayer', '/games/119171'],
     ['news', '/news'],
     ['terms', '/terms'],
+    ['privacy', '/privacy'],
     ['not-found', '/no-such-page'],
 ];
 

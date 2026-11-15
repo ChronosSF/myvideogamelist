@@ -8,7 +8,7 @@ import { ListTableSkeleton } from '@/components/ListTableSkeleton';
 import { NewsCard } from '@/components/NewsCard';
 import { NewsCardSkeleton } from '@/components/NewsCardSkeleton';
 import { DEFAULT_SORT } from '@/lib/listSort';
-import { entry } from '@/test/factories';
+import { entry, listPending } from '@/test/factories';
 
 /**
  * The classes of the boxes a size comes from, compared between the real thing and its skeleton. jsdom
@@ -28,7 +28,7 @@ describe('ListTableSkeleton', () => {
                     entries={[entry({ game: { id: 1, title: 'Celeste', coverImageUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co1.jpg' } })]}
                     sort={DEFAULT_SORT}
                     listName="Playing"
-                    isPending={() => false}
+                    locks={listPending()}
                     isFavourite={() => false}
                     onSortChange={vi.fn()}
                     onScoreChange={vi.fn()}

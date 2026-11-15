@@ -15,6 +15,8 @@
   <ItemGroup>
     <PackageReference Include="Amazon.AspNetCore.DataProtection.SSM" />
     <PackageReference Include="AWSSDK.CloudFront" />
+    <PackageReference Include="AWSSDK.SecurityToken" />
+    <PackageReference Include="AWSSDK.SimpleEmailV2" />
     <PackageReference Include="CsvHelper" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Facebook" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" />

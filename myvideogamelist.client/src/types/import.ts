@@ -33,7 +33,7 @@ export type ImportDecision = (typeof IMPORT_DECISION)[keyof typeof IMPORT_DECISI
 
 export interface ImportJob {
     id: string;
-    /** Which service's export this was — `grouvee` today. */
+    /** Which service's export this was — `grouvee`, or `myvideogamelist` for our own (ADR 0083). */
     source: string;
     fileName: string;
     state: string;
@@ -108,6 +108,12 @@ export interface ImportReviewRow {
     wishlist: boolean;
     favourite: boolean;
     hasNotes: boolean;
+    /**
+     * The notes are longer than an entry's can be, so the import cuts them and ends them in an
+     * ellipsis. Usually a review that came back as a note (ADR 0083). False where the game's entry
+     * has notes already, since the import never writes over those.
+     */
+    notesCut: boolean;
     playthroughCount: number;
     minutesPlayed: number | null;
     /** The user already has an entry for this game, so importing it overwrites what is there. */

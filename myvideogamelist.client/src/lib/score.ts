@@ -13,12 +13,16 @@ import { formatCount } from '@/lib/format';
 export const MIN_CRITIC_REVIEWS = 4;
 
 /**
- * Playthroughs a game needs before MVGL's own median for a tier is worth printing.
+ * Playthroughs a tier needs before MVGL's own median for it is sent at all: `CommunityFloors.
+ * PlaythroughSamples` on the server, restated here for the sentences that say why a tier has no
+ * figure, and held to it by `serverMirrors.test.ts`.
  *
  * The same argument as `MIN_CRITIC_REVIEWS`, applied to our own numbers rather than IGDB's: a
  * median over two members is exactly as uninformative as a critic score from one review, and a
- * bare "51h" reads as a measured fact whatever is behind it. The API reports the sample size
- * faithfully and each caller sets its own bar, so this lives here rather than in a query.
+ * bare "51h" reads as a measured fact whatever is behind it. Unlike IGDB's floors this one is the
+ * server's, because every member's runs count, private profiles included, and a median over one run
+ * is that member's time in public JSON. Under it the API sends the count and no median. See
+ * `docs/decisions/0094-*`.
  *
  * Lower than the critic floor because the two are asking different things of different pools.
  * Four critic reviews is a low bar among the thousands IGDB aggregates; three playthroughs of one
@@ -28,20 +32,28 @@ export const MIN_CRITIC_REVIEWS = 4;
 export const MIN_PLAYTHROUGH_SAMPLES = 3;
 
 /**
- * Members who must have scored a game before MVGL's own score for it is worth printing — and
- * before its distribution is drawn at all.
+ * Members who must have scored a game before MVGL's own score for it is sent at all:
+ * `CommunityFloors.MemberScores` on the server, restated here for the same reason as the playthrough
+ * floor above.
  *
  * The same argument again: a mean over two members is one person's opinion and a half, and a badge
  * reading "100 members" over one perfect score would be the exact failure ADR 0016 was written
- * about. Higher than the playthrough floor, because the pools differ in depth. A counted
+ * about. And a mean over one member is that member's score, which is why the API withholds it
+ * (ADR 0094). Higher than the playthrough floor, because the pools differ in depth. A counted
  * playthrough needs a type and a duration typed in after the game is over; a score is one tap on a
  * star, so a game gathers scores far sooner than it gathers runs worth counting.
- *
- * The distribution goes behind the same floor as the mean rather than being drawn anyway. Under it,
- * the columns are a handful of individuals' scores laid out one by one, which says less than the
- * count does and more about each of them than a reader needs. See `docs/decisions/0028-*`.
  */
 export const MIN_MEMBER_SCORES = 5;
+
+/**
+ * Members who must have scored a game before the API sends how their scores spread over the scale:
+ * `CommunityFloors.ScoreDistribution`, restated as the other two are.
+ *
+ * Higher than `MIN_MEMBER_SCORES`, because near that floor the columns are a handful of individuals'
+ * scores laid out one by one (ADR 0028 §3), read in a single look, where the mean is one number over
+ * all of them. See `docs/decisions/0094-*`, which also says what no floor stops.
+ */
+export const MIN_DISTRIBUTION_SCORES = 20;
 
 /**
  * Five stars at half-star steps, which is exactly the ten values the API stores.
@@ -73,8 +85,9 @@ export function hasCriticScore(
 }
 
 /**
- * Whether enough members have scored a game for its mean — and its distribution — to be worth
- * displaying. Narrows `mean` to a number, since a score that clears the floor has one.
+ * Whether enough members have scored a game for its mean to be worth displaying. Narrows `mean` to a
+ * number, since a score that clears the floor has one. The API sends no mean under the floor
+ * (ADR 0094); the count is checked as well, so an API from before that, mid-deploy, is held to it.
  */
 export function hasMemberScore(
     scores: CommunityScores | null,
@@ -85,24 +98,37 @@ export function hasMemberScore(
 }
 
 /**
- * The members' scores with what the floor keeps off the page taken out: under `MIN_MEMBER_SCORES`,
- * the count alone, with no mean and an empty distribution.
+ * Whether the members' scores come with how they spread: ten columns, from `MIN_DISTRIBUTION_SCORES`
+ * scores. Under that bar the API sends an empty distribution whatever the count (ADR 0094); the
+ * count is checked too, for the reason {@link hasMemberScore} gives.
+ */
+export function hasMemberDistribution(scores: CommunityScores | null): boolean {
+    return hasMemberScore(scores)
+        && scores.scored >= MIN_DISTRIBUTION_SCORES
+        && scores.distribution.length === MAX_SCORE;
+}
+
+/**
+ * The members' scores with what the floors keep off the page taken out: under `MIN_MEMBER_SCORES`,
+ * the count alone, with no mean and no distribution; under `MIN_DISTRIBUTION_SCORES`, no
+ * distribution.
  *
  * For a copy stored where the page is — in the HTML and the data a CDN shares for a day and a crawler
- * archives — rather than shown on it. The API reports a lone member's score faithfully, and ADR 0028
- * accepted that only because the floor keeps it off the page; a copy kept beside the page has to keep
- * the same floor or it publishes that score after all. Nothing renders differently, since nothing
- * renders the mean or the distribution under the floor.
+ * archives — rather than shown on it. The API withholds what is under the floors itself now
+ * (ADR 0094), so this changes nothing in what the current API sends. It is here for one built before
+ * that, answering mid-deploy: a copy kept beside the page has to keep the page's floors, or it
+ * publishes a lone member's score after all (ADR 0069 §1). Nothing renders differently, since nothing
+ * renders what it takes out.
  */
 export function scoresWithinFloor(scores: CommunityScores): CommunityScores {
-    return hasMemberScore(scores)
-        ? scores
-        : { ...scores, mean: null, distribution: scores.distribution.map(() => 0) };
+    if (!hasMemberScore(scores)) return { ...scores, mean: null, distribution: [] };
+    return hasMemberDistribution(scores) ? scores : { ...scores, distribution: [] };
 }
 
 /**
  * The members' completion times with each median under `MIN_PLAYTHROUGH_SAMPLES` taken out, for the
- * reason {@link scoresWithinFloor} gives. The counts stay: they are what the page says instead.
+ * reason {@link scoresWithinFloor} gives: what the API sends since ADR 0094, and what one built before
+ * it is held to. The counts stay: they are what the page says instead.
  */
 export function timesWithinFloor(times: CommunityTimes): CommunityTimes {
     return {

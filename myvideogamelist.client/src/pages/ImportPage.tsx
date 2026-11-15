@@ -30,8 +30,8 @@ export function meta() {
  * Where an import starts: pick a file, or pick up one already waiting.
  *
  * The upload does not stream or poll. Parsing an export makes no network call of its own — Grouvee
- * carries IGDB's ids, so there is nothing to look up (ADR 0037) — and the response is the job to
- * review, which this navigates straight to.
+ * carries IGDB's ids, and so does our own export, so there is nothing to look up (ADR 0037, ADR
+ * 0083) — and the response is the job to review, which this navigates straight to.
  */
 export function ImportPage() {
     const { user, loading: authLoading } = useAuth();
@@ -80,13 +80,23 @@ export function ImportPage() {
                     <>
                         <section aria-labelledby="import-source">
                             <h2 id="import-source" className={`${SECTION_HEADING} mb-2`}>
-                                From Grouvee
+                                From Grouvee, or from here
                             </h2>
-                            <p className="text-fg-muted text-sm mb-4">
+                            <p className="text-fg-muted text-sm mb-2">
                                 In Grouvee, open <span className="text-fg-soft">Settings → Export</span>{' '}
                                 and download your collection. Either format works, though the{' '}
                                 <span className="text-fg-soft">JSON</span> one carries a little more —
                                 games you played and later took off your shelves are only in that file.
+                            </p>
+                            {/* What is lost is said before the upload rather than discovered after
+                                it, because the file looks like everything and is not (ADR 0083). */}
+                            <p className="text-fg-muted text-sm mb-4">
+                                A file saved with <span className="text-fg-soft">Download my data</span>{' '}
+                                on your profile works too, from this account or another. Your lists,
+                                scores, notes, playthroughs, wishlist and favourites come back, and a
+                                review comes back as a note, cut where the two run past 2,000
+                                characters. The history of your moves, your tags, your own orderings
+                                and your settings do not.
                             </p>
 
                             {/* A label wrapping the input is what makes the whole panel a valid

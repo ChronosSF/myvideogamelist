@@ -158,7 +158,7 @@ public sealed class Edge : Construct
             // HEAD. AllViewer is what carries X-MVGL-Request across (ADR 0033): without it every
             // write is a 403 that looks like an application bug. No CORS policy, here or anywhere.
             ["/api/*"] = Behaviour(CachePolicy.CACHING_DISABLED, OriginRequestPolicy.ALL_VIEWER, AllowedMethods.ALLOW_ALL),
-            // The hashed bundles, which react-router-serve sends immutable for a year.
+            // The hashed bundles, which the SSR server sends immutable for a year (server/serve.ts).
             ["/assets/*"] = Behaviour(CachePolicy.CACHING_OPTIMIZED, hostOnly),
             // The home page alone: no wildcard, so the root and nothing under it, which the distribution
             // can match because it names no default root object. And its .data, which React Router 8 asks

@@ -1,7 +1,9 @@
 # 0025. Playthroughs and reviews: what a user records about actually playing a game
 
 **Status:** Implemented. §6 holds for the row; the game page's loader also reads the community times
-for its description since [0069](0069-a-crawler-is-told-what-is-ours.md).
+for its description since [0069](0069-a-crawler-is-told-what-is-ours.md). §2's floor is the server's since
+[0094](0094-the-community-figures-are-withheld-below-their-floors-by-the-api.md): a tier under it carries its
+count and no median.
 
 ## Context
 

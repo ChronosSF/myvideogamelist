@@ -8,7 +8,7 @@ Six stacks, split by lifetime, named `Mvgl-<env>-<part>`:
 | Stack | Lifetime | Holds |
 |---|---|---|
 | `Dns` | permanent | the environment's public hosted zone |
-| `Data` | long-lived | VPC, security groups, RDS, secrets, ECR, the cluster, the regional certificate, the GitHub deploy role, the basic-auth store, the origin-verify secret |
+| `Data` | long-lived | VPC, security groups, RDS, secrets (IGDB's and Turnstile's set by hand), ECR, the cluster, the regional certificate, the GitHub deploy role, the basic-auth store, the origin-verify secret |
 | `EdgeCert` | long-lived, `us-east-1` | the certificate CloudFront uses |
 | `Alerts` | long-lived | the topic the alarms send to, and the owner's email subscription to it (ADR 0080) |
 | `Migrate` | each release | the task that runs the migration bundle |
@@ -29,9 +29,10 @@ through the distribution, and no parameter that would open one.
 
 ## Production, until #98: the holding page
 
-`-c env=prod` synthesises one stack and none of the five above: `Mvgl-prod-Holding`, whole in
-`us-east-1`, in the production account. It serves `holding/site` at `myvideogamelist.net` from a
-private bucket through a distribution, and sends `www` to the apex (ADR 0066).
+`-c env=prod` synthesises three stacks in the production account: `Mvgl-prod-Alerts` and
+`Mvgl-prod-Email`, in the next section, and `Mvgl-prod-Holding`, whole in `us-east-1`. The holding
+stack serves `holding/site` at `myvideogamelist.net` from a private bucket through a distribution,
+and sends `www` to the apex (ADR 0066).
 
 ```bash
 cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
@@ -55,6 +56,123 @@ cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
 - **Production's App stack cannot deploy with the domain while this stack holds it.** CloudFront
   gives an alternate domain name to one distribution at a time, and the records would collide too:
   destroy this stack first. The destroy empties the bucket itself.
+
+## Production's SES, for dev's email
+
+`-c env=prod` also synthesises two stacks in the Region the domain is verified with SES
+(`eu-central-1`), which is production's own Region too. Both are long-lived, deployed by hand, and kept
+when the holding page goes.
+
+- **`Mvgl-prod-Email`** holds the configuration set every email is sent under, `mvgl-email`, and one role,
+  `mvgl-dev-email`. The dev API's task role (`mvgl-dev-api-task`) assumes the role to send through
+  production's SES, because production has SES production access and dev is in the sandbox (ADR 0088).
+  The role may call `ses:SendEmail` on the domain's identity and the configuration set, from
+  `noreply@myvideogamelist.net`, and nothing else. The configuration set sends nothing to an address
+  that has bounced or complained, and publishes each bounce and complaint to the Alerts topic (ADR 0091).
+- **`Mvgl-prod-Alerts`** is the Alerts stack as dev has it (see [Alarms](#alarms)): the topic
+  `mvgl-prod-alerts` and the owner's email subscription to it. For now only SES publishes to it;
+  production's alarms will, from #98.
+
+**Once, in this order**, from `infra/` with the `mvgl-prod` profile signed in. In Git Bash, put
+`MSYS_NO_PATHCONV=1` in front of the first command:
+
+```bash
+aws ssm put-parameter --profile mvgl-prod --region eu-central-1 --name /mvgl/prod/alarm-email --type String --value "<address>"
+```
+
+```bash
+cdk deploy Mvgl-prod-Alerts --profile mvgl-prod -c env=prod
+```
+
+Then click the link in the "AWS Notification - Subscription Confirmation" email, within two days.
+
+```bash
+cdk deploy Mvgl-prod-Email --profile mvgl-prod -c env=prod
+```
+
+- **The account needs a CDK bootstrap in `eu-central-1` first, once**, as the holding page needed one
+  in `us-east-1`. From the repository root:
+
+  ```bash
+  cdk bootstrap "aws://$(aws sts get-caller-identity --profile mvgl-prod --query Account --output text)/eu-central-1" --profile mvgl-prod
+  ```
+
+- **`Alerts` goes before `Email`.** SES publishes as itself, and the topic's policy is what admits it.
+- **`Email` goes before any `App` deploy of a revision that names the configuration set.** The API names
+  it on every send. Until the set exists and the role may use it, every send fails as not sent, with
+  `NotFoundException` or `AccessDenied` in the API's log.
+- **Every email dev sends counts against production's reputation**, bounces and complaints included. Send
+  tests to addresses you own, or to SES's mailbox simulator.
+- **The two account ids are in `Site.cs`**, because each side of the trust names the other. Neither is a
+  secret, and `cdk.context.json` already named both.
+
+**Proving it, after both deploys.** The set suppresses both reasons and has its destination:
+
+```bash
+aws sesv2 get-configuration-set --configuration-set-name mvgl-email --profile mvgl-prod --region eu-central-1 --query SuppressionOptions
+aws sesv2 get-configuration-set-event-destinations --configuration-set-name mvgl-email --profile mvgl-prod --region eu-central-1
+```
+
+Then, once dev is up, sign up there with `bounce@simulator.amazonses.com`, and again with
+`complaint@simulator.amazonses.com`. The inbox should receive a `Permanent` bounce and a complaint,
+each with `mvgl-email` in its `ses:configuration-set` tag and the IAM identity that sent it in
+`ses:caller-identity`. The mailbox simulator's mail does not count towards the account's rates, and
+its addresses are never put on the suppression list, so this can be run again.
+
+**When somebody's email never arrives**, the inbox will have had a bounce with the subtype
+`OnAccountSuppressionList` for it: an earlier email to that address bounced, or they reported one as
+spam. Once they say the mailbox works, lift it, and their next email goes:
+
+```bash
+aws sesv2 delete-suppressed-destination --email-address "<address>" --profile mvgl-prod --region eu-central-1
+```
+
+`aws sesv2 list-suppressed-destinations` lists every address on the list, with its reason and when it
+was added. The account's own suppression setting should name both reasons too, as it did when this was
+written (ADR 0091): `aws sesv2 get-account --query SuppressionAttributes`.
+
+## Turnstile, for sign-up
+
+Sign-up asks Cloudflare's Turnstile whether a person sent it (ADR 0092). Each environment has a widget of
+its own, and its pair of keys lives in the secret `mvgl/<env>/turnstile`, which the `Data` stack makes with a
+placeholder and the `App` stack hands to the API as `Turnstile__SiteKey` and `Turnstile__SecretKey`. The API
+reads the placeholder as no keys at all: until the pair is set, `GET /api/auth/turnstile` and every sign-up
+answer 503, with an error in the API's log, and the sign-up form says signing up is not available.
+
+**Once per environment, before the first release that names the secret**, from `infra/` with the
+environment's profile signed in:
+
+1. **In Cloudflare's dashboard**, under Turnstile, add a widget: named for the site and the environment,
+   with the environment's host (`dev.myvideogamelist.net`) and the mode **Managed**. It shows a site key
+   and a secret key.
+2. **Deploy the `Data` stack.** Its diff is one new secret and its output, and nothing else:
+
+   ```bash
+   cdk diff Mvgl-dev-Data --exclusively --profile mvgl-dev -c env=dev
+   ```
+
+   ```bash
+   cdk deploy Mvgl-dev-Data --exclusively --profile mvgl-dev -c env=dev
+   ```
+
+3. **Set the pair**, in the console (Secrets Manager, `eu-central-1`, `mvgl/dev/turnstile`, "Retrieve
+   secret value", then "Edit", one value for `SiteKey` and one for `SecretKey`), or from Git Bash:
+
+   ```bash
+   aws secretsmanager put-secret-value --profile mvgl-dev --region eu-central-1 --secret-id mvgl/dev/turnstile --secret-string '{"SiteKey":"<site key>","SecretKey":"<secret key>"}'
+   ```
+
+- **`Data` goes before the release.** The `App` stack reads the secret through the `Data` stack's new
+  output, so a release before the deploy fails, and the revision before it keeps serving.
+- **A task reads the pair when it starts.** A pair changed later reaches the API with the next release, or
+  at once with `aws ecs update-service --cluster mvgl-dev --service api --force-new-deployment`.
+- **Never one of Cloudflare's test keys.** A deployment given a test secret refuses to start, because it
+  passes whoever asks.
+- **Production** does the same with `-c env=prod` once #98 builds its `Data` stack, with a widget of its own
+  for `myvideogamelist.net`.
+
+**Proving it**: the sign-up form draws the widget, and `GET /api/auth/turnstile` answers the site key. A 503
+there is the placeholder still in the secret, or a task started before the pair was set.
 
 ## The pipeline
 

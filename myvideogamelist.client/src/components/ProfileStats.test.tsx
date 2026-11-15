@@ -3,11 +3,10 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ProfileStats } from '@/components/ProfileStats';
-import { DEFAULT_SORT } from '@/lib/listSort';
 import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
 import type { PlatformDto } from '@/types/game';
 import type { UserStats } from '@/types/stats';
-import { entry, platform } from '@/test/factories';
+import { entry, listPending, platform } from '@/test/factories';
 
 /**
  * The lists context, mocked rather than provided: the real provider would fetch, and this component
@@ -21,7 +20,7 @@ const listsValue = {
     loading: false,
     error: null as string | null,
     mutationError: null,
-    isPending: () => false,
+    pending: listPending(),
     addToList: vi.fn(async () => {}),
     removeFromList: vi.fn(async () => {}),
     isInList: () => false,
@@ -32,10 +31,6 @@ const listsValue = {
     setNotes: vi.fn(async () => true),
     setTags: vi.fn(async () => ({ ok: true as const })),
     deleteEntry: vi.fn(async () => true),
-    view: 'tiles' as const,
-    setView: vi.fn(),
-    sortFor: () => DEFAULT_SORT,
-    setSort: vi.fn(),
     names: {} as Partial<Record<ListId, string>>,
     nameFor: (id: ListId) => LIST_NAMES[id],
     namesStatus: 'ready',

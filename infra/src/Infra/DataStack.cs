@@ -9,6 +9,7 @@ using Amazon.CDK.AWS.Route53;
 using Amazon.CDK.AWS.SecretsManager;
 using Amazon.CDK.AWS.ServiceDiscovery;
 using Constructs;
+using MyVideoGameList.Server.Security;
 
 namespace Infra;
 
@@ -28,6 +29,7 @@ public sealed class DataStack : Stack
     public DatabaseInstance Database { get; }
     public DatabaseSecret DbSecret { get; }
     public Secret IgdbSecret { get; }
+    public Secret TurnstileSecret { get; }
     public Repository ApiRepository { get; }
     public Repository SsrRepository { get; }
     public Amazon.CDK.AWS.ECS.Cluster Cluster { get; }
@@ -120,6 +122,22 @@ public sealed class DataStack : Stack
             {
                 SecretStringTemplate = "{\"ClientId\":\"set-me\"}",
                 GenerateStringKey = "ClientSecret",
+            },
+        });
+
+        // This environment's Turnstile widget: the site key the sign-up page draws with and the secret
+        // the API asks Cloudflare with (ADR 0092). A placeholder, as IGDB's is, and both halves are set
+        // by hand from Cloudflare's dashboard. The placeholder site key is the API's own constant, which
+        // it reads as no keys at all: until the pair is set it takes no sign-ups, answers 503 to the page
+        // asking for the site key, and logs why.
+        TurnstileSecret = new Secret(this, "TurnstileSecret", new SecretProps
+        {
+            SecretName = site.TurnstileSecretName,
+            Description = "Cloudflare Turnstile's site key and secret key. Set the real SiteKey and SecretKey by hand.",
+            GenerateSecretString = new SecretStringGenerator
+            {
+                SecretStringTemplate = $"{{\"SiteKey\":\"{TurnstilePlaceholder.SiteKey}\"}}",
+                GenerateStringKey = "SecretKey",
             },
         });
 

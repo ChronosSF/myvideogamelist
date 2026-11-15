@@ -1,5 +1,5 @@
 # What CI's secret scan looks for (ADR 0061): gitleaks' own rules, four rules more for the shapes this
-# repository's secrets take and the default rules miss, and seven findings allowed, each by exactly
+# repository's secrets take and the default rules miss, and eight findings allowed, each by exactly
 # what it is rather than by a file or a rule turned off. This file is the one place a finding is
 # allowed: CI's scan ignores gitleaks:allow comments and refuses a .gitleaksignore.
 title = "MyVideoGameList"
@@ -64,6 +64,22 @@ keywords = ["password", "pwd="]
     regexTarget = "secret"
     regexes = ['''^account\.password,$''']
     paths = ['''^myvideogamelist\.client/lighthouse/audit\.lh\.ts$''']
+
+    # The password reset's tests named the throwaway password they set NEW_PASSWORD, which reads to
+    # this rule as a container's setting (#422, ADR 0090). Renamed in the next commit; allowed as those
+    # two values, in those three files, in the one commit that held them, so the same name anywhere
+    # later is scanned like any other.
+    [[rules.allowlists]]
+    description = "The reset tests' throwaway new password, in the one commit that named it NEW_PASSWORD"
+    condition = "AND"
+    regexTarget = "secret"
+    regexes = ['''^new-passw0rd$''', '''^reset-test-2$''']
+    commits = ["7813086b44d0595f7439c18f8516f6017ceba165"]
+    paths = [
+        '''^myvideogamelist\.client/e2e/password-reset\.e2e\.ts$''',
+        '''^myvideogamelist\.client/src/contexts/AuthProvider\.reset\.test\.tsx$''',
+        '''^myvideogamelist\.client/src/pages/ResetPasswordPage\.test\.tsx$''',
+    ]
 
 # A password in a URL's user information, as a database URL carries it. The default rules have none.
 # A <placeholder> is not a password; gitleaks' own allowlist already passes ${VARIABLE} and %s.

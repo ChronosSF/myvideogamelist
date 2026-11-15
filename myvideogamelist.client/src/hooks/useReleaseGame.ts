@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useLists } from '@/hooks/useLists';
+import { useListPending } from '@/hooks/useListPending';
 import { useWishlist } from '@/hooks/useWishlist';
 import type { GameDto, PlatformDto } from '@/types/game';
 import type { ListId } from '@/types/list';
@@ -103,7 +104,7 @@ export function useReleaseGame(game: ReleaseGame): ReleaseGameState {
     const account = user?.id ?? null;
     const list: ListId | null = lists.getListFor(game.gameId);
     const listsKnown = !lists.loading && lists.error === null;
-    const backlogPending = lists.isPending(game.gameId);
+    const backlogPending = useListPending(game.gameId);
     const wishlisted = wishlist.isWishlisted(game.gameId);
     const askedHere = account !== null && backlogAskedFor === account;
 

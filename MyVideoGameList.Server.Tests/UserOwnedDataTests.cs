@@ -180,6 +180,7 @@ public class UserOwnedDataTests
 
         Assert.Equal(
             [
+                nameof(ContentReport),
                 nameof(ImportJob),
                 nameof(ImportRow),
                 nameof(Review),

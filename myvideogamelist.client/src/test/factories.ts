@@ -13,11 +13,24 @@ import {
     type ImportSkippedRow,
 } from '@/types/import';
 import type { ListEntryDto } from '@/types/list';
+import type { ListsPending } from '@/contexts/ListsContext';
 import type { CommunityScores } from '@/types/community';
 import type { TagDto } from '@/types/tag';
 import type { CommunityTimes, EntryDetailDto, PlaythroughDto, PlaythroughTypeKey, ReviewDto } from '@/types/playthrough';
 import type { CalendarEvents, ConnectedRelease, ReleaseEntry, ReleaseReason } from '@/types/releases';
 import type { HistoryPage, PlaythroughDateItem, ScoreItem, StatusItem } from '@/types/history';
+
+/**
+ * The lists provider's per-game locks, for a hand-built lists context: these games have a write out, or
+ * every game the function names. Fixed, as the rest of a hand-built value is: a test that changes them
+ * hands the context a new one.
+ */
+export function listPending(locked: Iterable<number> | ((gameId: number) => boolean) = []): ListsPending {
+    const set: ReadonlySet<number> = typeof locked === 'function'
+        ? { has: locked } as unknown as ReadonlySet<number>
+        : new Set(locked);
+    return { subscribe: () => () => {}, current: () => set };
+}
 
 /**
  * Fixture builders for the two DTOs the list views are built on.
@@ -145,6 +158,7 @@ export function review(overrides: Partial<ReviewDto> = {}): ReviewDto {
         playthroughId: null,
         createdAt: '2026-01-01T00:00:00+00:00',
         updatedAt: '2026-01-01T00:00:00+00:00',
+        hiddenAt: null,
         ...overrides,
     };
 }
@@ -185,6 +199,7 @@ export function importRow(overrides: Partial<ImportReviewRow> = {}): ImportRevie
         wishlist: false,
         favourite: false,
         hasNotes: false,
+        notesCut: false,
         playthroughCount: 0,
         minutesPlayed: null,
         alreadyTracked: false,
@@ -306,9 +321,13 @@ export function calendarEvents(overrides: Partial<CalendarEvents> = {}): Calenda
     return { curated: [], showcases: [], degraded: false, ...overrides };
 }
 
-/** What `/api/games/{id}/community-scores` answers: nobody's scores and nobody tracking, unless a test says otherwise. */
+/**
+ * What `/api/games/{id}/community-scores` answers: nobody's scores and nobody tracking, unless a test
+ * says otherwise. The distribution is empty, as the API sends it under `MIN_DISTRIBUTION_SCORES`
+ * (ADR 0094), so a test that draws the columns gives both the count and the ten buckets.
+ */
 export function communityScores(overrides: Partial<CommunityScores> = {}): CommunityScores {
-    return { scored: 0, mean: null, distribution: Array<number>(10).fill(0), tracked: 0, ...overrides };
+    return { scored: 0, mean: null, distribution: [], tracked: 0, ...overrides };
 }
 
 /**

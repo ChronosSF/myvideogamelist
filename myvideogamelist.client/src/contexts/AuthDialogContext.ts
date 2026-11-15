@@ -1,7 +1,7 @@
 import { createContext } from 'react';
 
-/** The two ways in: signing in to an account, or making one. */
-export type AuthDialog = 'login' | 'signup';
+/** The ways in: signing in to an account, making one, or asking for a forgotten password's link. */
+export type AuthDialog = 'login' | 'signup' | 'forgot-password';
 
 export interface AuthDialogContextValue {
     /** Opens the dialog, over whichever one is open. */

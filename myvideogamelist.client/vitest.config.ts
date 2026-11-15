@@ -26,7 +26,8 @@ export default defineConfig({
         environment: 'jsdom',
         globals: true,
         setupFiles: ['./src/test/setup.ts'],
-        include: ['src/**/*.test.{ts,tsx}'],
+        // server/ is the SSR server's entry, outside the application (ADR 0093).
+        include: ['src/**/*.test.{ts,tsx}', 'server/**/*.test.ts'],
         restoreMocks: true,
         // West of Greenwich, and with no daylight saving to tie a test to its date. A day the API
         // sends as `YYYY-MM-DD`, read as UTC midnight, is the day before here, so a test of one fails

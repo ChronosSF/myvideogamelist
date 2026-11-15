@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using MyVideoGameList.Server.Models;
+using static MyVideoGameList.Server.Services.Import.ImportText;
 
 namespace MyVideoGameList.Server.Services.Import;
 
@@ -473,9 +474,6 @@ internal sealed class GrouveeImportSource : IImportSource
             out var at)
             ? at
             : null;
-
-    private static string? Clean(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>
     /// The account's favourite games, read defensively.

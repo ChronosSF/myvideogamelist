@@ -2,6 +2,7 @@ import { Link } from 'react-router';
 import { ContinuePlayingSkeleton } from '@/components/ContinuePlayingSkeleton';
 import { CoverImage } from '@/components/CoverImage';
 import { useLists } from '@/hooks/useLists';
+import { useListsPending } from '@/hooks/useListPending';
 import { useFavourites } from '@/hooks/useFavourites';
 import { FavouriteMark } from './FavouriteMark';
 import { sortEntries, type SortState } from '@/lib/listSort';
@@ -31,7 +32,8 @@ const RECENTLY_STARTED: SortState = { key: 'status_changed', descending: true };
  * behind a cover here would be a worse version of a page that already exists.
  */
 export function ContinuePlayingRail() {
-    const { lists, loading, error, isPending, addToList } = useLists();
+    const { lists, loading, error, addToList } = useLists();
+    const isPending = useListsPending();
     const { isFavourite } = useFavourites();
 
     const playing = sortEntries(lists.playing, RECENTLY_STARTED);

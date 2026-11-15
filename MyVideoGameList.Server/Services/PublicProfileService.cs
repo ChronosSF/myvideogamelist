@@ -49,7 +49,7 @@ public class PublicProfileService(
         var reviews = await db.Reviews
             .AsNoTracking()
             .CountAsync(
-                r => r.UserId == user.Id && r.Visibility == ReviewVisibility.Public,
+                r => r.UserId == user.Id && r.Visibility == ReviewVisibility.Public && r.HiddenAt == null,
                 cancellationToken);
 
         // Nor about favourites, which are an axis of their own rather than a figure about tracking.
@@ -119,10 +119,10 @@ public class PublicProfileService(
 
         // Scoped on the review's own UserId and on its own visibility, in the predicate rather than
         // filtered afterwards: this is the authorization boundary and it belongs where it can be
-        // read.
+        // read. A review an admin hid is published nowhere, whatever its author chose (ADR 0076).
         var published = db.Reviews
             .AsNoTracking()
-            .Where(r => r.UserId == user.Id && r.Visibility == ReviewVisibility.Public);
+            .Where(r => r.UserId == user.Id && r.Visibility == ReviewVisibility.Public && r.HiddenAt == null);
 
         var total = await published.CountAsync(cancellationToken);
 

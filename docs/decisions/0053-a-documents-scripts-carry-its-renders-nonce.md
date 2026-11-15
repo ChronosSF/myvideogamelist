@@ -1,6 +1,6 @@
 # 0053. A document's scripts carry its render's nonce, and a shared cache keeps the pair whole
 
-**Status:** Implemented
+**Status:** Implemented; the first host its `script-src` names, Cloudflare's for Turnstile, is [0092](0092-sign-up-asks-cloudflare-whether-a-person-sent-it-before-anything-else.md)
 **Amends:** [0033](0033-what-the-api-refuses.md) §5, whose document policy left out `script-src`
 
 ## Context

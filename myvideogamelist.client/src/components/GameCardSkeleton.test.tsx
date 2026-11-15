@@ -13,7 +13,10 @@ vi.mock('@/hooks/useAuth', () => {
     return { useAuth: () => value };
 });
 vi.mock('@/hooks/useLists', () => {
-    const value = { addToList: vi.fn(), removeFromList: vi.fn(), isInList: () => false, isPending: () => false, nameFor: () => '' };
+    // Spelled out rather than `listPending()`: a hoisted factory runs before any import is bound.
+    const none = new Set<number>();
+    const pending = { subscribe: () => () => {}, current: () => none };
+    const value = { addToList: vi.fn(), removeFromList: vi.fn(), getListFor: () => null, pending, nameFor: () => '' };
     return { useLists: () => value };
 });
 vi.mock('@/hooks/useWishlist', () => {

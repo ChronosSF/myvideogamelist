@@ -195,9 +195,15 @@ public class PlaythroughService(
             .GroupBy(p => p.TypeId!.Value)
             .ToDictionary(g => g.Key, g => g.Select(p => p.MinutesPlayed!.Value).ToList());
 
+        // Every member's runs count, private profiles included, so a median over one run is that
+        // member's time. Under the floor the tier says how many runs there are and no more
+        // (ADR 0094); what is cached is the floored answer, so nothing past the floor is kept.
         var buckets = types
             .Select(type => byType.TryGetValue(type.Id, out var minutes)
-                ? new CommunityTimeBucketDto(type.Key, minutes.Count, Median(minutes))
+                ? new CommunityTimeBucketDto(
+                    type.Key,
+                    minutes.Count,
+                    minutes.Count >= CommunityFloors.PlaythroughSamples ? Median(minutes) : null)
                 : new CommunityTimeBucketDto(type.Key, 0, null))
             .ToList();
 

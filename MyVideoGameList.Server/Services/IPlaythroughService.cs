@@ -44,7 +44,8 @@ public interface IPlaythroughService
     /// </summary>
     /// <remarks>
     /// Public and unscoped — this is the one read here that is about everybody rather than about
-    /// one user. Always three buckets, so the client never guards a missing tier.
+    /// one user. Always three buckets, so the client never guards a missing tier, and each one's
+    /// median only from <see cref="Models.CommunityFloors.PlaythroughSamples"/> runs (ADR 0094).
     /// </remarks>
     Task<CommunityTimesDto> GetCommunityTimesAsync(int gameId, CancellationToken cancellationToken = default);
 }

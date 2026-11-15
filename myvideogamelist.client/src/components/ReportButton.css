@@ -1,0 +1,29 @@
+/*
+ * The report control: there for whoever needs it, and quiet for everybody else. Faint, small and set in the
+ * meta role, so a page of reviews reads as reviews and not as a row of buttons.
+ */
+
+@reference "../index.css";
+
+.report-btn {
+    @apply type-meta;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    padding: 0.25rem 0;
+    background: none;
+    border: none;
+    font-size: 0.75rem;
+    color: var(--color-fg-faint);
+    cursor: pointer;
+}
+
+.report-btn:hover {
+    color: var(--color-fg-soft);
+}
+
+.report-btn:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}

@@ -10,6 +10,7 @@ import type {
     ReviewInputDto,
 } from '@/types/playthrough';
 import { useLists } from '@/hooks/useLists';
+import { useListPending } from '@/hooks/useListPending';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useTags } from '@/hooks/useTags';
@@ -60,8 +61,9 @@ interface GameEntryProviderProps {
 export function GameEntryProvider({ game, profileVisibility, onCommunityChange, children }: GameEntryProviderProps) {
     const {
         getListFor, addToList, removeFromList, setScore, setOwnership, setNotes, setTags, deleteEntry,
-        isPending, nameFor, loading: listsLoading, error: listsError,
+        nameFor, loading: listsLoading, error: listsError,
     } = useLists();
+    const listPending = useListPending(game.id);
     const wishlist = useWishlist();
     const favourites = useFavourites();
     const tags = useTags();
@@ -118,7 +120,7 @@ export function GameEntryProvider({ game, profileVisibility, onCommunityChange, 
     // Until the lists have loaded, a game in Finished reads as in none, so the list it is in is not known
     // and nothing may be decided from it (`addToList`).
     const listsKnown = !listsLoading && listsError === null;
-    const pending = isPending(game.id) || creatingTag;
+    const pending = listPending || creatingTag;
     const wishlisted = wishlist.isWishlisted(game.id);
     const favourite = favourites.isFavourite(game.id);
     const ready = entryStatus === 'ready';
@@ -253,9 +255,10 @@ export function GameEntryProvider({ game, profileVisibility, onCommunityChange, 
             return false;
         }
 
-        // Released in the same update that takes the provider's lock below, so no render falls between
-        // the two with this game unlocked. A name the game already carries — this tab's list was out of
-        // date — is nothing to write.
+        // Released in the same update that takes the provider's lock below, so no frame is painted between
+        // the two with this game unlocked: the lock reaches this component as that update's commit is laid
+        // out, before the browser draws it (`useListPending`). A name the game already carries — this tab's
+        // list was out of date — is nothing to write.
         setCreatingTag(false);
         if (tagIds.includes(created.tag.id)) return true;
         return saveTags([...tagIds, created.tag.id]);

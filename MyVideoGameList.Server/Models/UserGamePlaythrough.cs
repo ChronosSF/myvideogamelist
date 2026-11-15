@@ -56,8 +56,16 @@ public class UserGamePlaythrough
     public int? PlatformId { get; set; }
 
     /// <summary>
+    /// The most minutes a run may carry: ten thousand hours, comfortably past any honest figure and
+    /// still short of a typo that would break a sum. One number for the check constraint, the input
+    /// DTO and the import, so that none of them can accept what another refuses.
+    /// </summary>
+    public const int MaxMinutesPlayed = 600_000;
+
+    /// <summary>
     /// Minutes played, as the user reports them. Stored in minutes rather than hours because
-    /// "3h 40m" is a thing people type; every display rounds it.
+    /// "3h 40m" is a thing people type; every display rounds it. Between 1 and
+    /// <see cref="MaxMinutesPlayed"/>.
     /// </summary>
     public int? MinutesPlayed { get; set; }
 

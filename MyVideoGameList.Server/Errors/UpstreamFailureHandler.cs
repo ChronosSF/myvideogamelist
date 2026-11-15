@@ -21,6 +21,10 @@ namespace MyVideoGameList.Server.Errors;
 /// The circuit breaker makes this common rather than rare: once it opens, every request fails
 /// immediately with <see cref="BrokenCircuitException"/> without an HTTP call happening at all.
 /// </para>
+/// <para>
+/// The detail is IGDB's, since nearly every upstream call is one. A call to anything else throws
+/// <see cref="UpstreamUnavailableException"/>, which carries its own.
+/// </para>
 /// </remarks>
 public sealed class UpstreamFailureHandler(
     IProblemDetailsService problemDetails,
@@ -54,8 +58,11 @@ public sealed class UpstreamFailureHandler(
             {
                 Status = StatusCodes.Status502BadGateway,
                 Title = "A service this page depends on is unavailable",
-                Detail = "Game data comes from IGDB, which did not answer. Your own lists, "
-                    + "scores and playthroughs are unaffected."
+                // IGDB's sentence, unless the caller named another service's (ADR 0092).
+                Detail = exception is UpstreamUnavailableException named
+                    ? named.Detail
+                    : "Game data comes from IGDB, which did not answer. Your own lists, "
+                        + "scores and playthroughs are unaffected."
             }
         });
     }

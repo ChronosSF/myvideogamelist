@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
@@ -10,6 +10,8 @@ import { FavouriteMark } from '@/components/FavouriteMark';
 import { FavouriteWords } from '@/components/FavouriteWords';
 import { type ListId, LIST_IDS } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
+import { useListPending } from '@/hooks/useListPending';
+import type { ListsContextValue } from '@/contexts/ListsContext';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useAuth } from '@/hooks/useAuth';
@@ -29,13 +31,57 @@ interface GameCardProps {
 /**
  * A game in the grid the games, lists and wishlist pages share (`@/lib/gameGrid`), which is the width
  * its cover's `sizes` is worked out from.
+ *
+ * What it reads of the lists is its own game's: the list the game is in, and whether a save of it is
+ * out. It reads them here and hands them to the card, which is memoised, so that a save of some other
+ * game draws no card but that game's (`docs/decisions/0086-*`). This part is still called for every card
+ * on every change of the lists, and does nothing but look its game up; a lock taken or released calls it
+ * for its own game alone.
  */
 export function GameCard({ game, eager = false, children }: GameCardProps) {
+    const { addToList, removeFromList, getListFor, nameFor } = useLists();
+    const pending = useListPending(game.id);
+    return (
+        <GameCardView
+            game={game}
+            eager={eager}
+            inList={getListFor(game.id)}
+            pending={pending}
+            nameFor={nameFor}
+            addToList={addToList}
+            removeFromList={removeFromList}
+        >
+            {children}
+        </GameCardView>
+    );
+}
+
+interface GameCardViewProps extends GameCardProps, Pick<ListsContextValue, 'nameFor' | 'addToList' | 'removeFromList'> {
+    /** The list the game is in, or null. */
+    inList: ListId | null;
+    /** Whether a save of the game is out, which holds its list buttons. */
+    pending: boolean;
+}
+
+/**
+ * The card, drawn again when its game, its list, its lock or a list's name changes — the writes are the
+ * provider's, the same functions for as long as it is mounted — and when the wishlist, the favourites or
+ * the account do, which it reads itself.
+ */
+const GameCardView = memo(function GameCardView({
+    game,
+    eager = false,
+    children,
+    inList,
+    pending,
+    nameFor,
+    addToList,
+    removeFromList,
+}: GameCardViewProps) {
     // The day as the calendar names it: `new Date` would read it as UTC midnight, the year before for a
     // game out on 1 January anywhere west of Greenwich, and the server and the browser could disagree.
     const releaseYear = game.releaseDate ? parseReleaseDate(game.releaseDate).getFullYear() : null;
     const { user } = useAuth();
-    const { addToList, removeFromList, isInList, isPending, nameFor } = useLists();
     const wishlist = useWishlist();
     const { isFavourite } = useFavourites();
     const [overlayOpen, setOverlayOpen] = useState(false);
@@ -73,8 +119,8 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
 
     const handleListToggle = async (e: React.MouseEvent, listId: ListId) => {
         e.stopPropagation();
-        if (isPending(game.id)) return;
-        if (isInList(listId, game.id)) {
+        if (pending) return;
+        if (inList === listId) {
             await removeFromList(listId, game.id);
         } else {
             await addToList(listId, game);
@@ -173,8 +219,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                                 </svg>
                             </Link>
                             {LIST_IDS.map(listId => {
-                                const active = isInList(listId, game.id);
-                                const pending = isPending(game.id);
+                                const active = inList === listId;
                                 return (
                                     <button
                                         key={listId}
@@ -303,5 +348,4 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
             </div>
         </article>
     );
-}
-
+});

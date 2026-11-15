@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { AdminPage } from '@/pages/AdminPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { ComingSoonPick, CuratedEvent, ShowcaseName } from '@/types/calendarAdmin';
+import type { ModerationQueue } from '@/types/moderation';
 import { adminStats, userProfile } from '@/test/factories';
 
 /**
@@ -16,7 +17,11 @@ const auth: AuthContextValue = {
     user: null,
     loading: false,
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
@@ -59,6 +64,8 @@ function fakeApi(initial: {
     picksRead?: { status: number };
     refuse?: number;
     statsFail?: number;
+    /** What the moderation card reads; nothing reported and nothing hidden unless a test says otherwise. */
+    queue?: ModerationQueue;
 } = {}) {
     const events = [...(initial.events ?? [])];
     const names = [...(initial.names ?? [])];
@@ -72,6 +79,11 @@ function fakeApi(initial: {
 
         if (url === '/api/admin/stats' && method === 'GET') {
             return initial.statsFail ? new Response(null, { status: initial.statsFail }) : Response.json(adminStats());
+        }
+        if (url === '/api/admin/moderation' && method === 'GET') {
+            return Response.json(initial.queue ?? {
+                reviews: [], reviewsTotal: 0, profiles: [], profilesTotal: 0, hidden: [], hiddenTotal: 0,
+            });
         }
         if (url === '/api/admin/calendar/events' && method === 'GET') return Response.json(events);
         if (url === '/api/admin/calendar/showcase-names' && method === 'GET') return Response.json(names);

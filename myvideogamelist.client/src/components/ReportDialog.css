@@ -1,0 +1,52 @@
+/*
+ * The report dialog's own parts. Its frame, fields and the Cancel button are LoginDialog.css's, which every
+ * dialog shares.
+ */
+
+@reference "../index.css";
+
+.report-reasons {
+    display: grid;
+    gap: 0.375rem;
+    margin: 0 0 1rem;
+    padding: 0;
+    border: 0;
+}
+
+.report-reasons legend {
+    margin-bottom: 0.5rem;
+    padding: 0;
+}
+
+.report-reason {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 0.9375rem;
+    color: var(--color-fg-soft);
+    cursor: pointer;
+}
+
+.report-reason input {
+    accent-color: var(--color-primary-500);
+}
+
+.report-note {
+    resize: vertical;
+    min-height: 4.5rem;
+    font: inherit;
+}
+
+/* The one filled button the dialog has, for what it is for. */
+.report-send {
+    @apply btn-primary;
+    padding: 0.5625rem 1rem;
+    border: none;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+.report-send:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
