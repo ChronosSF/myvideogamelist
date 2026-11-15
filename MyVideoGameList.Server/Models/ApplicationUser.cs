@@ -63,10 +63,11 @@ public class ApplicationUser : IdentityUser
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Made when the account is: a new account draws one here, as Identity's own constructor draws
-    /// the account id and the security stamp, and <see cref="Services.UserNameClaimService"/> draws
-    /// again before the account is saved if this one is taken. It never changes after that, so a rename
-    /// breaks no link and hands none to whoever claims the old name next.
+    /// Made when the account is: a new account draws one the first time this is read, which saving it
+    /// does, and <see cref="Services.UserNameClaimService"/> draws again before the account is saved if
+    /// this one is taken. A row EF reads back is given its stored id through the setter, so loading an
+    /// account draws nothing. It never changes after that, so a rename breaks no link and hands none to
+    /// whoever claims the old name next.
     /// </para>
     /// <para>
     /// Public by design, and so never the account id, which is half of every confirmation and reset
@@ -74,7 +75,17 @@ public class ApplicationUser : IdentityUser
     /// a file imported into another account is that account's data under that account's id.
     /// </para>
     /// </remarks>
-    public string PublicId { get; set; } = PublicIdPolicy.New();
+    public string PublicId
+    {
+        get => drawnPublicId ??= PublicIdPolicy.New();
+        set => drawnPublicId = value;
+    }
+
+    /// <summary>
+    /// <see cref="PublicId"/>'s value, named so that EF's conventions do not take it for the backing
+    /// field: EF goes through the property, so an account saved without its id read still draws one.
+    /// </summary>
+    private string? drawnPublicId;
 
     /// <summary>
     /// Whether this account has a public page at <c>/u/{PublicId}/{UserName}</c>. One of

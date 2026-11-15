@@ -152,6 +152,16 @@ describe('/sitemaps/:file', () => {
         expect(response.status).toBe(502);
         expect(response.headers.get('Cache-Control')).toBe(PRIVATE_NO_STORE);
     });
+
+    it('is an uncached 502 rather than a file of undefined addresses from an API a release behind', async () => {
+        // Mid-deploy, the API before ADR 0096 answers with names alone.
+        stubApi({ '/api/sitemap/profiles?page=1': ['AliceInChains'] });
+
+        const response = await file('profiles-1.xml');
+
+        expect(response.status).toBe(502);
+        expect(response.headers.get('Cache-Control')).toBe(PRIVATE_NO_STORE);
+    });
 });
 
 describe('/version', () => {

@@ -186,7 +186,10 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     if (profileResult.value.status === 404) throw callOff(notFound());
     if (!profileResult.value.ok) throw callOff(badGateway());
 
-    const profile = await profileResult.value.json() as PublicProfile;
+    const profile = await (profileResult.value.json() as Promise<PublicProfile>).catch((error: unknown) => {
+        unneeded.abort();
+        throw error;
+    });
 
     // The name the profile has now, spelt as its owner spelt it, is the page's one address. Anything
     // else is sent there for good: a link from before a rename, a name typed in capitals, the bare id.

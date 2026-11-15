@@ -47,7 +47,27 @@ public class UserNameClaimService(UserManager<ApplicationUser> userManager, Time
         user.CreatedAt = now;
         user.LastSeenAt = now;
         await DrawFreePublicIdAsync(user);
-        return await TranslatingTheRace(user, () => userManager.CreateAsync(user, password));
+        try
+        {
+            return await TranslatingTheRace(user, () => userManager.CreateAsync(user, password));
+        }
+        catch (DbUpdateException)
+        {
+            // Another registration took the drawn id between the read above and this insert. The
+            // account was not written, so it is drawn again once and the write tried once more.
+            // Anything else was not this race.
+            if (!await PublicIdTakenByAnotherAsync(user)) throw;
+            user.PublicId = PublicIdPolicy.New();
+            await DrawFreePublicIdAsync(user);
+            return await TranslatingTheRace(user, () => userManager.CreateAsync(user, password));
+        }
+    }
+
+    /// <summary>Whether an account other than this one holds the id this one drew.</summary>
+    private async Task<bool> PublicIdTakenByAnotherAsync(ApplicationUser user)
+    {
+        var (id, publicId) = (user.Id, user.PublicId);
+        return await userManager.Users.AnyAsync(u => u.PublicId == publicId && u.Id != id);
     }
 
     /// <summary>
@@ -55,9 +75,8 @@ public class UserNameClaimService(UserManager<ApplicationUser> userManager, Time
     /// </summary>
     /// <remarks>
     /// A read before the write, which leaves the gap a username's availability check would: two
-    /// registrations drawing the same id between this read and their inserts. That pair has odds of
-    /// one in 30^12 and is left to the unique index, which refuses the second as a 500; a draw that
-    /// meets a live id is the case worth handling, and is handled here.
+    /// registrations drawing the same id between this read and their inserts. The unique index refuses
+    /// the second, and <see cref="RegisterAsync"/> draws again and retries once.
     /// </remarks>
     private async Task DrawFreePublicIdAsync(ApplicationUser user)
     {

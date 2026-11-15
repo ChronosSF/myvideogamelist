@@ -1,5 +1,5 @@
 import { CACHE_PROFILE, CACHE_SITEMAP } from '@/lib/cache';
-import { type ProfileAddress, profilePath } from '@/lib/profilePath';
+import { type ProfileAddress, isProfileAddress, profilePath } from '@/lib/profilePath';
 import {
     sitemapFeed,
     sitemapFileFrom,
@@ -47,7 +47,9 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     }
 
     const profiles = await sitemapFeed<ProfileAddress[]>(context, `/api/sitemap/profiles?page=${file.page}`);
-    if (profiles === null) return sitemapUnavailable();
+    // An API a release behind, mid-deploy, sends names alone: a failure, uncached, rather than a file of
+    // `/u/undefined/undefined` kept for the profile's window.
+    if (profiles === null || !profiles.every(isProfileAddress)) return sitemapUnavailable();
     if (profiles.length === 0) return sitemapNotFound();
 
     // The profile page's own window rather than the sitemap's, so that this file cannot go on

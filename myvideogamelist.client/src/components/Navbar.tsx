@@ -5,7 +5,7 @@ import { useAuthDialog } from '@/hooks/useAuthDialog';
 import { Avatar } from '@/components/Avatar';
 import { Logo } from '@/components/Logo';
 import { NavbarSearch } from '@/components/NavbarSearch';
-import { profilePath } from '@/lib/profilePath';
+import { isProfileAddress, profilePath } from '@/lib/profilePath';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import './Navbar.css';
 
@@ -276,7 +276,7 @@ export function Navbar() {
                                                         404s for everybody including its owner would be
                                                         a worse explanation of the privacy setting than
                                                         its absence is. */}
-                                                    {user.profileVisibility === 'public' && (
+                                                    {user.profileVisibility === 'public' && isProfileAddress(user) && (
                                                         <Link
                                                             to={profilePath(user)}
                                                             className="navbar-dropdown-item"

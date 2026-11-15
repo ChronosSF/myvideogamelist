@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { profilePath } from '../src/lib/profilePath';
 import { ACCOUNT, SIGNED_IN } from './sign-in';
 
 /** The pages, signed out and signed in, by the name their screenshots go under. */
@@ -71,7 +72,7 @@ test.describe('signed out', () => {
         const { publicId, userName, profileVisibility } = JSON.parse(readFileSync(ACCOUNT, 'utf8')) as { publicId: string; userName: string; profileVisibility: string };
         test.skip(profileVisibility !== 'public', 'The account\'s profile is private, so nobody else has a page to see.');
         // At its id with its name after it (ADR 0096): the address the page is drawn at, not redirected from.
-        await page.goto(`/u/${publicId}/${userName}`);
+        await page.goto(profilePath({ publicId, userName }));
         await settle(page);
         await expect(page).toHaveScreenshot('out-profile.png', { fullPage: true });
     });

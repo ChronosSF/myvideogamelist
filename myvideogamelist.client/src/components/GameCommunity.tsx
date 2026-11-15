@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef } from 'react';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import type { CommunityScores, GameReview } from '@/types/community';
 import { formatCount } from '@/lib/format';
-import { profilePath } from '@/lib/profilePath';
+import { isPublicId, profilePath } from '@/lib/profilePath';
 import { formatDate } from '@/lib/stats';
 import {
     hasMemberDistribution,
@@ -299,9 +299,10 @@ function MemberReviews({ gameId, community, viewer, reviews, total }: MemberRevi
                 {reviews.map(review => (
                     // The author's public id, which never changes or changes hands, and the moment it was
                     // written: a key two reviews shared would hand one card's state — a spoiler already
-                    // revealed — to the other.
+                    // revealed — to the other. The handle stands in where an API a release behind sends
+                    // no id, mid-deploy.
                     <GameReviewCard
-                        key={`${review.publicId}@${review.createdAt}`}
+                        key={`${isPublicId(review.publicId ?? '') ? review.publicId : review.userName}@${review.createdAt}`}
                         gameId={gameId}
                         review={review}
                         isViewer={!!viewer && review.publicId === viewer}

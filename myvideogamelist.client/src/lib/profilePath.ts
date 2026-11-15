@@ -1,4 +1,4 @@
-import { pageSearch } from '@/lib/paging';
+import { pageSearch } from './paging';
 
 /**
  * A profile's address: `/u/{publicId}/{userName}`, where only the id is looked up (ADR 0096).
@@ -26,6 +26,16 @@ export function isPublicId(value: string): boolean {
 export interface ProfileAddress {
     publicId: string;
     userName: string;
+}
+
+/**
+ * Whether a value carries both halves of an address. Not so from an API a release behind, mid-deploy,
+ * which sends names alone: an address built from that would be `/u/undefined/…`.
+ */
+export function isProfileAddress(value: unknown): value is ProfileAddress {
+    if (typeof value !== 'object' || value === null) return false;
+    const { publicId, userName } = value as Partial<Record<keyof ProfileAddress, unknown>>;
+    return typeof publicId === 'string' && isPublicId(publicId) && typeof userName === 'string';
 }
 
 /**
