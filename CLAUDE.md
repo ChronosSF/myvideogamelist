@@ -429,7 +429,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   profile, which keeps the defaults because a rename is its owner's alone. `LIST_NAMES` is the
   defaults. A rename writes `UserListSettings` and nothing else, the five effective names must differ
   without case, and the names form edits only when `namesStatus` is `ready`: a failed read looks like
-  "nothing renamed", and saving from it would reset every list. See `docs/decisions/0031-*`.
+  "nothing renamed", and saving from it would reset every list. The lists page keeps its open list in
+  its address by the list's id, `/lists?list=finished` (`@/lib/listsAddress`), never by that name, so
+  a rename breaks no saved link. See `docs/decisions/0031-*`.
 
 - **A tag is on the list row by id, and its name is `/api/tags`'s.** Every reader resolves
   `ListEntryDto.TagIds` through `useTags`, so a rename changes nothing on the lists and an id it does not
