@@ -45,7 +45,7 @@ public class ProfileDetailsFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         Assert.Equal((saved.DisplayName, saved.AvatarUrl, saved.Bio), (me.DisplayName, me.AvatarUrl, me.Bio));
 
         using var stranger = api.CreateBrowser();
-        var page = await stranger.GetJsonAsync<PublicProfileDto>($"/api/users/{account.UserName}");
+        var page = await stranger.GetJsonAsync<PublicProfileDto>($"/api/users/{account.PublicId}");
         Assert.Equal((saved.DisplayName, saved.AvatarUrl, saved.Bio), (page.DisplayName, page.AvatarUrl, page.Bio));
 
         var export = await browser.GetJsonAsync<UserDataExportDto>("/api/user/export");
@@ -84,9 +84,9 @@ public class ProfileDetailsFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         await (await browser.SendAsync(HttpMethod.Put, "/api/user/profile", Typed)).ExpectAsync(HttpStatusCode.OK);
 
         using var stranger = api.CreateBrowser();
-        var page = await stranger.GetAsync($"/api/users/{account.UserName}");
+        var page = await stranger.GetAsync($"/api/users/{account.PublicId}");
 
-        // The same 404 as a name nobody has claimed (ADR 0027 §7), with nothing of the three in it.
+        // The same 404 as an id nobody holds (ADR 0027 §7, 0096), with nothing of the three in it.
         await page.ExpectAsync(HttpStatusCode.NotFound);
         var body = await page.Content.ReadAsStringAsync();
         Assert.DoesNotContain("Alex Smith", body);
@@ -114,6 +114,6 @@ public class ProfileDetailsFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 
         var invalidation = Assert.Single(api.Edge.SentSince(beforeRewrite));
         Assert.Equal("profile details changed", invalidation.Reason);
-        Assert.Equal([$"/u/{account.UserName}*"], invalidation.Paths);
+        Assert.Equal([$"/u/{account.PublicId}*"], invalidation.Paths);
     }
 }

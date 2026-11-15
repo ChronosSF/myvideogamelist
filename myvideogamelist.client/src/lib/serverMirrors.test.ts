@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { AVATAR_HOSTS, AVATAR_SERVICES } from '@/lib/avatar';
+import { PUBLIC_ID_ALPHABET, PUBLIC_ID_LENGTH } from '@/lib/profilePath';
 import { MIN_DISTRIBUTION_SCORES, MIN_MEMBER_SCORES, MIN_PLAYTHROUGH_SAMPLES } from '@/lib/score';
 import { IGDB_IMAGE_HOST } from '@/lib/securityHeaders';
 import { SIGNED_IN_FLAG } from '@/lib/signedInFlag';
@@ -127,6 +128,15 @@ describe('what the client restates from the server', () => {
         expect(source).toContain(`public const string DefaultPalette = "${DEFAULT_LOOK.palette}";`);
         expect(source).toContain(`public const string DefaultPattern = "${DEFAULT_LOOK.pattern}";`);
         expect(source).toContain(`public const string DefaultTint = "${DEFAULT_LOOK.tint}";`);
+    });
+
+    it('knows a public id by the shape the server makes it in', () => {
+        // A shape the client refuses and the server makes is a profile the page answers with a 404 before
+        // asking; one the client lets through and the server could never make costs only a request.
+        const source = serverSource('Models/PublicIdPolicy.cs');
+
+        expect(PUBLIC_ID_LENGTH).toBe(intConstant(source, 'Length'));
+        expect(source).toContain(`public const string Alphabet = "${PUBLIC_ID_ALPHABET}";`);
     });
 
     it('reads the signed-in flag by the name the server sets it under', () => {

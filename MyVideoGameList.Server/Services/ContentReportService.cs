@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -13,7 +12,8 @@ namespace MyVideoGameList.Server.Services;
 /// <para>
 /// <b>Only what a reader can see can be reported</b>, decided by the same predicates the public reads use:
 /// a public profile, and on it a review marked public and not hidden. Anything else is the same "no",
-/// so the endpoint cannot be used to ask whether a name has an account (ADR 0027 §7).
+/// so the endpoint cannot be used to ask whether an id has an account (ADR 0027 §7). The profile is named
+/// by its public id, as every public read names it, never by a handle (ADR 0096).
 /// </para>
 /// <para>
 /// <b>One report per reader per thing.</b> Reporting it again replaces the reason and the note, and keeps
@@ -24,19 +24,17 @@ namespace MyVideoGameList.Server.Services;
 /// </remarks>
 public class ContentReportService(
     ApplicationDbContext db,
-    ILookupNormalizer normalizer,
     TimeProvider clock) : IContentReportService
 {
     public async Task<bool> ReportAsync(
         string reporterId, ReportInputDto input, CancellationToken cancellationToken = default)
     {
-        var normalized = normalizer.NormalizeName(input.UserName.Trim());
-        if (string.IsNullOrEmpty(normalized)) return false;
+        if (!PublicIdPolicy.IsWellFormed(input.PublicId)) return false;
 
         // The profile gate in the predicate, as PublicProfileService draws it.
         var subjectId = await db.Users
             .AsNoTracking()
-            .Where(u => u.NormalizedUserName == normalized && u.ProfileVisibility == ProfileVisibility.Public)
+            .Where(u => u.PublicId == input.PublicId && u.ProfileVisibility == ProfileVisibility.Public)
             .Select(u => u.Id)
             .FirstOrDefaultAsync(cancellationToken);
 

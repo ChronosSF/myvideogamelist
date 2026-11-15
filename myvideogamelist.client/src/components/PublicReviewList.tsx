@@ -8,6 +8,8 @@ import { ReviewCard } from '@/components/ReviewCard';
 import type { PublicReview, PublicReviews } from '@/types/profile';
 
 interface PublicReviewListProps {
+    /** The profile's public id, which a report of one of these names it by (ADR 0096). */
+    publicId: string;
     userName: string;
     /** Null when the request for them failed — distinct from a user who has written none. */
     reviews: PublicReviews | null;
@@ -29,7 +31,7 @@ interface PublicReviewListProps {
  * its owner has published — the server applies both gates, and this component never sees a row
  * that failed either.
  */
-export function PublicReviewList({ userName, reviews, total }: PublicReviewListProps) {
+export function PublicReviewList({ publicId, userName, reviews, total }: PublicReviewListProps) {
     // What would put something here, said to whoever is reading — usually not the person whose
     // profile it is, so it says what fills the section and never tells the reader to do anything.
     if (total === 0) {
@@ -83,7 +85,7 @@ export function PublicReviewList({ userName, reviews, total }: PublicReviewListP
 
             <ol className="review-list">
                 {reviews.reviews.map(review => (
-                    <PublicReviewCard key={review.game.id} userName={userName} review={review} />
+                    <PublicReviewCard key={review.game.id} publicId={publicId} userName={userName} review={review} />
                 ))}
             </ol>
 
@@ -116,7 +118,7 @@ export function PublicReviewList({ userName, reviews, total }: PublicReviewListP
 }
 
 /** One review, headed by the game it is about. */
-function PublicReviewCard({ userName, review }: { userName: string; review: PublicReview }) {
+function PublicReviewCard({ publicId, userName, review }: { publicId: string; userName: string; review: PublicReview }) {
     return (
         <ReviewCard
             head={
@@ -159,7 +161,7 @@ function PublicReviewCard({ userName, review }: { userName: string; review: Publ
             revealLabel={`Show review of ${review.game.title} — the author marked it as containing spoilers`}
             actions={
                 <ReportButton
-                    target={{ userName, gameId: review.game.id }}
+                    target={{ publicId, gameId: review.game.id }}
                     subject={`${userName}'s review of ${review.game.title}`}
                     label={`Report the review of ${review.game.title}`}
                 />

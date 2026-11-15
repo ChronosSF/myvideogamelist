@@ -257,6 +257,16 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasMaxLength(16)
             .HasDefaultValue(Models.ProfileVisibility.Private);
 
+        // The profile's address (ADR 0096). Unique, because it is the one thing a profile is looked up
+        // by. The application always sends one, drawn by PublicIdPolicy; the database's default draws
+        // its own for a row inserted without, one per row: the revision still serving while a release
+        // migrates registers accounts with no such column, and so would a fixture or a support script.
+        // The function is the migration's, since a default may not hold a subquery.
+        users.Property(u => u.PublicId)
+            .HasMaxLength(PublicIdPolicy.Length)
+            .HasDefaultValueSql(PublicIdPolicy.DatabaseDefaultSql);
+        users.HasIndex(u => u.PublicId).IsUnique();
+
         // Bounded to what each policy allows. The policies count UTF-16 code units and PostgreSQL
         // counts characters, so a value the API accepts always fits.
         users.Property(u => u.DisplayName).HasMaxLength(DisplayNamePolicy.MaxLength);
@@ -286,6 +296,11 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             t.HasCheckConstraint(
                 "CK_AspNetUsers_ProfileVisibility",
                 "\"ProfileVisibility\" IN ('public', 'private')");
+
+            // Every id the length and alphabet PublicIdPolicy says. The invalidation path for a profile
+            // is its id followed by a `*`, so an id of another length could be the prefix of somebody
+            // else's (ADR 0096).
+            t.HasCheckConstraint("CK_AspNetUsers_PublicId", PublicIdPolicy.CheckConstraintSql);
 
             // ILIKE because the address is stored as given, and `HTTPS://` is a spelling of it.
             t.HasCheckConstraint(

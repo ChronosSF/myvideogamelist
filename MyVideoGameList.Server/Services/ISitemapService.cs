@@ -18,6 +18,6 @@ public interface ISitemapService
     Task<IReadOnlyList<int>> GetGameIdsAsync(int page, CancellationToken cancellationToken = default);
 
     /// <param name="page">1-based. A page past the end is an empty list, not an error.</param>
-    Task<IReadOnlyList<string>> GetProfileNamesAsync(
+    Task<IReadOnlyList<SitemapProfileDto>> GetProfilesAsync(
         int page, CancellationToken cancellationToken = default);
 }

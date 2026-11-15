@@ -30,7 +30,7 @@ export default async function signIn(config: FullConfig) {
 
     const me = await api.get('/api/auth/me');
     if (!me.ok()) throw new Error(`Reading the signed-in account answered ${me.status()}.`);
-    const { userName, profileVisibility } = await me.json();
-    writeFileSync(ACCOUNT, JSON.stringify({ userName, profileVisibility }));
+    const { publicId, userName, profileVisibility } = await me.json();
+    writeFileSync(ACCOUNT, JSON.stringify({ publicId, userName, profileVisibility }));
     await api.dispose();
 }

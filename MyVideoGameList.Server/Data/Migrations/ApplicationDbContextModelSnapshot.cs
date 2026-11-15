@@ -240,6 +240,13 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .HasColumnType("character varying(16)")
                         .HasDefaultValue("private");
 
+                    b.Property<string>("PublicId")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasDefaultValueSql("new_public_id()");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 
@@ -280,6 +287,9 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
 
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
                     b.ToTable("AspNetUsers", null, t =>
                         {
                             t.HasCheckConstraint("CK_AspNetUsers_AvatarUrl_Https", "\"AvatarUrl\" IS NULL OR \"AvatarUrl\" ILIKE 'https://%'");
@@ -289,6 +299,8 @@ namespace MyVideoGameList.Server.Data.Migrations
                             t.HasCheckConstraint("CK_AspNetUsers_PatternTint", "\"PatternTint\" IN ('accent', 'grey')");
 
                             t.HasCheckConstraint("CK_AspNetUsers_ProfileVisibility", "\"ProfileVisibility\" IN ('public', 'private')");
+
+                            t.HasCheckConstraint("CK_AspNetUsers_PublicId", "\"PublicId\" ~ '^[0123456789bcdfghjkmnpqrstvwxyz]{12}$'");
 
                             t.HasCheckConstraint("CK_AspNetUsers_Theme", "\"Theme\" IN ('ink', 'slate', 'dusk', 'plum', 'graphite', 'onyx', 'custom')");
 

@@ -80,7 +80,7 @@ MyVideoGameList.Server.IntegrationTests/  The API over PostgreSQL in a container
 myvideogamelist.client/
   src/root.tsx                  HTML document, providers, global ErrorBoundary
   src/entry.server.tsx          Owned, not generated. Where every document response gets its headers
-  src/routes.ts                 Route table. `/u/:userName` is the one public per-person page
+  src/routes.ts                 Route table. `/u/:publicId/:userName?` is the one public per-person page
   src/pages/                    Route modules (default export + optional loader/meta)
   src/resources/                Resource routes: robots.txt, the sitemaps and /version. A loader, no component
   src/lib/                      apiUrl(), useHydrated(), pageMeta(); loaderFetch() in trace.server.ts
@@ -306,7 +306,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   wraps both writes and turns that into the same `DuplicateUserName`, so go through it; never call
   `CreateAsync` or `SetUserNameAsync` for a username directly. After a real rename, refresh the
   sign-in: `SetUserNameAsync` rotates the security stamp, and the validator signs the user out within
-  thirty minutes otherwise. See `docs/decisions/0027-*`.
+  thirty minutes otherwise. **A name is never an address**: a profile is `/u/{publicId}/{userName}`,
+  only the id is looked up (`PublicIdPolicy`), any other name is a 301 to the current one, and the id
+  is never Identity's account id. Build an address with `profilePath`, and never look a profile up by
+  name. See `docs/decisions/0027-*` and `0096-*`.
 
 - **A profile is private by default, and the public document is hand-assembled.**
   `ProfileVisibility` defaults to `private` for new accounts as well as backfilled ones, on ADR
@@ -314,8 +317,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   review on a private profile is visible to nobody. `PublicProfileService` reuses `StatsService`
   rather than re-deriving anything, but copies fields into `PublicProfileDto` **one at a time** —
   returning `UserStatsDto` would publish every figure ever added to the private profile, by nobody's
-  decision. A private profile and an unclaimed name are the same 404, so the endpoint cannot be used
-  to ask whether a name has an account.
+  decision. A private profile, an id nobody holds and a segment that cannot be an id are the same
+  404, before any redirect, so the endpoint cannot be used to ask whether an id has an account.
 
 - **A page loads images only from the hosts its policy names, and an avatar's host is in two
   lists.** The document policy's `img-src` is `IMAGE_SOURCES` in `@/lib/securityHeaders`: this
@@ -780,11 +783,12 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   and the API sends `X-Robots-Tag: noindex` so that `/api/` can stay crawlable — a crawler rendering
   a game page has to be able to fetch the member reviews the page fetches. An indexable route
   returns `pageMeta(...)` from `@/lib/seo` with a `path` **built from loader data, never from the
-  request** (`/u/ALICE` renders, and has to say it is `/u/alice`), and carries `site` in its loader
+  request** (`/games/0012` renders, and has to say it is `/games/12`), and carries `site` in its loader
   data because `meta` runs in the browser too. The sitemap reads `CachedGames` and public,
   non-empty profiles and makes no IGDB call; the empty-profile test lives in both
   `SitemapService.ListedProfiles` and `ProfilePage`'s `meta`, and they must agree. Resource routes
-  bypass `entry.server.tsx`, so they go out through `resourceResponse`. See
+  bypass `entry.server.tsx`, so they go out through `resourceResponse`, and so does a loader's
+  redirect, through `redirectResponse`, with a `Cache-Control` of its own. See
   `docs/decisions/0036-*`. Structured data is a `script:ld+json` descriptor returned from `meta`,
   which `<Meta>` escapes — never a script tag of our own — says only what the page shows, and rates
   a game by its members' score alone, at `MIN_MEMBER_SCORES`; see `docs/decisions/0069-*`.

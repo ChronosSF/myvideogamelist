@@ -7,15 +7,21 @@ using MyVideoGameList.Server.Services;
 namespace MyVideoGameList.Server.Controllers;
 
 /// <summary>
-/// Other people's profiles, addressed by username.
+/// Other people's profiles, addressed by their public id.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Plural, and separate from <see cref="UserController"/>, which is singular and means "the signed
 /// in user". The two are not two views of one resource: everything on <c>UserController</c> is
 /// scoped by the claims principal and is nobody else's business, and everything here is public by
-/// its owner's decision and is addressed by a name in the URL. Folding them together is how a route
+/// its owner's decision and is addressed by an id in the URL. Folding them together is how a route
 /// value ends up being trusted to scope a query.
+/// </para>
+/// <para>
+/// <b>The id, and never the name.</b> A name can be given up and claimed by somebody else, so an
+/// address built on one can come to mean another person (ADR 0096). The id never changes and is
+/// never another account's; the page puts the name after it for people to read, and redirects any
+/// other name to the current one. Nothing here reads a name.
 /// </para>
 /// <para>
 /// Anonymous on purpose, and stated rather than left implicit: these are the pages ROADMAP D8 calls
@@ -37,28 +43,28 @@ public class UsersController(IPublicProfileService profiles) : ControllerBase
     /// Makes no IGDB call, so it answers while a third party is down — the reviews below are the
     /// half that cannot.
     /// </remarks>
-    [HttpGet("{userName}")]
+    [HttpGet("{publicId}")]
     public async Task<ActionResult<PublicProfileDto>> GetProfile(
-        string userName, CancellationToken cancellationToken)
+        string publicId, CancellationToken cancellationToken)
     {
-        var profile = await profiles.GetProfileAsync(userName, cancellationToken);
+        var profile = await profiles.GetProfileAsync(publicId, cancellationToken);
 
-        // Null covers both "no such username" and "that profile is private", and this must not
-        // tell them apart. See PublicProfileService.FindPublicAsync.
+        // Null covers both "no such id" and "that profile is private", and this must not tell them
+        // apart. See PublicProfileService.FindPublicAsync.
         return profile is null ? NotFound() : Ok(profile);
     }
 
     /// <summary>
     /// A page of the reviews that user has marked public.
     /// </summary>
-    [HttpGet("{userName}/reviews")]
+    [HttpGet("{publicId}/reviews")]
     public async Task<ActionResult<PublicReviewsDto>> GetReviews(
-        string userName,
+        string publicId,
         CancellationToken cancellationToken,
         // Defaulted rather than required: /reviews with no query string is the first page.
         [FromQuery][Range(1, int.MaxValue)] int page = 1)
     {
-        var reviews = await profiles.GetReviewsAsync(userName, page, cancellationToken);
+        var reviews = await profiles.GetReviewsAsync(publicId, page, cancellationToken);
         return reviews is null ? NotFound() : Ok(reviews);
     }
 
@@ -71,11 +77,11 @@ public class UsersController(IPublicProfileService profiles) : ControllerBase
     /// pass. The count on the profile document is what decides whether the section appears at all,
     /// which is why it is there and not only here: this is the half that fails when IGDB does.
     /// </remarks>
-    [HttpGet("{userName}/favourites")]
+    [HttpGet("{publicId}/favourites")]
     public async Task<ActionResult<PublicFavouritesDto>> GetFavourites(
-        string userName, CancellationToken cancellationToken)
+        string publicId, CancellationToken cancellationToken)
     {
-        var favourites = await profiles.GetFavouritesAsync(userName, cancellationToken);
+        var favourites = await profiles.GetFavouritesAsync(publicId, cancellationToken);
         return favourites is null ? NotFound() : Ok(favourites);
     }
 }

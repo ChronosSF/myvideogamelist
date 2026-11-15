@@ -85,8 +85,9 @@ public record AuthMessageDto(string Message);
 /// </summary>
 /// <remarks>
 /// <para>
-/// <paramref name="UserName"/> is what the navbar renders and what <c>/u/{userName}</c> is built
-/// from; the email is still here because the account settings page shows it, but nothing public
+/// <paramref name="UserName"/> is what the navbar renders, and with <paramref name="PublicId"/> what
+/// the address of the account's own profile, <c>/u/{publicId}/{userName}</c>, is built from (ADR
+/// 0096); the email is still here because the account settings page shows it, but nothing public
 /// does. <paramref name="ProfileVisibility"/> travels with them so the client can tell whether
 /// there is a public page to link to at all, without a second request on every page load.
 /// </para>
@@ -105,6 +106,7 @@ public record AuthMessageDto(string Message);
 public record UserProfileDto(
     string Id,
     string Email,
+    string PublicId,
     string UserName,
     string? DisplayName,
     string? AvatarUrl,
@@ -123,6 +125,7 @@ public record UserProfileDto(
         new(
             user.Id,
             user.Email!,
+            user.PublicId,
             user.UserName!,
             user.DisplayName,
             user.AvatarUrl,

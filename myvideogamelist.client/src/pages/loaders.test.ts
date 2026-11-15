@@ -137,10 +137,10 @@ describe('the browse page loader', () => {
 });
 
 describe('the profile page loader', () => {
-    const args = () => argsFor('/u/bob', { userName: 'bob' });
+    const args = () => argsFor('/u/7tn3vjh8p0sd/bob', { publicId: '7tn3vjh8p0sd', userName: 'bob' });
 
-    it('is a 404 for a profile the API does not show, private or unclaimed alike', async () => {
-        stubApi((path) => path === '/api/users/bob' ? new Response('', { status: 404 }) : Response.json({}));
+    it('is a 404 for a profile the API does not show, private or held by nobody alike', async () => {
+        stubApi((path) => path === '/api/users/7tn3vjh8p0sd' ? new Response('', { status: 404 }) : Response.json({}));
 
         const response = await thrownBy(profileLoader(args() as never));
 
