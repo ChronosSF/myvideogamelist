@@ -70,6 +70,12 @@ vi.mock('@/components/TagsCard', () => ({
     TagsCard: () => <div>tags</div>,
 }));
 
+/** Start over reloads the lists, wishlist, favourites and tags, whose providers this page does not mount. */
+const { startOver } = vi.hoisted(() => ({
+    startOver: vi.fn(async () => ({ games: 0, wishlist: 0, favourites: 0, events: 0, importRowsReselected: 0 })),
+}));
+vi.mock('@/hooks/useStartOver', () => ({ useStartOver: () => startOver }));
+
 /**
  * Answers nothing, because the page makes no request of its own — everything it shows either comes
  * from auth or belongs to a child mocked above — so a stray fetch fails loudly.

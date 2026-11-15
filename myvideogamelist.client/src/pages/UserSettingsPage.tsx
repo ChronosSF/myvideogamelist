@@ -6,6 +6,7 @@ import { ListNamesCard } from '@/components/ListNamesCard';
 import { LookCard } from '@/components/LookCard';
 import { ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { TagsCard } from '@/components/TagsCard';
+import { useStartOver } from '@/hooks/useStartOver';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 import { useUserPage } from '@/lib/userPage';
@@ -52,6 +53,7 @@ function SettingsSection({ id, children }: { id: SectionId; children: ReactNode 
  */
 export default function UserSettingsPage() {
     const { user, signOut, signingOut, signOutError, deleteAccount } = useUserPage();
+    const startOver = useStartOver();
 
     return (
         <div className="user-settings">
@@ -130,7 +132,7 @@ export default function UserSettingsPage() {
                             <Link to="/import" className="user-btn user-card-action">Start an import</Link>
                         </div>
 
-                        <AccountDataCard userName={user.userName} onDeleteAccount={deleteAccount} />
+                        <AccountDataCard userName={user.userName} onDeleteAccount={deleteAccount} onStartOver={startOver} />
                     </div>
                 </SettingsSection>
             </div>
