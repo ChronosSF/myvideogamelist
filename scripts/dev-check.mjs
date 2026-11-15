@@ -125,10 +125,11 @@ async function theFirewall() {
         rate ? `${rate.Limit} requests in ${rate.EvaluationWindowSec} s, answering ${answer}` : `${acl?.Rules?.length ?? 0} rules`);
 
     const logging = aws(['wafv2', 'get-logging-configuration', '--resource-arn', arn, '--region', EDGE_REGION])?.LoggingConfiguration;
-    const redacted = (logging?.RedactedFields ?? []).map((f) => f.SingleHeader?.Name?.toLowerCase());
+    const redacted = (logging?.RedactedFields ?? [])
+        .map((f) => (f.QueryString !== undefined ? 'query string' : f.SingleHeader?.Name?.toLowerCase()));
     report((logging?.LogDestinationConfigs ?? []).some((d) => d.endsWith(`:log-group:${WEB_ACL_LOG_GROUP}`))
-        && redacted.includes('authorization') && redacted.includes('cookie'),
-        `the web ACL logs what it refuses to ${WEB_ACL_LOG_GROUP}, with Authorization and Cookie redacted`,
+        && ['authorization', 'cookie', 'referer', 'query string'].every((field) => redacted.includes(field)),
+        `the web ACL logs what it refuses to ${WEB_ACL_LOG_GROUP}, with credentials, Referer and the query string redacted`,
         logging ? `${logging.LogDestinationConfigs.join(', ')}; redacted: ${redacted.join(', ') || 'nothing'}` : 'no logging configuration');
 
     return rate ? { limit: rate.Limit, window: rate.EvaluationWindowSec } : null;

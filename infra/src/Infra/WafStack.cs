@@ -27,22 +27,24 @@ public sealed class WafStack : Stack
     /// </summary>
     /// <remarks>
     /// Counted from a local run on 2026-11-15 (ADR 0098 §1). What the rule counts is every request but
-    /// <c>/assets/</c>: a document, a <c>.data</c>, an <c>/api/</c> call, the route manifest, the icon.
+    /// <see cref="UncountedPrefix"/> and <see cref="UncountedPath"/>: a document, a <c>.data</c>, an
+    /// <c>/api/</c> call, the icon.
     /// <list type="bullet">
-    /// <item>A page loaded afresh, signed in: about 14 - the document, nine or ten API calls, the
-    /// manifest, the icon. Signed out: about 4.</item>
-    /// <item>A move to a game page inside the site: about 7 - its <c>.data</c>, five API calls, the
-    /// manifest.</item>
-    /// <item>Brisk browsing, a game page every ten seconds: 30 pages x 7 = 210 in five minutes.</item>
-    /// <item>Twenty search results opened in tabs at once: 20 x 14 = 280.</item>
+    /// <item>A game page loaded afresh, signed in: about 13 - the document, eleven API calls, the icon.
+    /// The home page: about 11. Any page signed out: about 3.</item>
+    /// <item>A move to a game page inside the site: about 6 - its <c>.data</c> and five API calls.</item>
+    /// <item>Brisk browsing, a game page every ten seconds: 30 pages x 6 = 180 in five minutes.</item>
+    /// <item>Twenty search results opened in tabs at once: 20 x 13 = 260.</item>
     /// <item>Two people behind one address at an ordinary pace, a page every twenty to thirty seconds:
-    /// about 200 to 250 between them.</item>
+    /// about 180 to 240 between them.</item>
     /// </list>
-    /// And the other side: IGDB allows four calls a second, 1,200 in five minutes, for the whole site,
-    /// and a request the edge has not cached costs at most two (a game and its related games; browse and
-    /// search cost one). 300 requests can spend at most 600 of them, half, and anybody else always has
-    /// the other half. An office or a school behind one address does not fit; that is production's
-    /// question, and #447's load check measures where the budget really runs out and tunes this.
+    /// And the other side: IGDB allows four calls a second, 1,200 in five minutes, for the whole site.
+    /// A game page the API has not seen lately costs three (the game, its completion times, its related
+    /// games), a browse or a search page one, and anything the edge or the API has kept none. So 300
+    /// requests can spend at most 900, and only by asking for nothing but games nobody has looked at:
+    /// one call in four is always somebody else's. An office or a school behind one address does not
+    /// fit; that is production's question, and #447's load check measures where the budget really runs
+    /// out and tunes this.
     /// </remarks>
     public const int RequestsPerFiveMinutes = 300;
 
@@ -54,6 +56,15 @@ public sealed class WafStack : Stack
 
     /// <summary>The path prefix the rule does not count: the hashed bundles, dozens to a page load.</summary>
     public const string UncountedPrefix = "/assets/";
+
+    /// <summary>
+    /// React Router's route manifest, which the rule does not count either. It costs IGDB nothing, and a
+    /// refusal of it would be a plain error rather than a 429 the page can tell apart: route discovery
+    /// throws <c>Error("429 ")</c> where a <c>.data</c> request throws a route error with the status, so
+    /// the page would say something failed on our side (ADR 0098 §1). Left alone, a refused reader's
+    /// next move fails on its <c>.data</c>, which says what happened.
+    /// </summary>
+    public const string UncountedPath = "/__manifest";
 
     private const string ResponseBodyKey = "rate-limited";
 
@@ -131,20 +142,19 @@ public sealed class WafStack : Stack
                             // does not say so in as many words; the next resume's burst shows it
                             // (ADR 0098 §5).
                             AggregateKeyType = "IP",
+                            // Every request but the bundles and the route manifest.
                             ScopeDownStatement = new CfnWebACL.StatementProperty
                             {
                                 NotStatement = new CfnWebACL.NotStatementProperty
                                 {
                                     Statement = new CfnWebACL.StatementProperty
                                     {
-                                        ByteMatchStatement = new CfnWebACL.ByteMatchStatementProperty
+                                        OrStatement = new CfnWebACL.OrStatementProperty
                                         {
-                                            FieldToMatch = new CfnWebACL.FieldToMatchProperty { UriPath = new Dictionary<string, object>() },
-                                            PositionalConstraint = "STARTS_WITH",
-                                            SearchString = UncountedPrefix,
-                                            TextTransformations = new object[]
+                                            Statements = new object[]
                                             {
-                                                new CfnWebACL.TextTransformationProperty { Priority = 0, Type = "NONE" },
+                                                PathIs("STARTS_WITH", UncountedPrefix),
+                                                PathIs("EXACTLY", UncountedPath),
                                             },
                                         },
                                     },
@@ -183,11 +193,15 @@ public sealed class WafStack : Stack
                 }),
             ],
             // A refused request's credentials are never written: the basic-auth pair, while the door is
-            // on, and the session cookie.
+            // on, and the session cookie. Nor its query string, or the Referer that repeats a page's:
+            // a search can be an email address, which is why no log line of ours carries either
+            // (CLAUDE.md). The path, the address and the rule are what a refusal is read by.
             RedactedFields = new object[]
             {
                 new CfnLoggingConfiguration.FieldToMatchProperty { SingleHeader = new Dictionary<string, object> { ["Name"] = "authorization" } },
                 new CfnLoggingConfiguration.FieldToMatchProperty { SingleHeader = new Dictionary<string, object> { ["Name"] = "cookie" } },
+                new CfnLoggingConfiguration.FieldToMatchProperty { SingleHeader = new Dictionary<string, object> { ["Name"] = "referer" } },
+                new CfnLoggingConfiguration.FieldToMatchProperty { QueryString = new Dictionary<string, object>() },
             },
             // Only what a rule blocked or counted: an allowed request is the site working, and logging
             // every one would cost more than the ACL does.
@@ -217,6 +231,18 @@ public sealed class WafStack : Stack
         // distribution's WebACLId. The reference App reads is an output CDK adds beside it.
         _ = new CfnOutput(this, "WebAclArn", new CfnOutputProps { Value = acl.AttrArn });
     }
+
+    /// <summary>A request whose path, as sent, matches <paramref name="value"/> in the way <paramref name="how"/> says.</summary>
+    private static CfnWebACL.StatementProperty PathIs(string how, string value) => new()
+    {
+        ByteMatchStatement = new CfnWebACL.ByteMatchStatementProperty
+        {
+            FieldToMatch = new CfnWebACL.FieldToMatchProperty { UriPath = new Dictionary<string, object>() },
+            PositionalConstraint = how,
+            SearchString = value,
+            TextTransformations = new object[] { new CfnWebACL.TextTransformationProperty { Priority = 0, Type = "NONE" } },
+        },
+    };
 
     /// <summary>Metrics and sampled requests, named after the rule or the ACL.</summary>
     private static CfnWebACL.VisibilityConfigProperty Visibility(string metricName) => new()

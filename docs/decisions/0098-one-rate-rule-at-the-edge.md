@@ -16,23 +16,25 @@ takes the WAF off the deferred lists of [0044](0044-what-the-deployment-walkthro
 - **What volume spends is IGDB's budget.** The API calls IGDB at four a second, for the whole site, with a
   queue sixty-four deep behind that; past the queue, everybody's browse and search is a 503
   ([0034](0034-failing-in-one-shape.md)). A request the edge has not cached costs one IGDB call (a browse or
-  a search page) or two (a game page: the game and its related games), each kept in the API's memory
-  afterwards. One address sending distinct pages can spend the budget alone.
+  a search page) or three (a game page the API has not seen lately: the game, its completion times and its
+  related games), each kept in the API's memory afterwards. One address sending distinct pages can spend the
+  budget alone.
 - **Basic auth has been the limit so far, and it is coming off** for testers recruited by link
   ([#465](https://github.com/ChronosSF/myvideogamelist/issues/465)).
 - **The distribution lives in the `App` stack, which a park destroys** (0046 §2), and a park must leave
   nothing billing but the idle floor (0044).
 - **What a page sends**, counted in the browser on 2026-11-15 against the worktree's dev server, signed in
-  as a test account, with React's development double-run of effects taken out. Counted means everything
-  but the hashed bundles under `/assets/`:
+  as a test account, with React's development double-run of effects taken out. Counted means what §1
+  counts: everything but the hashed bundles under `/assets/` and the route manifest, `/__manifest`, of which
+  a page asks one to three:
 
   | What | Counted requests |
   |---|---|
-  | The home page loaded afresh, signed in: the document, nine API calls, the route manifest, the icon | about 14 |
-  | `/games` loaded afresh, signed in | about 10 |
-  | Any page loaded afresh, signed out: the document, `/api/auth/me`, the manifest, the icon | about 4 |
-  | A move to a game page inside the site: its `.data`, five API calls, the manifest | about 7 |
-  | A move to `/games`, `/lists` or `/wishlist` inside the site | 0 to 2 |
+  | A game page loaded afresh, signed in: the document, eleven API calls, the icon | about 13 |
+  | The home page loaded afresh, signed in: the document, nine API calls, the icon | about 11 |
+  | Any page loaded afresh, signed out: the document, `/api/auth/me`, the icon | about 3 |
+  | A move to a game page inside the site: its `.data` and five API calls | about 6 |
+  | A move to `/games`, `/lists` or `/wishlist` inside the site | 0 or 1 |
   | A search typed into the navbar | 1 to 4, by how the typing pauses |
 
 - **What AWS says**, each read in its documentation on 2026-11-15 unless marked:
@@ -48,8 +50,12 @@ takes the WAF off the deferred lists of [0044](0044-what-the-deployment-walkthro
     pages and `RateBasedStatement`).
   - A rule's block can answer with a status of our choice, 429 among them, and a body of up to 4 KB that is
     `TEXT_PLAIN`, `TEXT_HTML` or `APPLICATION_JSON` (the WAF guide's custom responses and quotas).
-  - A log in CloudWatch Logs goes to a group named `aws-waf-logs-…` in the ACL's Region; a redacted field is
-    written as `xxx`; `httpRequest.clientIp` is the address (the WAF guide's logging pages).
+  - A log in CloudWatch Logs goes to a group named `aws-waf-logs-…` in the ACL's Region; `httpRequest.clientIp`
+    is the address (the WAF guide's logging pages). A redacted field is written as `xxx` by the guide and as
+    `REDACTED` by the API reference; the next resume shows which. Only `UriPath`, `QueryString`, `Method`
+    and single headers can be redacted.
+  - **IPv6.** `IP` counts "each distinct IP address" (`RateBasedStatementCustomKey`); no page mentions a
+    prefix, and no aggregation option offers one.
   - **The order at the edge.** The CloudFront guide says "the Lambda@Edge viewer request is executed after
     any AWS WAF rules are applied". For CloudFront Functions, and for the cache, its pages say nothing; an
     AWS post, "Charting the life of an Amazon CloudFront request" (17 October 2025), says WAF "always
@@ -67,21 +73,26 @@ takes the WAF off the deferred lists of [0044](0044-what-the-deployment-walkthro
 
 ### 1. One rule: past 300 requests in five minutes, an address is answered 429
 
-**It counts every request but `/assets/`.** The pages are rendered on the server, and their loaders call
-IGDB, so a document and its `.data` count as much as an `/api/` call. One page load fetches dozens of hashed
-bundles, which never reach the API, so they do not count. Nothing else is singled out: the route manifest,
-the icon, `robots.txt` and the health paths are a handful a page, and counting them keeps the rule one
-negative match rather than a list of paths to keep up to date.
+**It counts every request but `/assets/` and `/__manifest`.** The pages are rendered on the server, and
+their loaders call IGDB, so a document and its `.data` count as much as an `/api/` call. One page load fetches
+dozens of hashed bundles, which never reach the API, so they do not count. Nor does React Router's route
+manifest, for a different reason: it costs IGDB nothing, and its refusal could not be told apart. Route
+discovery throws a plain `Error("429 ")` where a `.data` request throws a route error carrying the status
+(React Router 8.5's `fog-of-war.js` and `single-fetch.js`), so a refused manifest would make the page say
+something failed on our side. Left alone, a refused reader's next move fails on its `.data` instead, which
+says what happened. Nothing else is singled out: the icon, `robots.txt` and the health paths are a handful.
 
 **The limit is 300 in a window of 300 seconds**, `WafStack.RequestsPerFiveMinutes`, with the arithmetic
 beside it. From the table above:
 
-- **One person browsing briskly**, a game page every ten seconds inside the site, sends about 210.
-- **Twenty search results opened in tabs at once** are about 280, all documents.
+- **One person browsing briskly**, a game page every ten seconds inside the site, sends about 180.
+- **Twenty search results opened in tabs at once** are about 260, all documents.
 - **Two people behind one address** at an ordinary pace, a page every twenty to thirty seconds, send about
-  200 to 250 between them.
-- **On the other side**, 300 requests can spend at most 600 IGDB calls, half of the 1,200 the site has in
-  five minutes, so anybody else always has the other half.
+  180 to 240 between them.
+- **On the other side**, 300 requests can spend at most 900 IGDB calls of the 1,200 the site has in five
+  minutes, and only by asking for nothing but games nobody has looked at lately, three calls each. One call
+  in four is always somebody else's; a reader browsing spends far less, since most of what they ask for is
+  kept at the edge or in the API.
 
 An office or a school behind one address does not fit, and on dev nobody is expected to browse from one.
 That is production's question. **#447's load check is what tunes the number**, by measuring where IGDB's
@@ -115,8 +126,10 @@ a parameter because of three facts:
   role or permission. A parameter would have to be written in `us-east-1`, beside the ACL, and CloudFormation's
   way of reading one, `{{resolve:ssm:…}}`, has no field for a Region in its syntax: `App` would need a custom
   resource, a function of its own, to fetch it.
-- **The order a cross-region reference puts on a destroy is the order WAF puts on it anyway.** `App` depends
-  on `Waf`, so `Waf` can only go once `App` has; that is also when the distribution has let go of the ACL.
+- **The order a cross-region reference puts on a destroy is the order WAF puts on it anyway.** A weak
+  reference does not stop CloudFormation deleting the stack that publishes it (`Program.cs` says so); the
+  order comes from two other places. The CLI selects `App` with `Waf` unless told `--exclusively`, and AWS WAF
+  refuses to delete an ACL until the distribution has let go of it. Both say `App` first.
 - **Both per-release stacks are in every synthesis, with or without `imageTag`** (`Program.cs`). The weak
   reference's output exists in `Waf`'s template only while `App` is in the synthesis that deployed it, and
   `App` always is, so a `Waf` deploy without a tag keeps the output `App` reads. The same fault in `Data`
@@ -136,7 +149,8 @@ the other that several people sharing one connection can do it between them. Inl
 twenty tabs opened at once are twenty page loads, and a reader whose page failed reloads it.
 
 **The client does not read the body. It reads the status.** Inside the site a refused request is a `.data`
-or an `/api/` call, and the client now knows a 429 that is not the API's for what it is:
+or an `/api/` call, since the route manifest is not counted (§1), and the client now knows a 429 that is not
+the API's for what it is:
 
 - **A move to another page.** React Router throws a 4xx that its own server did not send as a route error
   carrying the status and the body as text. Before this, the root's boundary printed "429 " (HTTP/2 has no
@@ -164,6 +178,13 @@ between the viewer and an ACL on the distribution, and the only proxy a request 
 viewer's own. AWS does not say so in as many words for this case, so the next resume shows it (§8): the log
 names the address a burst came from.
 
+**An IPv6 address counts alone.** The distribution answers on IPv6 (0046's AAAA alias), and as AWS describes
+`IP`, each distinct address is its own count. An IPv6 connection usually has a whole /64 to draw from, so a
+script that changes address every 300 requests is not held by this rule. Nothing in AWS's aggregation options
+groups by prefix. Dev accepts it: the rule is for the careless and the greedy, not the determined, and the
+IGDB limiter behind it still holds the whole site to four calls a second. Production decides again, with
+the managed IP lists or IPv4 only.
+
 **WAF runs before the basic-auth function, and before the cache.** So while dev's door is on, a request
 without the pair is counted and then answered 401, and a page served from the edge is counted like any
 other. Neither matters much: a browser that is asked once sends the pair from then on, and a page from the
@@ -171,18 +192,21 @@ edge costs IGDB nothing but still counts against the address that asked for it. 
 **a burst without credentials proves the rule**: its answers turn from 401 to 429 at the limit, and that is
 also the proof of the order, which AWS states only in a post for CloudFront Functions.
 
-### 6. What it refused is logged, without anybody's credentials
+### 6. What it refused is logged, without anybody's credentials or searches
 
 To `aws-waf-logs-mvgl-<env>-edge` in `us-east-1`, for two weeks or until the next park, whichever comes
 first. Only what a rule blocked or counted: an allowed request is the site working. `Authorization` (the
-basic-auth pair, while the door is on) and `Cookie` (the session) are redacted. WAF keeps its own sampled
-requests three hours, so the log is where an address is read the next morning.
+basic-auth pair, while the door is on) and `Cookie` (the session) are redacted, and so are the query string
+and `Referer`, which repeats a page's: a search can be an email address, the reason no log line of ours
+carries a query string ([0059](0059-a-request-is-known-by-its-trace-and-a-build-by-its-commit.md)). The address,
+the path and the rule are what a refusal is read by. WAF keeps its own sampled requests three hours, so the
+log is where an address is read the next morning.
 
 ### 7. The acceptance test checks it, and cannot trip it
 
 `scripts/dev-check.mjs` asks AWS, read only, through the environment's profile, whether the distribution's
 `WebACLId` is the `Waf` stack's ACL, whether that ACL allows everything but one rule keyed on the address that
-answers 429, and whether it logs to the group above with both headers redacted. A request the ACL allows
+answers 429, and whether it logs to the group above with those four fields redacted. A request the ACL allows
 looks the same with it as without it, so the site cannot say. Without the profile those checks are skipped,
 and the summary says how many were.
 
@@ -210,8 +234,10 @@ and production's ACL, which waits for production ([#98](https://github.com/Chron
   next merge's `App` deploy until `Waf` was deployed, and CloudFormation would keep the release before.
 - **If dev is awake when this merges, deploy `Waf` by hand first.** The merge's `App` deploy reads its output,
   and fails without it.
-- **Destroying `Waf` by hand while `App` stands fails**, and should: the distribution still names the ACL.
-  `park` is the way down.
+- **Never destroy `Waf` by hand while `App` stands.** Without `--exclusively`, `cdk destroy` takes `App` with
+  it. With it, CloudFormation would delete the logging configuration and the log group, and then fail on the ACL,
+  which the distribution still names, leaving the stack `DELETE_FAILED`, with no log, until a park destroys
+  `App` and then deletes `Waf` again. `park` is the way down.
 - **#447's load check, run from one address, trips the rule at 300.** Run it from several, or raise the limit
   for its duration and say so, and remember that a change of the rate resets its counts.
 - **An office or a school behind one address is refused while its people browse at once.** Production

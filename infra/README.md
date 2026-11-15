@@ -265,8 +265,8 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
 ## The rate rule
 
 One web ACL, `mvgl-<env>-edge`, on the distribution, with one rule, `requests-per-address`: an address that
-sends more than 300 requests in five minutes, counting everything but `/assets/`, is answered 429 until it
-slows down. Everything else is allowed. It is there so that no one address can spend the four IGDB calls a
+sends more than 300 requests in five minutes, counting everything but `/assets/` and `/__manifest`, is
+answered 429 until it slows down. Everything else is allowed. It is there so that no one address can spend the four IGDB calls a
 second the whole site shares; why 300, and everything else about it, is ADR 0098, and the arithmetic is
 beside `RequestsPerFiveMinutes` in `src/Infra/WafStack.cs`.
 
@@ -290,9 +290,12 @@ beside `RequestsPerFiveMinutes` in `src/Infra/WafStack.cs`.
   `RATE_LIMITED` in `@/lib/api`.
 - **It counts before basic auth and before the cache.** While the door is on, a request without the pair is
   counted and then answered 401; a page served from the edge counts like any other.
+- **An IPv6 address counts alone**, and an IPv6 connection usually has a whole /64 to move about in, so the
+  rule holds the careless and the greedy, not the determined (ADR 0098 §5).
 - **What it refused is logged** to `aws-waf-logs-mvgl-<env>-edge` in `us-east-1`, for two weeks or until the
-  next park: blocked and counted requests only, with `Authorization` and `Cookie` written as `xxx`. In
-  CloudWatch Logs Insights, in `us-east-1`, on that group:
+  next park: blocked and counted requests only, with `Authorization`, `Cookie`, `Referer` and the query
+  string redacted, because a search can be an email address. In CloudWatch Logs Insights, in `us-east-1`,
+  on that group:
 
   ```text
   fields @timestamp, httpRequest.clientIp, httpRequest.uri, terminatingRuleId, action
@@ -322,9 +325,11 @@ for i in $(seq 1 1000); do curl -s -o /dev/null -w "%{http_code}\n" -u nobody:no
 ```
 
 Expect 401s for the first 300 or so, and for as many more as arrive while AWS catches up (it checks the rate
-about every ten seconds, and says blocking usually starts within thirty), then 429s to the end. `curl -s https://dev.myvideogamelist.net/` from the same address then shows the
-rule's page. The log names that address under `httpRequest.clientIp`, with `terminatingRuleId`
-`requests-per-address` and the `authorization` header as `xxx`. After the next `park`, no web ACL is left:
+about every ten seconds, and says blocking usually starts within thirty), then 429s to the end.
+`curl -s https://dev.myvideogamelist.net/` from the same address then shows the rule's page. The log names
+that address under `httpRequest.clientIp`, with `terminatingRuleId` `requests-per-address` and the
+`authorization` header redacted: `xxx` by AWS's guide, `REDACTED` by its API reference, and this run says
+which. After the next `park`, no web ACL is left:
 
 ```bash
 aws wafv2 list-web-acls --scope CLOUDFRONT --region us-east-1 --profile mvgl-dev
