@@ -5,10 +5,12 @@
  * WHAT THIS IS FOR
  * ---------------------------------------------------------------------------------------------
  * An idle dev environment pays for its load balancer, not its containers (ADR 0044): awake it is
- * about $74 a month in Frankfurt, with the application stack destroyed and the database stopped
- * it is about $4.64. Parking is four commands in a fixed order with a wait in the middle, and the
- * order is load-bearing — stop the database only once the application stack is gone, or
- * /healthz keeps both tasks running and billing while every page fails. Resuming is the reverse
+ * about $80 a month in Frankfurt, the edge's web ACL included (ADR 0098), and with the application
+ * stack destroyed, the database stopped and the web ACL's stack gone it is about $4.64. Parking is
+ * five commands in a fixed order with a wait in the middle, and the order is load-bearing — stop the
+ * database only once the application stack is gone, or /healthz keeps both tasks running and
+ * billing while every page fails, and destroy the web ACL only once the distribution that holds it
+ * has gone with that stack, since AWS WAF refuses to delete an ACL something still uses. Resuming is the reverse
  * plus two lookups done by hand otherwise: the newest image tag in ECR, and whether the database
  * is back yet - and the migrations. A parked environment skips the pipeline's along with its
  * deploys, while every merge still pushes images, so the newest tag can need migrations the
@@ -21,10 +23,11 @@
  * HOW TO RUN IT
  * ---------------------------------------------------------------------------------------------
  *   node scripts/dev-env.mjs status             what exists, and which cost row that is
- *   node scripts/dev-env.mjs park               destroy the App stack, stop the database, gate off
+ *   node scripts/dev-env.mjs park               destroy the App stack, stop the database, destroy
+ *                                               the web ACL's stack, gate off
  *   node scripts/dev-env.mjs resume             start the database, migrate it at the newest tag,
- *                                               deploy App at that tag, wait for both services,
- *                                               check the site, gate on
+ *                                               deploy the web ACL's stack, then App at that tag,
+ *                                               wait for both services, check the site, gate on
  *   node scripts/dev-env.mjs resume --tag <sha> the same, at a tag of your choosing
  *
  * Options on every command: --env <name> (default dev), --profile <aws profile> (default
@@ -51,6 +54,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runAws } from './aws-cli.mjs';
 
 const ARGS = process.argv.slice(2);
 const COMMAND = ARGS[0];
@@ -75,6 +79,9 @@ const NAMES = {
     cluster: `mvgl-${ENV}`,
     database: `mvgl-${ENV}-db`,
     appStack: `Mvgl-${ENV}-App`,
+    // The web ACL on the distribution, in CloudFront's Region whatever the profile's is (ADR 0098).
+    wafStack: `Mvgl-${ENV}-Waf`,
+    edgeRegion: 'us-east-1',
     dataStack: `Mvgl-${ENV}-Data`,
     migrateStack: `Mvgl-${ENV}-Migrate`,
     migrateTask: `mvgl-${ENV}-migrate`,
@@ -91,11 +98,14 @@ const INFRA = path.join(REPO_ROOT, 'infra');
 
 // Cost rows from ADR 0044's table for Frankfurt, always-on dollars a month. Approximate on
 // purpose: the balancer and the database bill started hours in full.
+// The web ACL is ADR 0098's: $5 for the ACL and $1 for its rule, prorated by the hour, and $0.60 a
+// million requests.
 const COST = {
-    awake: '≈ $74 a month: everything is running',
+    awake: '≈ $80 a month: everything is running, the edge\'s web ACL included',
     appOnly: '≈ $19 a month: the database runs, the application stack is gone',
     parked: '≈ $4.64 a month: the idle floor — storage, secrets, zones, images',
     broken: 'the application stack is up but the database is not: every page fails and the balancer bills anyway',
+    aclLeft: 'the web ACL\'s stack outlived the application stack, about $6 a month for nothing. Park again to destroy it',
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -109,16 +119,10 @@ function show(cmd, args) {
 
 /** `raw` for a command whose answer is text rather than JSON, such as `logs tail`: its value is the text. */
 function aws(args, { allowFailure = false, raw = false } = {}) {
-    const full = ['--profile', PROFILE, '--output', 'json', ...args];
-    show('aws', full);
-    const r = spawnSync('aws', full, { encoding: 'utf8' });
-    if (r.status !== 0) {
-        if (allowFailure) return { ok: false, error: (r.stderr || '').trim() };
-        fail(`aws ${args.slice(0, 2).join(' ')} failed:\n${(r.stderr || '').trim()}`);
-    }
-    const text = (r.stdout || '').trim();
-    if (raw) return { ok: true, value: text };
-    return { ok: true, value: text === '' ? null : JSON.parse(text) };
+    show('aws', ['--profile', PROFILE, '--output', 'json', ...args]);
+    const r = runAws(PROFILE, args, { raw });
+    if (!r.ok && !allowFailure) fail(`aws ${args.slice(0, 2).join(' ')} failed:\n${r.error}`);
+    return r;
 }
 
 /**
@@ -168,9 +172,10 @@ function note(message) {
 // Reading the environment.
 // ---------------------------------------------------------------------------------------------
 
-function stackStatus(name) {
-    const r = aws(['cloudformation', 'describe-stacks', '--stack-name', name, '--query', 'Stacks[0].StackStatus'],
-        { allowFailure: true });
+/** A stack's status, or null if there is none. In the profile's Region unless `region` names another. */
+function stackStatus(name, region = null) {
+    const r = aws(['cloudformation', 'describe-stacks', '--stack-name', name, '--query', 'Stacks[0].StackStatus',
+        ...(region ? ['--region', region] : [])], { allowFailure: true });
     if (!r.ok) {
         if (/does not exist/.test(r.error)) return null;
         fail(r.error);
@@ -288,6 +293,7 @@ function gateValue() {
 
 function status() {
     const app = stackStatus(NAMES.appStack);
+    const waf = stackStatus(NAMES.wafStack, NAMES.edgeRegion);
     const data = stackStatus(NAMES.dataStack);
     const db = databaseStatus();
     const running = services();
@@ -297,15 +303,22 @@ function status() {
     console.log(`Environment: ${ENV} (profile ${PROFILE})`);
     console.log(`  ${NAMES.dataStack}: ${data ?? 'absent'}`);
     console.log(`  ${NAMES.appStack}:  ${app ?? 'absent'}`);
+    console.log(`  ${NAMES.wafStack}:  ${waf ?? 'absent'} (${NAMES.edgeRegion})`);
     console.log(`  database ${NAMES.database}: ${db ?? 'absent'}`);
     console.log(`  services: ${running.length === 0 ? 'none' : running.map((s) => `${s.name} ${s.running}/${s.desired}`).join(', ')}`);
     console.log(`  newest tag in both repositories: ${tag ?? 'none pushed yet'}`);
     console.log(`  ${NAMES.gateVariable}: ${gateNow ?? 'not set (no pipeline environment yet)'}`);
 
-    const appUp = app !== null && !/DELETE/.test(app);
+    // DELETE_FAILED is still there, and still bills: up, for the cost row as for the notes below.
+    const appUp = app !== null && !/DELETE_(IN_PROGRESS|COMPLETE)/.test(app);
+    const wafUp = waf !== null && !/DELETE_COMPLETE/.test(waf);
     const dbUp = db === 'available';
     const row = appUp && dbUp ? COST.awake : appUp ? COST.broken : dbUp ? COST.appOnly : COST.parked;
     console.log(`  cost row: ${row}`);
+    if (wafUp && app === null) console.log(`  note: ${COST.aclLeft}.`);
+    if (app === 'DELETE_FAILED') {
+        console.log(`  note: ${NAMES.appStack} failed to delete and still bills. CloudFormation's events say why; park again once that is fixed.`);
+    }
     if (db === 'stopped') {
         console.log('  note: RDS restarts a stopped instance by itself after seven days; park again or schedule a stop for longer.');
     }
@@ -343,6 +356,17 @@ function park() {
         }
         aws(['rds', 'stop-db-instance', '--db-instance-identifier', NAMES.database, '--query', 'DBInstance.DBInstanceStatus']);
         note(`Database ${NAMES.database}: stopping. Instance hours stop; storage and backups keep billing.`);
+    }
+
+    // Last, because it is the cheapest thing left billing, about $6 a month, and a failure here must not
+    // keep the database from stopping. Never before App: the distribution holds the ACL, and AWS WAF
+    // refuses to delete an ACL something still uses. --exclusively, because App depends on this stack,
+    // and a destroy without it selects the stacks that depend on the one named (ADR 0098).
+    if (stackStatus(NAMES.wafStack, NAMES.edgeRegion) === null) {
+        note(`${NAMES.wafStack} is already gone.`);
+    } else {
+        note(`Destroying ${NAMES.wafStack} in ${NAMES.edgeRegion}: the web ACL and the log of what it refused.`);
+        cdk(['destroy', NAMES.wafStack, '--exclusively', '-c', 'imageTag=parked', '--force']);
     }
 
     console.log('');
@@ -483,6 +507,12 @@ async function resume() {
 
     // Before the application: the database is available now, and the tag is the one about to serve.
     await migrate(tag);
+
+    // The web ACL before the distribution that names it: App reads the ACL's ARN from this stack's
+    // outputs when it deploys, and fails if there is none (ADR 0098). --exclusively, as every deploy
+    // here is, though this stack depends on nothing.
+    note(`Deploying ${NAMES.wafStack} in ${NAMES.edgeRegion}: the edge's web ACL and its rate rule.`);
+    cdk(['deploy', NAMES.wafStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never']);
 
     note(`Deploying ${NAMES.appStack} at image tag ${tag}.`);
 

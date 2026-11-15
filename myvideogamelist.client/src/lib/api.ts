@@ -1,3 +1,5 @@
+import { isRouteErrorResponse } from 'react-router';
+
 /**
  * Resolves an API path for whichever side of the render it is called from.
  *
@@ -44,14 +46,47 @@ export function apiFetch(path: string, init: RequestInit = {}): Promise<Response
 }
 
 /**
+ * What the site says when the edge has refused this address for sending too much: the rate rule in
+ * front of the distribution answers 429 with a page of its own, which no reader here parses
+ * (`infra/src/Infra/WafStack.cs`, ADR 0098). Never a sentence that says something failed on our side,
+ * because nothing did, and the reader is the one who can make it stop.
+ */
+export const RATE_LIMITED =
+    'Too many requests have come from your network address in the last few minutes. Wait a few minutes, then try again.';
+
+/**
+ * Whether a route failed because the edge refused its `.data` request for the rate: React Router throws
+ * any 4xx that did not come from its own server as a route error with that status, and the body as
+ * text. No loader answers 429 itself, since nothing a loader calls is rate limited (ADR 0033 §2), so a
+ * page's 429 is always the edge's.
+ */
+export function isRateLimited(error: unknown): boolean {
+    return isRouteErrorResponse(error) && error.status === 429;
+}
+
+/**
+ * The sentence for a write that shows a fixed one rather than reading the body - the lists', the
+ * wishlist's, the favourites' and the hand orders' - given the response it got, or null for a request
+ * that never arrived: the edge's `RATE_LIMITED` for a 429, the write's own `fallback` for anything
+ * else, so that one refusal reads the same whichever control was pressed.
+ */
+export function refusedWith(response: Response | null, fallback: string): string {
+    return response?.status === 429 ? RATE_LIMITED : fallback;
+}
+
+/**
  * A failed response's body, or null when it is not JSON at all — a proxy error page, or an empty
  * 500. Read once, because a body can only be read once.
+ *
+ * A 429 that is not JSON is the edge's rate rule, never the API, whose own 429s are `ProblemDetails`
+ * with a sentence of their own; it reads as a `ProblemDetails` carrying `RATE_LIMITED`, so that every
+ * write's message says what happened rather than its generic fallback.
  */
 export async function bodyOf(response: Response): Promise<unknown> {
     try {
         return await response.json();
     } catch {
-        return null;
+        return response.status === 429 ? { title: 'Too many requests', detail: RATE_LIMITED } : null;
     }
 }
 

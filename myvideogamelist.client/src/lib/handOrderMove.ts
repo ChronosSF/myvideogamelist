@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api';
+import { apiFetch, refusedWith } from '@/lib/api';
 import { type Placed, moveRefusal, planMove } from '@/lib/handOrder';
 
 /** A game's position as it is to be shown: a sparse number, or null for never placed. */
@@ -77,8 +77,9 @@ export async function moveInHandOrder(move: HandOrderMove): Promise<boolean> {
     move.show(next);
 
     let landed: boolean;
+    let res: Response | null = null;
     try {
-        const res = await apiFetch(move.endpoint, {
+        res = await apiFetch(move.endpoint, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ positions: next }),
@@ -94,7 +95,7 @@ export async function moveInHandOrder(move: HandOrderMove): Promise<boolean> {
             move.saved();
         } else {
             move.show(previous);
-            move.fail(move.failed);
+            move.fail(refusedWith(res, move.failed));
         }
         for (const write of writes) move.unlock(write.id);
         return landed;

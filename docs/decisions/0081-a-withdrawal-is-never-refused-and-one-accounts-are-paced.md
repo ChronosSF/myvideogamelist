@@ -7,7 +7,8 @@ now carries one account's withdrawals over a pace, rather than one event's. Amen
 limit on the two that take a password. [0095](0095-start-over-empties-the-library-and-keeps-the-account.md)'s start over, a game's deletion for every game at once,
 is paced with the five in §2. Since [0096](0096-a-profile-is-addressed-by-a-public-id-with-its-username-after-it.md) a
 profile's path is its id rather than its name, so a change of case or a rename sends two paths rather than three: §4's
-allowance stays, and §5's day comes to about 146.
+allowance stays, and §5's day comes to about 146. The WAF §5 leaves volume to is, on dev,
+[0098](0098-one-rate-rule-at-the-edge.md)'s one rate rule.
 
 ## Context
 
