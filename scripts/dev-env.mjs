@@ -132,8 +132,8 @@ function aws(args, { allowFailure = false, raw = false } = {}) {
  * should have to trust, find the program the shim points at and run it with this Node directly.
  *
  * The one infra/package-lock.json pins, which Deploy dev runs and CI audits, once `npm ci --prefix
- * infra` has installed it (#339). Until then whatever is on the PATH, said so, so that a park never
- * stops halfway, after the gate and before the destroy, for want of an install.
+ * infra` has installed it (#339). Until then whatever is on the PATH, said so, so that a park does
+ * not stop halfway, after the gate and before the destroy, for want of that one command.
  */
 function cdkEntry() {
     const pinned = path.join(INFRA, 'node_modules', 'aws-cdk', 'bin', 'cdk');
@@ -333,8 +333,8 @@ function status() {
 }
 
 function park() {
-    // The gate first: a merge that lands while the stack is being destroyed must not redeploy
-    // it, and if the gate cannot be set at all, nothing is torn down.
+    // The gate first: a Deploy dev run started while the stack is being destroyed must not
+    // redeploy it, and if the gate cannot be set at all, nothing is torn down.
     gate(false);
 
     const app = stackStatus(NAMES.appStack);
@@ -533,7 +533,7 @@ async function resume() {
 
     note(`Checking https://${NAMES.host}/healthz through the distribution — a new one can take a few minutes to answer by its alias.`);
     if (!(await healthy())) {
-        // The gate stays off: an environment that cannot be shown to answer is not one a merge
+        // The gate stays off: an environment that cannot be shown to answer is not one Deploy dev
         // should deploy to. This command is safe to repeat once the cause is fixed.
         fail(`https://${NAMES.host}/healthz did not answer as expected, so the gate stays off. A function error rather `
             + 'than a 401 means the basic-auth key is not in the store: set it, then `resume` again.');

@@ -188,7 +188,8 @@ assumes the deploy role through OIDC - no AWS key is stored in GitHub - checks o
 starts, builds both images and pushes them tagged with that commit, and then stops unless
 `DEV_DEPLOY_ENABLED` is `true` on the `dev` GitHub environment. Because it takes master's head
 rather than the commit it was dispatched at, a run that waited behind another, or a re-run of an old
-one, deploys master's newest and never an older commit. Awake, it deploys `Migrate`, runs the migration task and fails the
+one, deploys master's newest and never an older commit; and one whose workflow file is no longer
+master's stops before it builds, since it would run old steps against new code. Awake, it deploys `Migrate`, runs the migration task and fails the
 release on a non-zero exit, deploys `App`, waits for both services, invalidates the distribution
 and waits for that too, then checks target health and the site through the distribution: a 401
 without the basic-auth pair, and with it `/readyz` and `/` answering 200. The distribution id is
@@ -288,7 +289,8 @@ beside `RequestsPerFiveMinutes` in `src/Infra/WafStack.cs`.
 
   AWS resets a rate rule's counts when its settings change, and can pause it for up to a minute.
 - **If dev is awake when a `Waf` stack first reaches `master`, deploy it by hand first**, with the command
-  above. The merge's `App` deploy reads its output, and fails without it, keeping the release before.
+  above, before the next Deploy dev run. That run's `App` deploy reads its output, and fails without it,
+  keeping the release before.
 - **A refused reader is told so, and never that we failed.** A page loaded while refused is the rule's own
   small HTML page; a page reached inside the site, or a write, shows the client's sentence for it,
   `RATE_LIMITED` in `@/lib/api`.

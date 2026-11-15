@@ -40,9 +40,11 @@ Two facts make the trigger unnecessary:
 - **Testers are coming.** Dev is about to have testers for two weeks, with basic auth coming off for
   them ([#465](https://github.com/ChronosSF/myvideogamelist/issues/465)). A deploy restarts both tasks
   and empties the edge's cache. On merge, that landed on the testers whenever a pull request merged.
-- **Every commit on master already passed CI as its pull request.** The ruleset's required checks are
-  strict (0061 §7), so a pull request is current with `master` when it merges, and its checks ran on
-  the tree `master` becomes. The run on the push to `master` tests that tree again.
+- **Every commit on master passes CI as its pull request, in practice.** The ruleset's required checks
+  are strict (0061 §7), so a pull request is current with `master` when it merges, and its checks ran
+  on the tree `master` becomes. The run on the push to `master` tests that tree again. The live
+  ruleset does let the admin role bypass it at any time, though 0061 §7 asked for no bypass. So this
+  holds because the owner merges through pull requests, not because GitHub enforces it.
 
 ## Decision
 
@@ -55,18 +57,28 @@ Two facts make the trigger unnecessary:
    `ref-helper.ts`. It pins a commit only when `ref` is empty, using `github.sha`, or when `ref` is
    itself a SHA. Otherwise it fetches `+refs/heads/master:refs/remotes/origin/master` and starts from
    `refs/remotes/origin/master`, which is the head at fetch time. The group never runs two at once, and
-   `master` only moves forward, so each run deploys a commit at least as new as the one before it. A run
+   `master` only moves forward (the ruleset refuses a force push to it, bar the admin bypass above), so
+   each run deploys a commit at least as new as the one before it. A run
    that waited behind another deploys master's newest. So does a re-run of an old one, whose
    `GITHUB_SHA` is still the old commit. No tip check is needed, and none is made.
    - The full name matters. A bare `master` is fetched as `refs/heads/master*`, which takes every branch
      whose name begins with it.
+   - **A run whose workflow file is not master's stops before it builds.** The steps a run executes are
+     the file as it was at `github.workflow_sha`, "The commit SHA for the workflow file" in GitHub's
+     contexts reference, whatever the checkout holds. A re-run, or a run that waited while a merge
+     changed the file, would run old steps against new code, so the first step compares the two and
+     stops the run if they differ.
 3. **The gate stays.**
    - `DEV_DEPLOY_ENABLED`, set by `park` and `resume`, still decides whether a run deploys.
    - A run dispatched while parked builds and pushes, then stops. That is now how `resume` gets master's
      newest. `resume` deploys the newest tag in ECR, and with images built only by dispatches, each of
      master's head at its moment, push order is master's order.
-   - Unchanged: the check that `App` is still there, the refusal to create it, and `--exclusively` on
-     both deploys.
+   - The check that `App` is still there now lists the states a deploy may update: CREATE_COMPLETE,
+     UPDATE_COMPLETE, UPDATE_ROLLBACK_COMPLETE, IMPORT_COMPLETE and IMPORT_ROLLBACK_COMPLETE. Absent or
+     deleting is still a park, and deploys nothing. Anything else stops the run, because aws-cdk
+     2.1148.0's `lib/index.js` answers a creation that never finished by creating the stack. It deletes
+     and recreates one in ROLLBACK_COMPLETE or ROLLBACK_FAILED, and counts REVIEW_IN_PROGRESS as absent.
+     Creating `App` is `resume`'s alone. `--exclusively` on both deploys is unchanged.
 4. **The group keeps GitHub's default queue.** A run dispatched while another waits replaces it. Both
    would build master as it is when they start, so nothing is lost.
 
@@ -78,7 +90,7 @@ Two facts make the trigger unnecessary:
   trigger and its filter, and keeping images pushed out of master's order, which `resume` then reads as
   newest. All for images nobody deploys.
 - **A check that the dispatched commit's CI on `master` passed.** The pull request's required checks
-  already passed on the same tree, and whoever dispatches has chosen to.
+  passed on the same tree, unless an admin bypassed them, and whoever dispatches has chosen to.
 
 ## Consequences
 
@@ -93,8 +105,9 @@ Two facts make the trigger unnecessary:
 - **A red CI run on `master` holds nothing back.** 0057 and 0060 say a red run of their jobs held back
   that commit's dev images, and 0061 says the same of its own. That is history. A red run is now a
   signal about master's commit, re-run or fixed like any other.
-- **Do not re-run an old run.** A Deploy dev run created before this record, re-run within GitHub's
-  thirty days, runs the workflow it was created with. That one ran on `workflow_run` and would deploy
-  its old commit.
+- **Do not re-run a run from before this record.** Re-run within GitHub's thirty days, it runs the
+  workflow it was created with. That one ran on `workflow_run`, has no check of its own file, and
+  would deploy its old commit. A run of this workflow, re-run later, deploys master's head, or stops
+  if the file has changed since.
 - **The same shape will likely suit production.** Its release, when #98 builds it, would be dispatched,
   of master's head.

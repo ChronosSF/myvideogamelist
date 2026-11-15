@@ -517,8 +517,8 @@ jobs:
   codeql:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
-    # A hang ends here rather than at the six-hour default, which would hold a master commit's deploy as
-    # long; the slowest leg, C#, takes about three minutes.
+    # A hang ends here rather than at the six-hour default, which would hold every pull request as long;
+    # the slowest leg, C#, takes about three minutes.
     timeout-minutes: 20
     permissions:
       security-events: write
