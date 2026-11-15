@@ -190,10 +190,9 @@ jobs:
   # same pages, which fails on a rule or a contrast pair a page did not already break. The IGDB
   # stand-in answers with real games, so the covers come from IGDB's image host, the one site the
   # audit's browser reaches outside the runner; an outage there fails the job, so re-run it once the
-  # host is back, on master only for its newest commit, since Deploy dev deploys whichever commit a
-  # successful run was for (#339). The reports are an artifact and the figures a table in the job
-  # summary; nothing goes to LHCI's public storage. Deploy dev waits on this as on every job. See ADR
-  # 0068.
+  # host is back, on master for any commit, since Deploy dev deploys only master's newest (#339). The
+  # reports are an artifact and the figures a table in the job summary; nothing goes to LHCI's public
+  # storage. Deploy dev waits on this as on every job. See ADR 0068.
   lighthouse:
     name: Lighthouse
     # Pinned, unlike the other jobs: the baseline was measured on this image, and a new one brings new
@@ -376,8 +375,8 @@ jobs:
   # Layers come from the Actions cache that Deploy dev writes on master, while they still match: a base
   # image that has moved since makes every layer above it rebuild. CI only reads that cache, so a pull
   # request adds no image layers to it. The builds pull from Docker Hub, MCR, nuget.org and npm, none of
-  # it retried, so re-run a failure once before looking into it, on master only for its newest commit
-  # (#339). Deploy dev waits on this as on every job. See ADR 0061.
+  # it retried, so re-run a failure once before looking into it, on master for any commit, since Deploy
+  # dev deploys only master's newest (#339). Deploy dev waits on this as on every job. See ADR 0061.
   images:
     name: Images
     runs-on: ubuntu-latest

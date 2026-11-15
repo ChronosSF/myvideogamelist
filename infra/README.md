@@ -182,7 +182,9 @@ filter, so the automatic path also requires the triggering run to be a `push` to
 repository - without that, a green CI run would hand the AWS role to anybody's code. The job
 assumes the deploy role through OIDC - no AWS key is stored in GitHub - builds both images and
 pushes them tagged with the commit, and then stops unless `DEV_DEPLOY_ENABLED` is `true` on the
-`dev` GitHub environment. Awake, it deploys `Migrate`, runs the migration task and fails the
+`dev` GitHub environment and the commit is still master's tip. Runs wait for each other in one queue
+and none is cancelled, so every commit gets its images; one that master has moved past deploys
+nothing, because the newer commit's own run deploys that one. Awake and newest, it deploys `Migrate`, runs the migration task and fails the
 release on a non-zero exit, deploys `App`, waits for both services, invalidates the distribution
 and waits for that too, then checks target health and the site through the distribution: a 401
 without the basic-auth pair, and with it `/readyz` and `/` answering 200. The distribution id is

@@ -9,6 +9,15 @@ name: Deploy dev
 # is read once, when the job starts, so the job also refuses to create a stack it finds gone:
 # it only ever updates the application stack, and creating it is `resume`'s job alone.
 #
+# And only master's newest commit is deployed. Once its images are pushed, a run checks that its
+# commit is still master's tip, and otherwise deploys nothing: the newer commit's own run deploys
+# that one, once its CI passes. So no run puts an older release over a newer one - not one the queue
+# below serves out of turn, nor a re-run of an old CI run or of an old run of this workflow, both of
+# which run for the commit they were first run for. A manual run builds the head of the branch it is
+# dispatched on, and the `dev` environment admits only master, so it builds master's tip and cannot
+# roll dev back either, on purpose: deploying an older release is `dev-env.mjs resume --tag`'s, by
+# hand.
+#
 # No AWS key is stored in GitHub. The job proves who it is with a token GitHub signs, and AWS
 # exchanges it for an hour of credentials on a role whose trust policy admits exactly one subject:
 # a job in this repository that declares the `dev` environment, whose deployments are restricted to
@@ -27,10 +36,17 @@ permissions:
   id-token: write
   contents: read
 
-# Two deploys never interleave; a second merge waits for the first.
+# Two deploys never interleave, and nothing is cancelled to keep it so: a second run waits for the
+# first, and a third for the second. The default queue holds one pending run and cancels it when
+# another joins, which cost the middle one of three quick merges its images (#339); `queue: max`
+# holds up to a hundred. So a run with nothing to do - for a failed CI run, or for a fork's pull
+# request from a branch named master - can no longer cancel a real one: it waits its turn, and its
+# job is skipped in a second when the turn comes. GitHub serves the queue first in, first out, but
+# does not promise the order, which the newest-commit check below makes harmless.
 concurrency:
   group: deploy-dev
   cancel-in-progress: false
+  queue: max
 
 jobs:
   deploy:
@@ -134,30 +150,53 @@ jobs:
           cache-from: type=gha,scope=ssr
           cache-to: type=gha,scope=ssr,mode=max
 
-      - name: Parked?
-        if: env.AWAKE != 'true'
+      # Whether this run deploys: only when the environment is awake, and only while its commit is still
+      # master's tip, read from the remote rather than from the checkout, which is the commit itself. A
+      # newer commit gets a run of its own when its CI passes, which waits behind this one and deploys
+      # it; deploying this one would put an older release over the newer one, or, the queue's order
+      # being no promise, under it. If the newer commit's CI fails, nothing older is deployed in its place: a
+      # re-run of that CI run that passes deploys it. The answer holds for as long as this run does,
+      # since no other run deploys while this one holds the group, and one that cannot be read fails the
+      # run rather than deploying.
+      - name: Deploy this commit?
+        id: deploy
         env:
+          SHA: ${{ steps.release.outputs.sha }}
           TAG: ${{ steps.release.outputs.tag }}
-        run: echo "DEV_DEPLOY_ENABLED is not true, so the environment is parked. Images $TAG are pushed; nothing is deployed."
+        run: |
+          set -euo pipefail
+          if [ "$AWAKE" != "true" ]; then
+            echo "DEV_DEPLOY_ENABLED is not true, so the environment is parked. Images $TAG are pushed; nothing is deployed."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          NEWEST=$(git ls-remote --exit-code origin refs/heads/master | cut -f1)
+          if [ "$NEWEST" = "$SHA" ]; then
+            echo "$TAG is master's newest commit, so it is deployed."
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::master has moved on to ${NEWEST:0:12}, whose own run deploys it once its CI passes. Images $TAG are pushed; nothing is deployed."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      # ---- Everything below runs only when the environment is awake. ----
+      # ---- Everything below runs only when this run deploys. ----
 
       - uses: actions/setup-dotnet@v6
-        if: env.AWAKE == 'true'
+        if: steps.deploy.outputs.go == 'true'
         with:
           dotnet-version: '10.0.x'
 
       - uses: actions/setup-node@v7
-        if: env.AWAKE == 'true'
+        if: steps.deploy.outputs.go == 'true'
         with:
           node-version: '24.x'
 
       - name: Install the CDK CLI
-        if: env.AWAKE == 'true'
+        if: steps.deploy.outputs.go == 'true'
         run: npm install -g aws-cdk
 
       - name: Deploy the migration task definition
-        if: env.AWAKE == 'true'
+        if: steps.deploy.outputs.go == 'true'
         working-directory: infra
         env:
           TAG: ${{ steps.release.outputs.tag }}
@@ -167,7 +206,7 @@ jobs:
       # itself, and a deployed API against an un-migrated database passes /healthz and fails on
       # its first query. A non-zero exit stops the release here.
       - name: Run the migrations
-        if: env.AWAKE == 'true'
+        if: steps.deploy.outputs.go == 'true'
         run: |
           set -euo pipefail
           output() { aws cloudformation describe-stacks --stack-name Mvgl-dev-Data --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
@@ -196,7 +235,7 @@ jobs:
       # to update a stack being deleted, and to delete one being updated.
       - name: Is the application stack still there?
         id: app
-        if: env.AWAKE == 'true'
+        if: steps.deploy.outputs.go == 'true'
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
@@ -214,14 +253,14 @@ jobs:
           esac
 
       - name: Deploy the application stack
-        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
+        if: steps.deploy.outputs.go == 'true' && steps.app.outputs.present == 'true'
         working-directory: infra
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: cdk deploy Mvgl-dev-App --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
 
       - name: Wait for both services
-        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
+        if: steps.deploy.outputs.go == 'true' && steps.app.outputs.present == 'true'
         run: aws ecs wait services-stable --cluster mvgl-dev --services api ssr
 
       # A cached page names hashed bundles the new container no longer has, because the bundles are
@@ -229,7 +268,7 @@ jobs:
       # pointing at scripts that 404 (ADR 0044). A wildcard counts as one path, and the first
       # thousand a month are free. The id is read from the stack, since it changes on every resume.
       - name: Invalidate the distribution
-        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
+        if: steps.deploy.outputs.go == 'true' && steps.app.outputs.present == 'true'
         run: |
           set -euo pipefail
           ID=$(aws cloudformation describe-stacks --stack-name Mvgl-dev-App --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" --output text)
@@ -245,7 +284,7 @@ jobs:
       # the same. The pair is the one secret the workflow holds (ADR 0046), and the checks that need
       # it are skipped with a warning until it is set on the environment.
       - name: Smoke test
-        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
+        if: steps.deploy.outputs.go == 'true' && steps.app.outputs.present == 'true'
         env:
           BASIC_AUTH: ${{ secrets.DEV_BASIC_AUTH }}
         run: |
