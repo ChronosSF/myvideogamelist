@@ -107,6 +107,11 @@ starts (§13.2.1), so the second request's check finds the first one's committed
 and sees the start refuse; and sends six starts at once and sees one run. With the lock taken out, both tests
 fail.
 
+**The form's own writes take the same lock**, though they check nothing, because a start and a finish do: a
+run logged by hand landing between a start's check and its commit would leave two unfinished, and an edit
+putting a finish date on a run between a finish's read and its write would be written over. Only the import's
+commit writes runs without it, all at once and from a file.
+
 **A guard and not a unique index**, because a partial index on unfinished runs per entry would refuse the
 overlapping runs a reader may log by hand, and the import may write. An entry that does not exist yet has no
 row to lock; two starts at once then both create it, the unique index over `(UserId, GameId)` refuses the
@@ -155,7 +160,10 @@ to a stray tap on the scrim. It is the Your game tab's own form, with its fields
 first; the mock-up's Hours first would read oddly on the tab, where a run being logged is as often one just
 begun, so instead the popup focuses Hours after a finish, which is what it was opened to add.
 
-The popup's form and styles are loaded only after a yes, and fetched as the confirmation appears. The prompt
+The popup's form and styles are loaded only after a yes, and fetched as the confirmation appears. They are
+loaded by hand rather than through `React.lazy`, which throws a failed load while rendering: from the root that
+is the root's error boundary, and a tab open across a deploy would lose the whole page to a missing chunk. A
+failure here is the confirmation's to say, and the run it reports is saved either way. The prompt
 tells the game page about every run it writes, so the Your game tab's list and the hero's "1 playthrough" are
 right without a reload.
 

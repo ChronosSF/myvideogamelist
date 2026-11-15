@@ -525,7 +525,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   a run (to Playing, nothing unfinished) or finish that one (to Finished); nothing else asks, because a run
   cannot say "abandoned" and a finish date counts as a finish (ADR 0047). Only a yes writes, through
   `/playthroughs/start` and `/{id}/finish`, which take the entry's row lock so a late or doubled yes makes no
-  second unfinished run: keep that guard in `PlaythroughService`. The day is the reader's, named in the toast
+  second unfinished run, as every write of a game's runs in `PlaythroughService` does: keep it there. The day is the reader's, named in the toast
   and sent as shown. Every move reaches the toast through `ListsProvider.addToList`'s `moves`, and its wording
   and timings are `@/lib/playthroughPrompt`'s alone. See `docs/decisions/0097-*`.
 
