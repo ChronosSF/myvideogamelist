@@ -23,13 +23,6 @@ namespace MyVideoGameList.Server.Tests;
 /// </remarks>
 public class LibraryResetTests
 {
-    /// <summary>
-    /// The tables <see cref="LibraryResetService"/> deletes from with a statement of its own. Every
-    /// other cleared table has to go by PostgreSQL's cascade from one of these.
-    /// </summary>
-    private static readonly Type[] DeletedByAStatement =
-        [typeof(UserGameEntry), typeof(UserWishlistItem), typeof(UserFavourite), typeof(UserGameEvent)];
-
     [Fact]
     public void ClearedAndKept_BetweenThem_NameEveryTableInTheExportManifest()
     {
@@ -50,19 +43,21 @@ public class LibraryResetTests
     public void Cleared_EveryTableWithoutAStatementOfItsOwn_CascadesFromOneThatHasOne()
     {
         // A table named as cleared and deleted by nothing would be a promise the service does not
-        // keep: its rows would outlive the start over without failing anything.
+        // keep: its rows would outlive the start over without failing anything. The service's own list
+        // of what its statement deletes, so that a table dropped from it fails here.
+        var deletedByStatement = LibraryResetService.DeletedByStatement;
         using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options);
 
-        Assert.All(DeletedByAStatement, type => Assert.Contains(type, LibraryResetService.Cleared));
+        Assert.All(deletedByStatement, type => Assert.Contains(type, LibraryResetService.Cleared));
 
         var orphaned = LibraryResetService.Cleared
-            .Except(DeletedByAStatement)
+            .Except(deletedByStatement)
             .Where(type => !db.Model.FindEntityType(type)!.GetForeignKeys().Any(fk =>
                 fk.IsRequired
                 && fk.DeleteBehavior == DeleteBehavior.Cascade
-                && DeletedByAStatement.Contains(fk.PrincipalEntityType.ClrType)))
+                && deletedByStatement.Contains(fk.PrincipalEntityType.ClrType)))
             .Select(type => type.Name);
 
         Assert.Empty(orphaned);
@@ -74,17 +69,19 @@ public class LibraryResetTests
 
     private const string UserId = "alice-id";
 
-    private static (UserController Controller, ILibraryResetService Reset) StartOverController(string correctPassword)
+    private static (UserController Controller, ILibraryResetService Reset, UserManager<ApplicationUser> Users)
+        StartOverController(string correctPassword, bool lockedOut = false)
     {
         var account = new ApplicationUser { Id = UserId, UserName = "alice" };
         var users = Substitute.For<UserManager<ApplicationUser>>(
             Substitute.For<IUserStore<ApplicationUser>>(), null, null, null, null, null, null, null, null);
         users.GetUserAsync(Arg.Any<ClaimsPrincipal>()).Returns(account);
+        users.IsLockedOutAsync(account).Returns(lockedOut);
         users.CheckPasswordAsync(account, Arg.Any<string>())
             .Returns(call => call.ArgAt<string>(1) == correctPassword);
 
         var reset = Substitute.For<ILibraryResetService>();
-        reset.StartOverAsync(UserId, Arg.Any<CancellationToken>()).Returns(new StartOverResultDto(3, 1, 1, 4, 0));
+        reset.StartOverAsync(UserId, Arg.Any<CancellationToken>()).Returns(new StartOverResultDto(3, 1, 1, 0));
 
         var controller = new UserController(
             users, null!, null!, null!, null!, null!, reset, null!, null!, null!, null!, null!, null!,
@@ -93,7 +90,7 @@ public class LibraryResetTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
 
-        return (controller, reset);
+        return (controller, reset, users);
     }
 
     [Fact]
@@ -101,23 +98,41 @@ public class LibraryResetTests
     {
         // As for deleting the account (ADR 0024 §7): a cookie says the browser signed in once, not
         // that the account holder is at the keyboard now, and nothing this deletes comes back.
-        var (controller, reset) = StartOverController(correctPassword: "right");
+        var (controller, reset, users) = StartOverController(correctPassword: "right");
 
-        var result = await controller.StartOver(new StartOverDto("wrong"), CancellationToken.None);
+        var result = await controller.StartOver(new PasswordConfirmationDto("wrong"), CancellationToken.None);
 
         Assert.IsType<UnauthorizedObjectResult>(result.Result);
+        await reset.DidNotReceiveWithAnyArgs().StartOverAsync(default!, default);
+
+        // Counted towards the lockout, as a wrong password at sign-in is, or a session that is not its
+        // owner's could guess here without limit and keep the account when it guessed right.
+        await users.Received(1).AccessFailedAsync(Arg.Is<ApplicationUser>(u => u.Id == UserId));
+    }
+
+    [Fact]
+    public async Task StartOver_OnALockedAccount_IsRefusedAsAWrongPasswordIsAndChecksNothing()
+    {
+        // The lockout says nothing, as at sign-in: the right password is refused in the same words.
+        var (controller, reset, users) = StartOverController(correctPassword: "right", lockedOut: true);
+
+        var result = await controller.StartOver(new PasswordConfirmationDto("right"), CancellationToken.None);
+
+        Assert.IsType<UnauthorizedObjectResult>(result.Result);
+        await users.DidNotReceiveWithAnyArgs().CheckPasswordAsync(default!, default!);
         await reset.DidNotReceiveWithAnyArgs().StartOverAsync(default!, default);
     }
 
     [Fact]
     public async Task StartOver_WithThePassword_EmptiesTheSignedInAccountsLibraryAndSaysWhatWent()
     {
-        var (controller, reset) = StartOverController(correctPassword: "right");
+        var (controller, reset, users) = StartOverController(correctPassword: "right");
 
-        var result = await controller.StartOver(new StartOverDto("right"), CancellationToken.None);
+        var result = await controller.StartOver(new PasswordConfirmationDto("right"), CancellationToken.None);
 
         var counts = Assert.IsType<StartOverResultDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
-        Assert.Equal(new StartOverResultDto(3, 1, 1, 4, 0), counts);
+        Assert.Equal(new StartOverResultDto(3, 1, 1, 0), counts);
         await reset.Received(1).StartOverAsync(UserId, Arg.Any<CancellationToken>());
+        await users.Received(1).ResetAccessFailedCountAsync(Arg.Is<ApplicationUser>(u => u.Id == UserId));
     }
 }

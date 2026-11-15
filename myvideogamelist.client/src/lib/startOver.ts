@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api';
+import { apiFetch, problemMessage } from '@/lib/api';
 import { formatCountOf } from '@/lib/format';
 
 /**
@@ -9,10 +9,8 @@ export interface StartOverResult {
     games: number;
     wishlist: number;
     favourites: number;
-    /** Status changes deleted from the history behind the statistics. */
-    events: number;
     /**
-     * Rows of an import still waiting for review that were skipped only because their game was in the
+     * Rows of imports still waiting for review that were skipped only because their game was in the
      * library, and are selected to import again now that it is not.
      */
     importRowsReselected: number;
@@ -20,12 +18,27 @@ export interface StartOverResult {
 
 const FAILED = 'Your library could not be emptied. Please try again.';
 
+const UNCERTAIN = 'We could not tell whether your library was emptied: the answer never arrived. '
+    + 'Your lists have been read again, so look at them before you try again.';
+
+/**
+ * A start over whose outcome is not known: sent, and never answered in a way that says what happened.
+ * The request may have reached the API and committed before the connection went, so whoever catches
+ * this reads the library again rather than trusting what it holds.
+ */
+export class StartOverUncertainError extends Error {
+    constructor() {
+        super(UNCERTAIN);
+        this.name = 'StartOverUncertainError';
+    }
+}
+
 /**
  * Empties the signed-in account's library and keeps the account.
  *
- * @throws With a sentence for the user: the server's own where it gave one — "Password is incorrect."
- * is the usual — and otherwise one saying it did not happen. A request that never arrived rejects the
- * same way, so the dialog has one path.
+ * @throws With a sentence for the user: the server's own where it refused — "Password is incorrect."
+ * is the usual — and otherwise one saying it did not happen. A `StartOverUncertainError` when no
+ * readable answer arrived, which is not the same as a refusal.
  */
 export async function startOver(password: string): Promise<StartOverResult> {
     let response: Response;
@@ -36,35 +49,21 @@ export async function startOver(password: string): Promise<StartOverResult> {
             body: JSON.stringify({ password }),
         });
     } catch {
-        throw new Error(FAILED);
+        throw new StartOverUncertainError();
     }
 
-    if (!response.ok) throw new Error(await refusal(response));
-    return await response.json() as StartOverResult;
-}
+    if (!response.ok) throw new Error(await problemMessage(response, FAILED));
 
-/**
- * The sentence in a refusal's body: `message` on the password's own 401, `detail` or `title` on a
- * `ProblemDetails`. A body that is not JSON, or says nothing, is the fallback.
- */
-async function refusal(response: Response): Promise<string> {
-    let body: unknown;
+    // A 2xx is a start over that happened. Its counts not arriving does not undo it.
     try {
-        body = await response.json();
+        return await response.json() as StartOverResult;
     } catch {
-        return FAILED;
+        throw new StartOverUncertainError();
     }
-
-    if (typeof body !== 'object' || body === null) return FAILED;
-    const { message, detail, title } = body as Record<string, unknown>;
-    for (const candidate of [message, detail, title]) {
-        if (typeof candidate === 'string' && candidate.length > 0) return candidate;
-    }
-    return FAILED;
 }
 
 /**
- * What the card says once a start over is done: what went, and what it did to an import waiting for
+ * What the card says once a start over is done: what went, and what it did to any import waiting for
  * review, since that is where somebody starting over goes next.
  */
 export function startOverSummary({ games, wishlist, favourites, importRowsReselected }: StartOverResult): string {
@@ -78,11 +77,11 @@ export function startOverSummary({ games, wishlist, favourites, importRowsResele
         ? 'Your library was already empty.'
         : `Your library is empty: ${listed(removed)} removed.`;
 
-    if (importRowsReselected === 0) return said;
-
-    const reselected = formatCountOf(importRowsReselected, 'game', 'games');
-    const verb = importRowsReselected === 1 ? 'is' : 'are';
-    return `${said} In the import waiting for your review, the ${reselected} you had ${verb} selected to import again.`;
+    // No count: the server counts rows, which can be spread over several imports and name a game
+    // twice, so a number here would say more than it knows.
+    return importRowsReselected === 0
+        ? said
+        : `${said} In any import waiting for your review, the games you had are selected to import again.`;
 }
 
 /** "a", "a and b", "a, b and c". */

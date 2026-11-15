@@ -37,10 +37,12 @@ account*: a button, *Empty my library*, and a dialog that asks for the password 
 first. The dialog is the deletion's own, shared as `PasswordConfirmDialog`, so the two confirmations behave
 alike: what holds them while a download runs, Escape, the backdrop, and focus going back to the opener.
 
-The endpoint is `DELETE /api/user/library`, and the password is checked with `CheckPasswordAsync` and refused
-with a 401, as 0024 §7 decided for the account: a cookie says the browser signed in once, and nothing a start
-over deletes comes back. It answers with what it took, counted by the statements that took it, and the card
-says so where the button is.
+The endpoint is `DELETE /api/user/library`, and the password is refused with a 401, as 0024 §7 decided for the
+account: a cookie says the browser signed in once, and nothing a start over deletes comes back. **A wrong
+password counts towards Identity's lockout, and a locked account is refused in the same words**, as at sign-in,
+for the deletion as well as here. Without that, a session that is not its owner's could guess the password at
+either endpoint without limit, and a right guess here would leave the account and its session standing. It
+answers with what it took, counted by the statement that took it, and the card says so where the button is.
 
 It is not the bulk action #115 and #299 declined. It chooses nothing: it empties the library whole, as the
 deletion empties the account whole.
@@ -73,22 +75,29 @@ table in the export manifest, and `LibraryResetTests` fails when one is in neith
 cleared table has no `DELETE` of its own and no cascade from one that has. A table added later arrives with
 the question asked at build time, as 0024 has every table arrive with the export's and the deletion's.
 
-### 3. One transaction of set-based deletes, and the events before the entries
+### 3. One transaction, and the four deletes one statement
 
-One `DELETE` per table, nothing loaded, in one transaction through the execution strategy
+Nothing loaded, in one transaction through the execution strategy
 ([0038](0038-where-scheduled-work-lives.md)), committed on `CancellationToken.None`: a tab closed before the
 commit rolls all of it back, and a token cancelled after the last statement would only throw a finished start
 over away. The cascades are PostgreSQL's, so the in-memory provider runs none of it, and the integration suite
 does ([0057](0057-the-api-is-tested-over-a-real-postgresql.md)).
 
-**The order keeps 0026's rule.** A `manual` origin means every status the entry has held has an event behind
-it. A game added in another tab is written with its event in one save, and each statement sees what had
-committed when it began. Entries first would let that add commit between the two statements: its entry
-outlives the first, its event does not outlive the second, and a held game says `manual` with no event behind
-its status. Events first, the worst the same race leaves is an event for a game no longer held, which a single
-game's deletion leaves on purpose. A stricter isolation level would close the race instead, by refusing with a
-serialization failure any start over that overlapped a write to the same rows, and somebody would have to try
-again. The order gives the guarantee that matters without refusing anybody.
+**The events, the entries, the wishlist and the favourites go in one statement**, a `WITH` of four
+`DELETE`s, because every part of one statement sees the database as it stood when the statement began. Another
+request's write is then taken whole or left whole. A game added in another tab is written with its event in one
+save: as separate statements in either order it could land between two of them, and either a held game would
+say `manual` with no event behind its status (0026's rule), or an event would outlive its game. An import's
+commit writes entries, wishlist marks and favourites in one save, and between the entries and the wishlist it
+would keep its games and lose its marks. In one statement, every such write committed before it is deleted
+whole, and every one committed after it is kept whole. A stricter isolation level would give the same, by
+refusing with a serialization failure any start over that overlapped a write to the same rows, and somebody
+would have to try again. The one statement refuses nobody.
+
+`LibraryResetService.DeletedByStatement` names the four tables, and `LibraryResetTests` holds every other
+cleared table to a cascade from one of them. The community medians are cached per game for a few minutes
+and dropped by the playthrough service's own writes, which a cascade never reaches, so the start over drops
+those of every game it emptied once it has committed.
 
 ### 4. A pending import's rows that were skipped for the library are selected again
 
@@ -96,7 +105,9 @@ An upload sets a matched row to skip when its game is already held, so that an i
 somebody recorded by hand (§S8 of `specs/csv-list-import.md`). After a start over nothing is held, and those
 rows would go on saying skip. So, in the same transaction and before the entries go, every matched row of a
 pending import that is on skip and whose game the library holds goes back to import, and its job's
-`UpdatedAt` is stamped, since every write to a job is a decision its pending window counts from (0038).
+`UpdatedAt` is stamped, since every write to a job is a decision its pending window counts from (0038). It is
+`ImportService.SelectAgainRowsSkippedForTheLibraryAsync`, beside `PreChecked`, the one statement of the rule
+the upload and the matching pass both apply, so that a change to the rule is made where its inverse is.
 
 The review cannot tell the upload's skip from one its owner chose for a game they held. Both had the library as
 their reason, and the library is what is gone. A row skipped for a game the library does not hold was skipped
@@ -137,15 +148,16 @@ is its own issue, and it starts from a job id on the entry, not from `Origin`.
 - **Leaving pending imports alone**, and telling users to start over before uploading. The natural order is the
   other way round: upload, see every game marked as already held, then start over.
 - **A withdrawal sent at once.** See §5.
+- **Four statements, in an order.** No order keeps every concurrent write whole. See §3.
 - **`REPEATABLE READ` or `SERIALIZABLE`.** See §3.
 
 ## Consequences
 
 - **0018's log has two ways to be deleted**, the account's and this, both the owner's and both behind the
   password. Nothing else deletes an event.
-- **The password is checked as the deletion checks it, and that includes its gap.** `CheckPasswordAsync`
-  counts no failure towards the lockout, so a session that is not its owner's can guess the password through
-  either endpoint without limit. That is the deletion's behaviour too, and it is left as it is here.
+- **Deleting the account now counts a wrong password too**, through the same check, and a locked account
+  cannot be deleted until the lockout ends. That is the sign-in's rule, and the lockout says nothing there
+  either: its owner, with the right password, is told it is wrong for fifteen minutes.
 - **A tester's way back is the download, then Start over, then an import of that download** if they want their
   games again: it brings the games back without their history, tags or settings, and a review as notes (0083),
   and the card says so above the download.
@@ -153,10 +165,14 @@ is its own issue, and it starts from a job id on the entry, not from `Origin`.
   library that emptied itself has an answer.
 - **Tested.** In memory: the classification against the manifest, the password, and the invalidation for a
   public and a private profile. Against PostgreSQL: a row in every table, each cleared table empty and each kept
-  one unchanged, another account untouched, the account still signed in; a wrong password deleting nothing; the
-  history emptied; a pending import's rows selected again and committed; a public profile invalidated once and
-  paced; an empty library sending nothing. On the client: the dialog, the card's summary and focus, the request,
-  and the providers read again.
+  one unchanged, another account untouched in its rows and its import's decisions, the account still signed in;
+  a wrong password deleting nothing, and five of them locking the right one out; the history emptied; the
+  cached community medians dropped; a pending import's rows selected again and committed; a public profile
+  invalidated once and paced; an empty library sending nothing. On the client: the dialog, the card's summary,
+  focus and live region, the request, and the providers read again, after a start over and when no answer
+  arrived.
 - **Not tested:** the race in §3, which no test here can arrange deterministically. It rests on PostgreSQL
-  giving each statement its own snapshot under `READ COMMITTED`, and on the list write saving the entry and its
-  event together.
+  giving every part of one statement the same snapshot, and on the list write and the import's commit each
+  saving in one transaction.
+- **The cache is dropped in the process that ran the start over.** Another task keeps its copy of a median until
+  it expires, a few minutes, as it does after a playthrough's own deletion.

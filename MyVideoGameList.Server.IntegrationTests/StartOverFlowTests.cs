@@ -16,9 +16,10 @@ public class StartOverFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     private const int Held = 2101;
     private const int Fresh = 2102;
     private const int Declined = 2103;
+    private const int Timed = 2104;
 
     private static Task<HttpResponseMessage> StartOverAsync(HttpClient browser, string password = Browsers.Password) =>
-        browser.SendAsync(HttpMethod.Delete, "/api/user/library", new StartOverDto(password));
+        browser.SendAsync(HttpMethod.Delete, "/api/user/library", new PasswordConfirmationDto(password));
 
     private async Task<int> StoredEntriesAsync(string accountId)
     {
@@ -41,6 +42,49 @@ public class StartOverFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task StartOver_AfterFiveWrongPasswords_RefusesTheRightOneAndEmptiesNothing()
+    {
+        // Each wrong guess counts towards Identity's lockout, as at sign-in, so a session that is not its
+        // owner's cannot guess the password here without limit (ADR 0095).
+        await api.CacheGamesAsync(Held);
+        using var browser = api.CreateBrowser();
+        var account = await browser.RegisterAsync(Browsers.NewUserName("locked"));
+        await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{Held}",
+            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.NoContent);
+
+        for (var guess = 0; guess < 5; guess++)
+            await (await StartOverAsync(browser, $"guess-{guess}")).ExpectAsync(HttpStatusCode.Unauthorized);
+
+        await (await StartOverAsync(browser)).ExpectAsync(HttpStatusCode.Unauthorized);
+
+        Assert.Equal(1, await StoredEntriesAsync(account.Id));
+    }
+
+    [Fact]
+    public async Task StartOver_DropsTheCachedCommunityTimesOfTheGamesItEmptied()
+    {
+        // The runs go by a cascade, which the playthrough service never hears about, so the medians it
+        // cached for the game would otherwise go on counting them until they expire.
+        await api.CacheGamesAsync(Timed);
+        using var browser = api.CreateBrowser();
+        await browser.RegisterAsync(Browsers.NewUserName("timer"));
+        await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{Timed}",
+            new SetListEntryDto(ListStatusKeys.Finished))).ExpectAsync(HttpStatusCode.NoContent);
+        await (await browser.SendAsync(HttpMethod.Post, $"/api/entries/{Timed}/playthroughs",
+            new PlaythroughInputDto(PlaythroughTypeKeys.Normally, 6, 600,
+                new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 20), null))).ExpectAsync(HttpStatusCode.Created);
+
+        int Normally(CommunityTimesDto times) => times.Buckets.Single(b => b.Type == PlaythroughTypeKeys.Normally).Samples;
+        var before = await browser.GetJsonAsync<CommunityTimesDto>($"/api/games/{Timed}/community-times");
+        Assert.Equal(1, Normally(before));
+
+        await (await StartOverAsync(browser)).ExpectAsync(HttpStatusCode.OK);
+
+        var after = await browser.GetJsonAsync<CommunityTimesDto>($"/api/games/{Timed}/community-times");
+        Assert.Equal(0, Normally(after));
+    }
+
+    [Fact]
     public async Task StartOver_EmptiesTheHistoryBehindTheStatistics()
     {
         // The event log goes with the library, or the history page would go on listing moves of games
@@ -57,7 +101,6 @@ public class StartOverFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         var counts = await (await StartOverAsync(browser)).ReadAsync<StartOverResultDto>(HttpStatusCode.OK);
 
         Assert.Equal(1, counts.Games);
-        Assert.Equal(2, counts.Events);
         Assert.Empty((await browser.GetJsonAsync<HistoryPageDto>("/api/user/history")).Items);
     }
 
@@ -137,7 +180,7 @@ public class StartOverFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 
         var counts = await (await StartOverAsync(browser)).ReadAsync<StartOverResultDto>(HttpStatusCode.OK);
 
-        Assert.Equal(new StartOverResultDto(0, 0, 0, 0, 0), counts);
+        Assert.Equal(new StartOverResultDto(0, 0, 0, 0), counts);
         Assert.Empty(api.Edge.SentSince(sent));
     }
 

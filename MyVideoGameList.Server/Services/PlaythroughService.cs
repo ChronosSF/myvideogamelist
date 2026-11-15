@@ -297,7 +297,11 @@ public class PlaythroughService(
             : (int)Math.Round((minutes[minutes.Count / 2 - 1] + minutes[minutes.Count / 2]) / 2.0);
     }
 
-    private static string CommunityTimesKey(int gameId) => $"community_times|{gameId}";
+    /// <summary>
+    /// Where a game's community medians are cached. Internal so that a write deleting playthroughs other
+    /// than through this service, as a start over does (ADR 0095), can drop them too.
+    /// </summary>
+    internal static string CommunityTimesKey(int gameId) => $"community_times|{gameId}";
 
     /// <summary>
     /// Drops a game's cached medians, so the member who just logged a playthrough sees it counted

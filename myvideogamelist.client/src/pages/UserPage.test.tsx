@@ -72,7 +72,7 @@ vi.mock('@/components/TagsCard', () => ({
 
 /** Start over reloads the lists, wishlist, favourites and tags, whose providers this page does not mount. */
 const { startOver } = vi.hoisted(() => ({
-    startOver: vi.fn(async () => ({ games: 0, wishlist: 0, favourites: 0, events: 0, importRowsReselected: 0 })),
+    startOver: vi.fn(async () => ({ games: 0, wishlist: 0, favourites: 0, importRowsReselected: 0 })),
 }));
 vi.mock('@/hooks/useStartOver', () => ({ useStartOver: () => startOver }));
 

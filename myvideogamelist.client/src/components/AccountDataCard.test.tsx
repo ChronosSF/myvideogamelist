@@ -9,7 +9,7 @@ vi.mock('@/lib/dataExport', () => ({ downloadDataExport: vi.fn(async () => {}) }
 
 const onDeleteAccount = vi.fn(async (_password: string) => {});
 
-const emptied: StartOverResult = { games: 312, wishlist: 4, favourites: 2, events: 640, importRowsReselected: 0 };
+const emptied: StartOverResult = { games: 312, wishlist: 4, favourites: 2, importRowsReselected: 0 };
 const onStartOver = vi.fn(async (_password: string): Promise<StartOverResult> => emptied);
 
 function renderCard() {
@@ -200,6 +200,37 @@ describe('AccountDataCard start over', () => {
 
         finish();
         await waitFor(() => expect(screen.getByRole('button', { name: 'Empty my library' })).toBeEnabled());
+    });
+
+    it('forgets a download that failed in the dialog, rather than announcing it again beside the result', async () => {
+        const actor = userEvent.setup();
+        vi.mocked(downloadDataExport).mockRejectedValueOnce(new Error('Export failed (500)'));
+        renderCard();
+
+        await actor.click(screen.getByRole('button', { name: 'Empty my library' }));
+        await actor.click(screen.getByRole('button', { name: 'Download your data' }));
+        expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(/could not be downloaded/i);
+
+        await actor.type(screen.getByLabelText('Password'), 'hunter2');
+        await actor.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Empty my library' }));
+
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+        expect(screen.getByRole('status')).toHaveTextContent(/your library is empty/i);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('clears the last result as the dialog opens, so the next one is announced even in the same words', async () => {
+        const actor = userEvent.setup();
+        renderCard();
+
+        await actor.click(screen.getByRole('button', { name: 'Empty my library' }));
+        await actor.type(screen.getByLabelText('Password'), 'hunter2');
+        await actor.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Empty my library' }));
+        await waitFor(() => expect(screen.getByRole('status')).not.toBeEmptyDOMElement());
+
+        await actor.click(screen.getByRole('button', { name: 'Empty my library' }));
+
+        expect(screen.getByRole('status')).toBeEmptyDOMElement();
     });
 
     it('hands focus back to the button that opened the dialog, not the other one', async () => {

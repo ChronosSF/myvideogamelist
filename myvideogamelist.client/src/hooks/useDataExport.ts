@@ -6,6 +6,8 @@ export interface UseDataExportResult {
     /** Set when the last attempt failed, and cleared by the next one. */
     error: string | null;
     download: () => Promise<void>;
+    /** Forgets a failure already reported, so that nothing announces it a second time. */
+    clearError: () => void;
 }
 
 /**
@@ -32,5 +34,5 @@ export function useDataExport(): UseDataExportResult {
         }
     };
 
-    return { downloading, error, download };
+    return { downloading, error, download, clearError: () => setError(null) };
 }

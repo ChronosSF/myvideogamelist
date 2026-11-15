@@ -339,7 +339,7 @@ public class ProfileWithdrawalTests
         var goneWhenSent = false;
         edge.OnInvalidate = _ => goneWhenSent = site.StoredUser(alice.Id) is null;
 
-        var result = await site.Controller(alice).DeleteAccount(new DeleteAccountDto(Password));
+        var result = await site.Controller(alice).DeleteAccount(new PasswordConfirmationDto(Password));
 
         Assert.IsType<NoContentResult>(result);
         AssertSent(edge, "account deleted", "/u/alice*", Sitemaps);
@@ -353,7 +353,7 @@ public class ProfileWithdrawalTests
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
 
-        await site.Controller(alice).DeleteAccount(new DeleteAccountDto(Password));
+        await site.Controller(alice).DeleteAccount(new PasswordConfirmationDto(Password));
 
         Assert.Null(site.StoredUser(alice.Id));
         Assert.Empty(edge.Sent);
@@ -367,7 +367,7 @@ public class ProfileWithdrawalTests
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
 
-        var result = await site.Controller(alice).DeleteAccount(new DeleteAccountDto("not-the-password"));
+        var result = await site.Controller(alice).DeleteAccount(new PasswordConfirmationDto("not-the-password"));
 
         Assert.IsType<UnauthorizedObjectResult>(result);
         Assert.Empty(edge.Sent);
@@ -984,7 +984,7 @@ public class ProfileWithdrawalTests
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
 
-        var result = await site.Controller(alice).DeleteAccount(new DeleteAccountDto(Password));
+        var result = await site.Controller(alice).DeleteAccount(new PasswordConfirmationDto(Password));
 
         Assert.Equal(1, edge.Calls);
         Assert.IsType<NoContentResult>(result);

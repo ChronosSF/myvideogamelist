@@ -42,3 +42,64 @@ export function apiFetch(path: string, init: RequestInit = {}): Promise<Response
 
     return fetch(apiUrl(path), { credentials: 'include', ...init, headers });
 }
+
+/**
+ * A failed response's body, or null when it is not JSON at all — a proxy error page, or an empty
+ * 500. Read once, because a body can only be read once.
+ */
+export async function bodyOf(response: Response): Promise<unknown> {
+    try {
+        return await response.json();
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * The message a failed write should show the user, from the body it answered with.
+ *
+ * ASP.NET returns three shapes and they are not interchangeable. `ValidationProblemDetails` puts
+ * the useful sentence inside `errors`, keyed by field — that is what the username endpoint returns
+ * for "taken", "reserved" and "too soon", and reading only `message` would show a generic failure
+ * in place of the one thing the user needs to know. `{ errors: [...] }` is Identity's own shape,
+ * used by registration. `{ message }` is what this API's own auth failures carry, and `detail` or
+ * `title` alone is a plain `ProblemDetails` — a rate-limited login, or anything the framework
+ * answers before a controller runs.
+ */
+export function messageIn(body: unknown, fallback: string): string {
+    if (typeof body !== 'object' || body === null) return fallback;
+
+    const { errors, message, detail, title } = body as {
+        errors?: unknown;
+        message?: unknown;
+        detail?: unknown;
+        title?: unknown;
+    };
+
+    if (Array.isArray(errors)) return errors.join(' ') || fallback;
+
+    if (typeof errors === 'object' && errors !== null) {
+        const first = Object.values(errors as Record<string, unknown>)
+            .flatMap(value => (Array.isArray(value) ? (value as string[]) : []))
+            .find(text => typeof text === 'string' && text.length > 0);
+        if (first) return first;
+    }
+
+    // `message` is what this API's own auth failures carry. `detail` and `title` are
+    // ProblemDetails, which is what the framework produces - a rate-limited login being the
+    // one where the fallback ("Login failed") would be actively misleading.
+    for (const candidate of [message, detail, title]) {
+        if (typeof candidate === 'string' && candidate.length > 0) return candidate;
+    }
+
+    return fallback;
+}
+
+/**
+ * The sentence a failed request should show the user: its body read as `messageIn` reads it, or
+ * `fallback`. Every write that reports the server's refusal goes through this, so a sentence the API
+ * gives is never replaced by a generic one.
+ */
+export async function problemMessage(response: Response, fallback: string): Promise<string> {
+    return messageIn(await bodyOf(response), fallback);
+}

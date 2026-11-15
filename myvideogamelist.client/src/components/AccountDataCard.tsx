@@ -57,11 +57,21 @@ export function AccountDataCard({ userName, onDeleteAccount, onStartOver }: Prop
         opener.current?.focus();
     }, [confirming]);
 
-    // The dialog goes once the library is empty, and the card says what went where the button is.
+    // The dialog goes once the library is empty, and the card says what went where the button is. A
+    // download that failed in the dialog was reported there, and is forgotten rather than announced
+    // again by the card beside the news that the library is empty.
     const startOver = async (password: string) => {
         const result = await onStartOver(password);
+        exporter.clearError();
         setStartedOver(result);
         closeDialog();
+    };
+
+    // The last result is cleared as the dialog opens, so that the next one, even in the same words, is
+    // a change the live region announces.
+    const openStartOver = () => {
+        setStartedOver(null);
+        setConfirming('start-over');
     };
 
     return (
@@ -103,7 +113,7 @@ export function AccountDataCard({ userName, onDeleteAccount, onStartOver }: Prop
                 ref={startOverButton}
                 type="button"
                 className="user-btn user-btn-block user-btn-danger user-card-action"
-                onClick={() => setConfirming('start-over')}
+                onClick={openStartOver}
                 disabled={exporter.downloading}
                 aria-haspopup="dialog"
             >

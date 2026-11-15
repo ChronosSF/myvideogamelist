@@ -137,7 +137,7 @@ public class AuthFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         await (await elsewhere.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.OK);
 
         var delete = await deleting.SendAsync(
-            HttpMethod.Delete, "/api/user", new DeleteAccountDto(Browsers.Password));
+            HttpMethod.Delete, "/api/user", new PasswordConfirmationDto(Browsers.Password));
         await delete.ExpectAsync(HttpStatusCode.NoContent);
 
         var body = method == "PUT" ? new SetListEntryDto(ListStatusKeys.Backlog) : null;

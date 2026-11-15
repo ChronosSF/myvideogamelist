@@ -132,7 +132,14 @@ export default function UserSettingsPage() {
                             <Link to="/import" className="user-btn user-card-action">Start an import</Link>
                         </div>
 
-                        <AccountDataCard userName={user.userName} onDeleteAccount={deleteAccount} onStartOver={startOver} />
+                        {/* Keyed by the account, as the cards above are, so a start over's summary is never
+                            shown under another account. */}
+                        <AccountDataCard
+                            key={user.id}
+                            userName={user.userName}
+                            onDeleteAccount={deleteAccount}
+                            onStartOver={startOver}
+                        />
                     </div>
                 </SettingsSection>
             </div>

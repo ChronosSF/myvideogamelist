@@ -314,20 +314,15 @@ public record ImportRowExportDto(
     JsonElement Values);
 
 /// <summary>
-/// Confirmation for deleting an account: the account's own password, typed again.
+/// Confirmation for an irreversible act on the account, deleting it or emptying its library: the
+/// account's own password, typed again.
 /// </summary>
 /// <remarks>
 /// A cookie proves the browser was signed in at some point, which is not enough for an
 /// irreversible act on a shared or unlocked machine. Re-entering the password proves the person
 /// at the keyboard is the account holder, now.
 /// </remarks>
-public record DeleteAccountDto([Required] string Password);
-
-/// <summary>
-/// Confirmation for emptying a library and keeping the account: the account's own password, typed
-/// again, for the reason <see cref="DeleteAccountDto"/> gives. Nothing it deletes can be put back.
-/// </summary>
-public record StartOverDto([Required] string Password);
+public record PasswordConfirmationDto([Required] string Password);
 
 /// <summary>
 /// What a start over took, counted by the statements that took it, for the sentence the settings
@@ -339,9 +334,8 @@ public record StartOverDto([Required] string Password);
 /// </param>
 /// <param name="Wishlist">Games that left the wishlist.</param>
 /// <param name="Favourites">Games that left the favourites.</param>
-/// <param name="Events">Status changes deleted from the history behind the statistics.</param>
 /// <param name="ImportRowsReselected">
 /// Rows of imports still awaiting review that were set to skip only because their game was in the
 /// library, and are selected to import again now that it is not.
 /// </param>
-public record StartOverResultDto(int Games, int Wishlist, int Favourites, int Events, int ImportRowsReselected);
+public record StartOverResultDto(int Games, int Wishlist, int Favourites, int ImportRowsReselected);

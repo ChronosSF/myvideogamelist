@@ -506,7 +506,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   only, which share one budget (ADR 0089, 0090); not on the reset itself, whose token cannot be guessed — the SSR server calls this API for every visitor, so
   a limit partitioned by address anywhere a loader reaches would throttle the whole site as one
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
-  password, because announcing a lockout tells an attacker the account exists. Forwarded headers
+  password, because announcing a lockout tells an attacker the account exists. The password typed again
+  to delete the account or to start over counts towards it too (`docs/decisions/0095-*`). Forwarded headers
   are off until configured, and turning them on without naming the proxy **fails at startup** rather
   than trusting whoever sends the header. Behind CloudFront, **`ForwardLimit` stays 1**: the
   middleware checks each hop against the trust list, and the CDN's address is never in the
