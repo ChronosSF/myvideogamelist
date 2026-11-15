@@ -84,7 +84,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0063](0063-the-showcases-and-sales-for-everybody.md) | The showcases and sales for everybody: one answer for every timezone, and the panel gives way to the line | Implemented |
 | [0064](0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md) | The favourites showcase is arranged by hand and shown in that order, and a favourite is marked on every card its owner sees | Implemented |
 | [0065](0065-tags-are-the-owners-own-words.md) | Tags are the owner's own words: per account, by id on the row, set as a whole, and never published | Implemented |
-| [0066](0066-a-holding-page-until-production-takes-the-domain.md) | A holding page at the domain until production takes it, and the apex is canonical | Implemented; deployed 2026-10-23, retired by #98 |
+| [0066](0066-a-holding-page-until-production-takes-the-domain.md) | A holding page at the domain until production takes it, and the apex is canonical | Implemented; deployed 2026-10-23, retired by #98; amended by 0100 |
 | [0067](0067-the-esrb-filter-lists-a-game-under-its-badge.md) | The ESRB filter lists a game under the rating its badge shows | Implemented |
 | [0068](0068-lighthouse-on-the-production-shape.md) | Lighthouse on the production shape: five pages, a phone and a desktop, and only what the runner cannot move fails the build | Implemented; its credentials are allowed, and its lockfile audited, by 0061 |
 | [0069](0069-a-crawler-is-told-what-is-ours.md) | A crawler is told what is ours: the member score in the server render, a description that leads with it, and structured data | Implemented |
@@ -116,6 +116,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0095](0095-start-over-empties-the-library-and-keeps-the-account.md) | Start over empties the library in one transaction and keeps the account, and the event log goes with the library | Implemented |
 | [0096](0096-a-profile-is-addressed-by-a-public-id-with-its-username-after-it.md) | A profile is addressed by a public id that never changes, with its username after it for people to read: only the id is looked up, any other name is a 301, and a rename moves nothing | Implemented |
 | [0098](0098-one-rate-rule-at-the-edge.md) | One rate rule at the edge: an address past 300 requests in five minutes is answered 429, by a web ACL in a stack of its own that parks with the environment | Implemented on dev; proved only by a resume |
+| [0100](0100-the-holding-page-points-at-the-test-run.md) | The holding page points at the test run while it lasts, in the site's own look and type: one promise, the site's fonts as its own files and `font-src 'self'` in its policy, and the call to action off when the test ends | Accepted; deployed by hand once dev is open |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.
