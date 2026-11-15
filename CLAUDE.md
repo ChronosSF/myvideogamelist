@@ -119,11 +119,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   anything unbounded inside a transaction. Both limits are `Data/SessionLimits.cs`, which the CDK
   app compiles too, so it may use nothing past the base class library. See `docs/decisions/0079-*`.
 
-- **A merge to master builds and pushes dev's images, and deploys only when the environment is
-  awake.** `DEV_DEPLOY_ENABLED` on the `dev` GitHub environment is the gate, set by
+- **Dev deploys only when `Deploy dev` is run by hand, and only when the environment is awake.** A
+  merge to master builds and deploys nothing; a run builds master's head as it starts and deploys that
+  (ADR 0099). `DEV_DEPLOY_ENABLED` on the `dev` GitHub environment is the gate, set by
   `scripts/dev-env.mjs park` and `resume` and by nothing else: deploying the application stack
-  recreates it if it was destroyed, so an unconditional deploy-on-merge would silently un-park the
-  environment and start the balancer billing again. Every deploy of `Migrate` or `App`, in the
+  recreates it if it was destroyed, so a run dispatched while parked would silently un-park the
+  environment and start the balancer billing again. Parked, a run builds master's images and stops, so
+  run one before `resume`, which deploys the newest tag in ECR. Every deploy of `Migrate` or `App`, in the
   workflow and in the script, is `--exclusively`, so that the long-lived `Data` stack is never
   redeployed as a dependency by something that only meant to deploy a release. The balancer admits
   CloudFront's prefix list and nothing else, and its listener answers only the distribution that

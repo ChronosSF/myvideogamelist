@@ -182,15 +182,13 @@ there is the placeholder still in the secret, or a task started before the pair 
 
 ## The pipeline
 
-`.github/workflows/deploy-dev.yml` runs after every green CI run of a push to master, and by
-hand. CI runs on pull requests too, and a fork's branch called `master` passes the branch
-filter, so the automatic path also requires the triggering run to be a `push` to this
-repository - without that, a green CI run would hand the AWS role to anybody's code. The job
-assumes the deploy role through OIDC - no AWS key is stored in GitHub - builds both images and
-pushes them tagged with the commit, and then stops unless `DEV_DEPLOY_ENABLED` is `true` on the
-`dev` GitHub environment and the commit is still master's tip. Runs wait for each other in one queue
-and none is cancelled, so every commit gets its images; one that master has moved past deploys
-nothing, because the newer commit's own run deploys that one. Awake and newest, it deploys `Migrate`, runs the migration task and fails the
+`.github/workflows/deploy-dev.yml` runs by hand and only by hand, from the Actions tab or with
+`gh workflow run deploy-dev.yml` (ADR 0099): a merge reaches dev when the owner chooses. The job
+assumes the deploy role through OIDC - no AWS key is stored in GitHub - checks out master's head as it
+starts, builds both images and pushes them tagged with that commit, and then stops unless
+`DEV_DEPLOY_ENABLED` is `true` on the `dev` GitHub environment. Because it takes master's head
+rather than the commit it was dispatched at, a run that waited behind another, or a re-run of an old
+one, deploys master's newest and never an older commit. Awake, it deploys `Migrate`, runs the migration task and fails the
 release on a non-zero exit, deploys `App`, waits for both services, invalidates the distribution
 and waits for that too, then checks target health and the site through the distribution: a 401
 without the basic-auth pair, and with it `/readyz` and `/` answering 200. The distribution id is
@@ -281,8 +279,8 @@ beside `RequestsPerFiveMinutes` in `src/Infra/WafStack.cs`.
   ARN when it deploys, and `park` destroys it after `App` (the distribution holds the ACL, and AWS WAF will not
   delete an ACL something still uses) and after the database stops. Its destroy is `--exclusively`, because
   `App` depends on it and `cdk destroy` would otherwise take `App` too.
-- **The pipeline never deploys it.** A change to the rule is deployed by hand, before the merge if `App`'s
-  reference changes with it, and otherwise whenever:
+- **The pipeline never deploys it.** A change to the rule is deployed by hand, before Deploy dev next runs if
+  `App`'s reference changes with it, and otherwise whenever:
 
   ```bash
   cdk deploy Mvgl-dev-Waf --exclusively --profile mvgl-dev -c env=dev
@@ -425,9 +423,10 @@ is destroying the `App` stack; stopping the database afterwards reaches the idle
 stack, and gates the pipeline off; `resume` starts the database, migrates it at the newest pushed
 tag, deploys the web ACL's stack and then `App` at that tag, checks the site through the
 distribution and gates it back on; `status` says which cost row the
-environment is on. The migrations are `resume`'s because a parked environment skips the pipeline's
-along with its deploys, while every merge still pushes images: the newest tag can need migrations
-the database never had, and a failed one stops the resume before anything is deployed. Run them
+environment is on. Run Deploy dev first: parked, it builds master's images and stops, which makes
+master's head the newest tag `resume` finds. The migrations are `resume`'s because that run skips
+them along with the deploy: the newest tag can need migrations the database never had, and a failed
+one stops the resume before anything is deployed. Run them
 from the repository root with the `mvgl-dev` profile signed in. The `App` stack includes the
 distribution, so a park and a resume each take several minutes longer than the services alone
 would; a resume creates a new distribution with a new id, and nothing is cached across one.

@@ -12,12 +12,13 @@
  * billing while every page fails, and destroy the web ACL only once the distribution that holds it
  * has gone with that stack, since AWS WAF refuses to delete an ACL something still uses. Resuming is the reverse
  * plus two lookups done by hand otherwise: the newest image tag in ECR, and whether the database
- * is back yet - and the migrations. A parked environment skips the pipeline's along with its
- * deploys, while every merge still pushes images, so the newest tag can need migrations the
- * database has never had. That is exactly the sequence that goes wrong at the one step skipped
- * from memory, so it lives here, with the pipeline's gate (D-6) toggled alongside: parking sets the
- * DEV_DEPLOY_ENABLED variable to false so that a merge to master cannot silently un-park the
- * environment, and resuming sets it back.
+ * is back yet - and the migrations. Deploy dev, run while parked, pushes images and skips its
+ * migrations along with its deploy, so the newest tag can need migrations the database has never
+ * had. That is exactly the sequence that goes wrong at the one step skipped from memory, so it
+ * lives here, with the pipeline's gate (D-6) toggled alongside: parking sets the DEV_DEPLOY_ENABLED
+ * variable to false so that a run of Deploy dev cannot silently un-park the environment, and
+ * resuming sets it back. Run Deploy dev before resuming, so that the newest tag is master's head
+ * (ADR 0099).
  *
  * ---------------------------------------------------------------------------------------------
  * HOW TO RUN IT
@@ -435,9 +436,9 @@ async function stoppedTask(task, minutes = 30) {
 
 /**
  * The migrations, at the tag about to be deployed, before anything serves it - the same three steps
- * Deploy dev runs before every release. A parked environment skips that job's migrations along with
- * its deploy, while every merge still pushes images, so the newest tag can need migrations the
- * database has never had; and outside Development the application never migrates itself, so an API
+ * Deploy dev runs before every release. A run of that job while parked pushes images and skips its
+ * migrations along with its deploy, so the newest tag can need migrations the database has never
+ * had; and outside Development the application never migrates itself, so an API
  * against the old schema passes /healthz and fails on its first query.
  *
  * The task definition is deployed first, because it names its image by tag. The task runs where the
@@ -510,7 +511,7 @@ async function resume() {
         fail(`Tag ${chosen} is not in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}.`);
     }
     const tag = chosen ?? newestCommonTag();
-    if (!tag) fail(`No tag is present in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}. Build and push a release first (ADR 0044, Phase 7).`);
+    if (!tag) fail(`No tag is present in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}. Run Deploy dev to build and push one first (ADR 0099).`);
 
     // Before the application: the database is available now, and the tag is the one about to serve.
     await migrate(tag);
