@@ -1,4 +1,5 @@
 import { Link, data, isRouteErrorResponse, useParams, useRevalidator } from 'react-router';
+import { RATE_LIMITED, isRateLimited } from '@/lib/api';
 import { CACHE_NOT_FOUND, CACHE_PROFILE, PRIVATE_NO_STORE } from '@/lib/cache';
 import { lastPage, pageFrom, pageSearch } from '@/lib/paging';
 import { type SiteConfig, NOINDEX, pageMeta, siteConfig } from '@/lib/seo';
@@ -429,11 +430,15 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                     <ErrorState
                         title="Failed to load this profile"
                         titleAs="h1"
-                        onRetry={() => void revalidator.revalidate()}
+                        // Not for the edge's 429, which asking again at once only prolongs (ADR 0098).
+                        onRetry={isRateLimited(error) ? undefined : () => void revalidator.revalidate()}
                         retrying={revalidator.state === 'loading'}
                         reference={reference}
                     >
-                        Something went wrong on our side, so this profile could not be loaded just now.
+                        {isRateLimited(error)
+                            // The edge's, for this reader's address alone (ADR 0098).
+                            ? RATE_LIMITED
+                            : 'Something went wrong on our side, so this profile could not be loaded just now.'}
                     </ErrorState>
                 )}
             </div>
