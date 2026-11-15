@@ -4,7 +4,8 @@
 [#438](https://github.com/ChronosSF/myvideogamelist/issues/438), which keeps AWS's managed rule groups and
 production's ACL. Gives [0033](0033-what-the-api-refuses.md) §2 the edge it left volume control to, and
 takes the WAF off the deferred lists of [0044](0044-what-the-deployment-walkthrough-settled.md) and
-[0046](0046-the-balancer-answers-its-own-distribution.md).
+[0046](0046-the-balancer-answers-its-own-distribution.md). The pipeline it says deploys `App` on every merge
+is run by hand since [0099](0099-dev-is-deployed-by-hand.md).
 
 ## Context
 

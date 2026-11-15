@@ -4,7 +4,8 @@
 left to #106, a job that builds the client image, and one of what
 [0060](0060-one-browser-test-over-the-production-shape.md) lists as not covered, the images themselves.
 Branch protection and GitHub's own secret scanning are repository settings, which the owner turns on
-(§7); #106 stays open until they are.
+(§7); #106 stays open until they are. What it says of Deploy dev waiting on these jobs is history since
+[0099](0099-dev-is-deployed-by-hand.md): dev is deployed by hand.
 
 ## Context
 
