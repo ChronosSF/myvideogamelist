@@ -1,6 +1,6 @@
 # 0083. Our own export is imported as any tracker's is
 
-**Status:** Implemented — part of #126.
+**Status:** Implemented — part of #126. §2 is amended by [0087](0087-an-imported-game-arrives-when-its-source-says-it-did.md): a status's own moment, `StatusChangedAt`, now comes back from any file that gives one, ours included, and the rule stays one rule.
 
 ## Context
 
@@ -57,7 +57,10 @@ account that ever imported one, and nothing afterwards could tell which rows wer
 an entry, not an event. Our export is a file its owner holds and can edit like any other, so 0026's rule
 stays one rule: an import writes no event, stamps no `ScoredAt` ([0062](0062-the-history-is-three-rows-unioned-and-what-has-no-moment-has-no-item.md))
 and no `StatusChangedAt`, whatever wrote the file. The history page and the statistics then read these
-entries exactly as they read Grouvee's.
+entries exactly as they read Grouvee's. *(Amended by [0087](0087-an-imported-game-arrives-when-its-source-says-it-did.md):
+an import takes `StatusChangedAt` from any file that says when a game arrived in its list, ours as much
+as Grouvee's, and never from its own clock. It is a moment on the entry, not an event, and neither the
+history nor the statistics read it.)*
 
 A review comes back as notes for 0037's reason: putting somebody's prose in front of other people is
 not an import's decision, and on a new account it is two clicks to make it again. It is appended after

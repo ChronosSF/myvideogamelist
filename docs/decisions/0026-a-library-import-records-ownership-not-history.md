@@ -1,6 +1,6 @@
 # 0026. A library import records ownership, not history
 
-**Status:** Accepted. The framework this needs — the `Origin` column, the job tables and the `IImportSource` seam — shipped with [0037](0037-a-tracker-import-carries-history.md); the Steam source itself is an open GitHub issue. §3 is amended by [0047](0047-a-playthroughs-dates-count-and-a-status-change-comes-first.md): the activity chart and the streaks now count a playthrough's dates for a game with no status change of that kind, so imported games are in them by their dates, while §2 — no events — stands.
+**Status:** Accepted. The framework this needs — the `Origin` column, the job tables and the `IImportSource` seam — shipped with [0037](0037-a-tracker-import-carries-history.md); the Steam source itself is an open GitHub issue. §3 is amended by [0047](0047-a-playthroughs-dates-count-and-a-status-change-comes-first.md): the activity chart and the streaks now count a playthrough's dates for a game with no status change of that kind, so imported games are in them by their dates, while §2 — no events — stands. §5 is amended by [0087](0087-an-imported-game-arrives-when-its-source-says-it-did.md): an imported status takes the moment its source gives for the game reaching its shelf, and stays null only where the source gives none — never the import's own clock.
 
 ## Context
 

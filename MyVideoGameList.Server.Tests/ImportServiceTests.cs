@@ -19,8 +19,9 @@ namespace MyVideoGameList.Server.Tests;
 /// The assertions that matter most here are the ones about what the import does <em>not</em> write.
 /// An import creating a status without an event is the exemption ADR 0026 grants and ADR 0037
 /// extends, and the event log is the one table in this schema no migration can reconstruct — so a
-/// change that starts writing events, or that stamps <c>StatusChangedAt</c> or <c>ScoredAt</c>, or
-/// that gives an imported run a type, has to fail a test rather than be noticed in review.
+/// change that starts writing events, or that stamps <c>ScoredAt</c>, or <c>StatusChangedAt</c> from
+/// anything but the source's own moment, or that gives an imported run a type, has to fail a test
+/// rather than be noticed in review.
 /// </remarks>
 public class ImportServiceTests
 {
@@ -380,15 +381,53 @@ public class ImportServiceTests
     }
 
     [Fact]
-    public async Task CommitAsync_LeavesStatusChangedAtNull()
+    public async Task CommitAsync_StampsStatusChangedAtWithWhenTheSourceSaysTheGameArrived()
     {
-        // The sort key behind "recently moved". Stamping it would put an entire imported library
-        // at the top of that order and bury everything the user actually touched (ADR 0026 §5).
+        // The sort key behind "recently moved", which then orders an imported list by when its games
+        // really arrived (ADR 0087).
         using var db = NewDb();
         var service = NewService(db, CacheReturning(Game(379)));
 
         var jobId = await UploadAsync(service, Export(Entry(
-            shelves: """{"Playing": {"date_added": "2025-11-28T00:00:00Z"}}""")));
+            shelves: """{"Playing": {"date_added": "2025-11-28T18:02:00Z"}}""")));
+        await service.CommitAsync(UserId, jobId);
+
+        Assert.Equal(
+            new DateTimeOffset(2025, 11, 28, 18, 2, 0, TimeSpan.Zero),
+            Assert.Single(db.UserGameEntries).StatusChangedAt);
+    }
+
+    [Fact]
+    public async Task CommitAsync_ASourceThatDoesNotSayWhen_LeavesStatusChangedAtNull()
+    {
+        // Never the import's own clock: that would put an entire imported library at the top of
+        // "recently moved" and bury everything the user actually touched (ADR 0026 §5).
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry(shelves: """{"Playing": {"order": 1}}""")));
+        await service.CommitAsync(UserId, jobId);
+
+        var entry = Assert.Single(db.UserGameEntries);
+        Assert.Equal(db.ListStatuses.Single(s => s.Key == ListStatusKeys.Playing).Id, entry.StatusId);
+        Assert.Null(entry.StatusChangedAt);
+    }
+
+    [Fact]
+    public async Task CommitAsync_APayloadStoredBeforeTheMomentWasCarried_CommitsWithoutOne()
+    {
+        // A job uploaded before the field existed is still pending somewhere for up to two weeks.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+        var jobId = await UploadAsync(service, Export(Entry(
+            shelves: """{"Playing": {"date_added": "2025-11-28T18:02:00Z"}}""")));
+
+        var row = db.ImportRows.Single();
+        var stored = System.Text.Json.Nodes.JsonNode.Parse(row.Payload)!.AsObject();
+        Assert.True(stored.Remove("statusSince"));
+        row.Payload = stored.ToJsonString();
+        await db.SaveChangesAsync();
+
         await service.CommitAsync(UserId, jobId);
 
         Assert.Null(Assert.Single(db.UserGameEntries).StatusChangedAt);
@@ -416,8 +455,9 @@ public class ImportServiceTests
         var jobId = await UploadAsync(service, Export(Entry(addedOn: "2021-10-02")));
         await service.CommitAsync(UserId, jobId);
 
+        // The collection's day, at the time the game went onto its shelf that day (ADR 0087).
         Assert.Equal(
-            new DateTimeOffset(2021, 10, 2, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2021, 10, 2, 6, 54, 47, TimeSpan.Zero),
             Assert.Single(db.UserGameEntries).AddedAt);
     }
 
@@ -555,7 +595,8 @@ public class ImportServiceTests
     {
         // The source says what the score is, not when it was given. Stamped with the import's own
         // clock, a whole library would sit at the top of the history as though scored in one
-        // afternoon — fabricated history, for the reason StatusChangedAt stays null (ADR 0062).
+        // afternoon — fabricated history, for the reason StatusChangedAt never takes the import's
+        // clock (ADR 0062). The shelf's moment, which it does take, is no score's (ADR 0087).
         using var db = NewDb();
         var service = NewService(db, CacheReturning(Game(379)));
 
@@ -963,7 +1004,8 @@ public class ImportServiceTests
     {
         // The answer is its owner's, but it is still a status the import wrote without an event, so
         // it is marked exactly as a finish date in the file would have been: the origin names the
-        // source and StatusChangedAt stays null (ADR 0026, ADR 0037).
+        // source (ADR 0026, ADR 0037), and the moment is when the game went onto Played, which is
+        // the shelf the answer reads (ADR 0087).
         using var db = NewDb();
         var service = NewService(db, CacheReturning(Game(379)));
         var jobId = await UploadAsync(service, Export(Entry()));
@@ -974,7 +1016,7 @@ public class ImportServiceTests
         var entry = Assert.Single(db.UserGameEntries);
         Assert.Equal(db.ListStatuses.Single(s => s.Key == ListStatusKeys.Finished).Id, entry.StatusId);
         Assert.Equal(ImportSources.Grouvee, entry.Origin);
-        Assert.Null(entry.StatusChangedAt);
+        Assert.Equal(new DateTimeOffset(2021, 10, 2, 6, 54, 47, TimeSpan.Zero), entry.StatusChangedAt);
         Assert.Empty(db.UserGameEvents);
     }
 
@@ -1150,7 +1192,7 @@ public class ImportServiceTests
         var db = NewDb();
         db.UserGameEntries.Add(new UserGameEntry
         {
-            UserId = UserId, GameId = 379, AddedAt = Midday, Position = 1024,
+            UserId = UserId, GameId = 379, AddedAt = Midday, Position = 1024, StatusChangedAt = Midday,
             StatusId = db.ListStatuses.Single(s => s.Key == ListStatusKeys.Backlog).Id
         });
         await db.SaveChangesAsync();
@@ -1176,15 +1218,30 @@ public class ImportServiceTests
         var entry = Assert.Single(db.UserGameEntries);
         Assert.Equal(db.ListStatuses.Single(s => s.Key == ListStatusKeys.Playing).Id, entry.StatusId);
         Assert.Null(entry.Position);
+
+        // And it arrived in Playing when the source says; the moment it held dated its arrival in
+        // the backlog it has left (ADR 0087).
+        Assert.Equal(new DateTimeOffset(2025, 11, 28, 0, 0, 0, TimeSpan.Zero), entry.StatusChangedAt);
     }
 
     [Fact]
-    public async Task CommitAsync_LeavingAPlacedGameInItsList_KeepsItsPosition()
+    public async Task CommitAsync_MovingAGameToAListWithoutTheSourceSayingWhen_LeavesNoMoment()
     {
+        using var db = await PlacedInTheBacklogAndReimportedAsync("""{"Playing": {"order": 1}}""");
+
+        Assert.Null(Assert.Single(db.UserGameEntries).StatusChangedAt);
+    }
+
+    [Fact]
+    public async Task CommitAsync_LeavingAPlacedGameInItsList_KeepsItsPositionAndItsMoment()
+    {
+        // Its owner moved it there themselves, and that moment is theirs, not the file's.
         using var db = await PlacedInTheBacklogAndReimportedAsync(
             """{"Backlog": {"date_added": "2025-11-28T00:00:00Z"}}""");
 
-        Assert.Equal(1024, Assert.Single(db.UserGameEntries).Position);
+        var entry = Assert.Single(db.UserGameEntries);
+        Assert.Equal(1024, entry.Position);
+        Assert.Equal(Midday, entry.StatusChangedAt);
     }
 
     [Fact]
