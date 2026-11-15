@@ -33,8 +33,8 @@ export function ReportButton({ target, subject, label }: ReportButtonProps) {
     const [open, setOpen] = useState(false);
 
     const user = auth?.user ?? null;
-    // Handles are one namespace whatever their letter case (ADR 0027), and the page may spell one either way.
-    if (user !== null && user.userName.toLowerCase() === target.userName.toLowerCase()) return null;
+    // By the profile's public id, which is what the page names it by and never changes (ADR 0096).
+    if (user !== null && user.publicId === target.publicId) return null;
 
     const press = () => {
         // Until auth answers, a press could open the sign-in dialog over somebody already signed in.

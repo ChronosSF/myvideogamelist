@@ -10,6 +10,7 @@ import type { HiddenReview, ModerationQueue, ReportedProfile, ReportedReview } f
 function reportedReview(overrides: Partial<ReportedReview> = {}): ReportedReview {
     return {
         reviewId: 7,
+        publicId: 'b4kz9q2mxw7c',
         userName: 'alex',
         displayName: null,
         gameId: 1942,
@@ -28,6 +29,7 @@ function reportedReview(overrides: Partial<ReportedReview> = {}): ReportedReview
 function reportedProfile(overrides: Partial<ReportedProfile> = {}): ReportedProfile {
     return {
         accountId: 'acc-sam',
+        publicId: '7tn3vjh8p0sd',
         userName: 'sam',
         displayName: 'Support',
         avatarUrl: null,
@@ -41,6 +43,7 @@ function reportedProfile(overrides: Partial<ReportedProfile> = {}): ReportedProf
 function hiddenReview(overrides: Partial<HiddenReview> = {}): HiddenReview {
     return {
         reviewId: 3,
+        publicId: 'zzzzzzzzzzzz',
         userName: 'nadia',
         gameId: 7,
         gameTitle: null,
@@ -94,7 +97,7 @@ describe('ModerationCard', () => {
 
         const item = (await screen.findByText('Buy gold at example.test')).closest('li')!;
         expect(within(item).getByRole('link', { name: 'Halo' })).toHaveAttribute('href', '/games/1942');
-        expect(within(item).getByRole('link', { name: '@alex' })).toHaveAttribute('href', '/u/alex');
+        expect(within(item).getByRole('link', { name: '@alex' })).toHaveAttribute('href', '/u/b4kz9q2mxw7c/alex');
         expect(within(item).getByText(/2 reports/)).toBeInTheDocument();
         expect(within(item).getByText('Spam')).toBeInTheDocument();
         expect(within(item).getByText('Hateful, harassing or offensive')).toBeInTheDocument();

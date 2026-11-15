@@ -29,7 +29,9 @@ const signedOut: AuthContextValue = { ...signedIn, user: null };
 const answering: AuthContextValue = { ...signedIn, user: null, loading: true };
 const dialogs: AuthDialogContextValue = { open: vi.fn() };
 
-const REVIEW: ReportTarget = { userName: 'Alex', gameId: 1942 };
+/** Alex's review, named as the page names it: by the profile's public id (ADR 0096). */
+const ALEX = '7tn3vjh8p0sd';
+const REVIEW: ReportTarget = { publicId: ALEX, gameId: 1942 };
 
 function renderButton(auth: AuthContextValue | null = signedIn, target: ReportTarget = REVIEW) {
     const button = <ReportButton target={target} subject="Alex's review" label="Report Alex's review" />;
@@ -74,10 +76,17 @@ describe('ReportButton', () => {
         expect(reportButton()).toBeInTheDocument();
     });
 
-    it('is not drawn under the reader\'s own review, whatever the letter case of the handle', () => {
-        renderButton({ ...signedIn, user: userProfile({ userName: 'alex' }) });
+    it('is not drawn under the reader\'s own review, known by the profile\'s id', () => {
+        renderButton({ ...signedIn, user: userProfile({ publicId: ALEX, userName: 'Alex' }) });
 
         expect(screen.queryByRole('button', { name: /report/i })).not.toBeInTheDocument();
+    });
+
+    it('is drawn for a reader whose handle is the author\'s in other letter case, since the id is not theirs', () => {
+        // Handles are one namespace whatever their case, so this reader is not Alex: the id says so.
+        renderButton({ ...signedIn, user: userProfile({ userName: 'ALEX' }) });
+
+        expect(reportButton()).toBeInTheDocument();
     });
 
     it('sends the reason and the note through apiFetch, then thanks the reader', async () => {
@@ -92,21 +101,21 @@ describe('ReportButton', () => {
 
         const [call] = api.callsTo('POST', '/api/reports');
         expectSentThroughApiFetch(call);
-        expect(call.body).toEqual({ userName: 'Alex', gameId: 1942, reason: 'impersonation', note: 'That is my name.' });
+        expect(call.body).toEqual({ publicId: ALEX, gameId: 1942, reason: 'impersonation', note: 'That is my name.' });
         expect(await screen.findByRole('heading', { name: 'Thank you' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus();
     });
 
     it('reports a profile with no game, and an empty note as none', async () => {
         const api = stubApi({ 'POST /api/reports': () => empty(204) });
-        renderButton(signedIn, { userName: 'Alex' });
+        renderButton(signedIn, { publicId: ALEX });
 
         await userEvent.click(reportButton());
         await userEvent.click(screen.getByRole('radio', { name: 'Spam' }));
         await userEvent.type(screen.getByLabelText(/anything an admin should know/i), '   ');
         await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
 
-        expect(api.callsTo('POST', '/api/reports')[0].body).toEqual({ userName: 'Alex', gameId: null, reason: 'spam', note: null });
+        expect(api.callsTo('POST', '/api/reports')[0].body).toEqual({ publicId: ALEX, gameId: null, reason: 'spam', note: null });
     });
 
     it('asks for a reason before sending anything', async () => {

@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef } from 'react';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import type { CommunityScores, GameReview } from '@/types/community';
 import { formatCount } from '@/lib/format';
+import { profilePath } from '@/lib/profilePath';
 import { formatDate } from '@/lib/stats';
 import {
     hasMemberDistribution,
@@ -352,7 +353,7 @@ function GameReviewCard({ gameId, review, isViewer }: { gameId: number; review: 
                                 (ADR 0056), in a `bdi` so a name written right to left cannot reorder
                                 the handle after it. Tested for presence: an API a release behind
                                 sends no display name, and the handle alone is right for that. */}
-                            <Link to={`/u/${review.userName}`} className="review-card-title">
+                            <Link to={profilePath(review)} className="review-card-title">
                                 {review.displayName ? (
                                     <>
                                         <bdi>{review.displayName}</bdi>{' '}
@@ -385,7 +386,7 @@ function GameReviewCard({ gameId, review, isViewer }: { gameId: number; review: 
             revealLabel={`Show ${review.userName}'s review — they marked it as containing spoilers`}
             actions={
                 <ReportButton
-                    target={{ userName: review.userName, gameId }}
+                    target={{ publicId: review.publicId, gameId }}
                     subject={`${review.userName}'s review`}
                     label={`Report ${review.userName}'s review`}
                 />

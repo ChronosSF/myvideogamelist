@@ -155,12 +155,13 @@ describe('AccountIdentityCard profile visibility', () => {
             expect(authValue.updateProfileVisibility).toHaveBeenCalledWith('private'));
     });
 
-    it('offers the address only once there is one', () => {
+    it('offers the address only once there is one, as the id with the name after it', () => {
+        // The address others share: the id never changes, the name is for reading (ADR 0096).
         renderCard();
-        expect(screen.queryByRole('link', { name: '/u/alex' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: '/u/b4kz9q2mxw7c/alex' })).not.toBeInTheDocument();
 
         renderCard({ profileVisibility: 'public' });
-        expect(screen.getByRole('link', { name: '/u/alex' })).toHaveAttribute('href', '/u/alex');
+        expect(screen.getByRole('link', { name: '/u/b4kz9q2mxw7c/alex' })).toHaveAttribute('href', '/u/b4kz9q2mxw7c/alex');
     });
 
     it('reports a failed change rather than leaving the toggle looking saved', async () => {

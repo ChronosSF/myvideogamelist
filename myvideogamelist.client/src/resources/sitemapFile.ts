@@ -1,4 +1,5 @@
 import { CACHE_PROFILE, CACHE_SITEMAP } from '@/lib/cache';
+import { type ProfileAddress, profilePath } from '@/lib/profilePath';
 import {
     sitemapFeed,
     sitemapFileFrom,
@@ -21,8 +22,9 @@ const STATIC_PATHS = ['/', '/games'];
  *
  * Every URL written here has to be the one the page itself gives as canonical, character for
  * character, or the two disagree about what the page is called. For a game that is the id as a
- * plain integer; for a profile it is the name as its owner capitalised it, which is what the API
- * returns and what `ProfilePage` builds its canonical URL from.
+ * plain integer; for a profile it is its public id and its name as its owner capitalised it, which
+ * is what the API returns and what `ProfilePage` builds its canonical URL from, through the same
+ * `profilePath` (ADR 0096).
  */
 export async function loader({ params, request, context }: Route.LoaderArgs) {
     const file = sitemapFileFrom(params.file);
@@ -44,14 +46,14 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         return sitemapXml(urlSet(ids.map(id => `${origin}/games/${id}`)), CACHE_SITEMAP);
     }
 
-    const names = await sitemapFeed<string[]>(context, `/api/sitemap/profiles?page=${file.page}`);
-    if (names === null) return sitemapUnavailable();
-    if (names.length === 0) return sitemapNotFound();
+    const profiles = await sitemapFeed<ProfileAddress[]>(context, `/api/sitemap/profiles?page=${file.page}`);
+    if (profiles === null) return sitemapUnavailable();
+    if (profiles.length === 0) return sitemapNotFound();
 
     // The profile page's own window rather than the sitemap's, so that this file cannot go on
     // naming a profile for longer than the profile itself could have been served. See `cache.ts`.
     return sitemapXml(
-        urlSet(names.map(name => `${origin}/u/${encodeURIComponent(name)}`)),
+        urlSet(profiles.map(profile => `${origin}${profilePath(profile)}`)),
         CACHE_PROFILE,
     );
 }

@@ -12,7 +12,7 @@ export const PAGES = [
     { key: 'home', name: 'Home, signed out', path: () => '/' },
     { key: 'games', name: 'Browse', path: () => '/games' },
     { key: 'game', name: 'Game', path: () => `/games/${GAME_ID}` },
-    { key: 'profile', name: 'Public profile', path: (account: Account) => `/u/${account.userName}` },
+    { key: 'profile', name: 'Public profile', path: (account: Account) => `/u/${account.publicId}/${account.userName}` },
     { key: 'lists', name: 'Lists, signed in', path: () => '/lists', signedIn: true },
 ] as const;
 

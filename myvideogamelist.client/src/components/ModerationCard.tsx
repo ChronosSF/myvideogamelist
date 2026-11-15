@@ -5,6 +5,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { Skeleton } from '@/components/Skeleton';
 import type { ModerationResult, UseModerationAdminResult } from '@/hooks/useModerationAdmin';
 import { formatCount } from '@/lib/format';
+import { profilePath } from '@/lib/profilePath';
 import { formatDate } from '@/lib/stats';
 import {
     reasonLabel,
@@ -172,7 +173,7 @@ function ReportedReviewItem({ item, moderation }: { item: ReportedReview; modera
                     </p>
                     <p className="admin-row-meta">
                         {'by '}
-                        <Link to={`/u/${item.userName}`}>{`@${item.userName}`}</Link>
+                        <Link to={profilePath(item)}>{`@${item.userName}`}</Link>
                         {item.displayName && <> (<bdi>{item.displayName}</bdi>)</>}
                         {` · ${reportCount(item.reports)}`}
                         {item.hasSpoilers && ' · marked as containing spoilers'}
@@ -236,7 +237,7 @@ function ReportedProfileItem({ item, moderation }: { item: ReportedProfile; mode
                     <div>
                         <p className="admin-row-name">
                             <span className="admin-kind">Profile</span>
-                            <Link to={`/u/${item.userName}`}>{`@${item.userName}`}</Link>
+                            <Link to={profilePath(item)}>{`@${item.userName}`}</Link>
                         </p>
                         <p className="admin-row-meta">
                             {item.displayName ? <>Display name: <bdi>{item.displayName}</bdi></> : 'No display name'}
@@ -308,7 +309,7 @@ function HiddenReviewItem({ item, moderation }: { item: HiddenReview; moderation
                     </p>
                     <p className="admin-row-meta">
                         {'by '}
-                        <Link to={`/u/${item.userName}`}>{`@${item.userName}`}</Link>
+                        <Link to={profilePath(item)}>{`@${item.userName}`}</Link>
                         {` · hidden ${formatDate(item.hiddenAt)}`}
                     </p>
                 </div>

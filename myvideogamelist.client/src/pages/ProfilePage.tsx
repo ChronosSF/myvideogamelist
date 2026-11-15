@@ -1,7 +1,8 @@
 import { Link, data, isRouteErrorResponse, useParams, useRevalidator } from 'react-router';
 import { CACHE_NOT_FOUND, CACHE_PROFILE, PRIVATE_NO_STORE } from '@/lib/cache';
-import { lastPage, pageFrom, pageSearch } from '@/lib/paging';
-import { type SiteConfig, NOINDEX, pageMeta, siteConfig } from '@/lib/seo';
+import { lastPage, pageFrom } from '@/lib/paging';
+import { isPublicId, profilePath } from '@/lib/profilePath';
+import { type SiteConfig, NOINDEX, pageMeta, redirectResponse, siteConfig } from '@/lib/seo';
 import { formatDate, formatHours, formatRate } from '@/lib/stats';
 import { isUpstreamFailure } from '@/lib/trace';
 import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
@@ -51,8 +52,8 @@ interface ProfilePageData {
 /**
  * Shared-cacheable, because this page is identical for every reader.
  *
- * That is a property of the endpoints behind it rather than a hope: `/api/users/{name}` is
- * anonymous and varies on nothing but the name, and the loader below sends no credentials — the
+ * That is a property of the endpoints behind it rather than a hope: `/api/users/{publicId}` is
+ * anonymous and varies on nothing but the id, and the loader below sends no credentials — the
  * profile's own owner sees exactly what a stranger sees, and their private figures live on
  * `/user`. If this page ever grows a per-viewer state such as "you follow this person", that stops
  * being true and this policy has to change with it.
@@ -116,11 +117,11 @@ export function meta({ loaderData, error }: Route.MetaArgs) {
             site,
             title,
             description,
-            // The name as its owner capitalised it, which is what the API answers with whatever the
-            // URL said: the lookup ignores case, so `/u/ALICE` renders too, and this is what says
-            // the two are one page. Each page of reviews is a document of its own and says so. The
-            // handle, never the display name, which is in no URL and belongs to nobody exclusively.
-            path: `/u/${encodeURIComponent(profile.userName)}${pageSearch(page)}`,
+            // The id and the name the API answered with, never the URL (ADR 0036 §6): the loader has
+            // already redirected any other name here, so this is the address the page is rendered at.
+            // Each page of reviews is a document of its own and says so. The handle, never the
+            // display name, which is in no URL and belongs to nobody exclusively.
+            path: profilePath(profile, page),
             type: 'profile',
         }),
         { property: 'profile:username', content: profile.userName },
@@ -138,12 +139,12 @@ export function meta({ loaderData, error }: Route.MetaArgs) {
  * button. The favourites ride along for the same reason and because a row of covers arriving after
  * the page would push the whole profile down under the reader.
  *
- * A private profile and an unclaimed username are both a 404 from the API, deliberately, and both
- * become the same page here.
+ * **Only the id is looked up** (ADR 0096). The name after it is the owner's to change, so a page asked
+ * for under any other name — an old one, a wrong one, the right one in other letter case, or none — is
+ * a 301 to the address it has now, its page of reviews kept. A private profile, an id nobody holds and
+ * a segment that cannot be an id are all one 404, deliberately, and become the same page here.
  */
 export async function loader({ params, request, context }: Route.LoaderArgs) {
-    const userName = encodeURIComponent(params.userName);
-
     // A thrown Response carries its own headers, and `headers` above hands them on. A 404 gets a
     // short shared TTL; a 502 gets none, because caching an upstream failure outlives the failure.
     const notFound = (body = 'Not Found') => new Response(body, {
@@ -154,6 +155,10 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 
     const badGateway = () => upstreamFailure(context, 'Failed to load profile.');
 
+    // One that cannot be an id is the API's 404 for an id nobody holds, answered without asking it.
+    const { publicId } = params;
+    if (!isPublicId(publicId)) throw notFound();
+
     // `?page=` names a page of reviews or it names nothing, and nothing is a 404 like any other
     // URL that resolves to no resource. There are unboundedly many malformed and out-of-range
     // values, and a crawler must not be handed a 200 for each of them.
@@ -163,9 +168,9 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     // `allSettled` rather than `all`: a rejection from the reviews or the favourites request must not
     // take the profile down with it, and `all` rejects on the first of any.
     const [profileResult, reviewsResult, favouritesResult] = await Promise.allSettled([
-        loaderFetch(context, `/api/users/${userName}`),
-        loaderFetch(context, `/api/users/${userName}/reviews?page=${page}`),
-        loaderFetch(context, `/api/users/${userName}/favourites`),
+        loaderFetch(context, `/api/users/${publicId}`),
+        loaderFetch(context, `/api/users/${publicId}/reviews?page=${page}`),
+        loaderFetch(context, `/api/users/${publicId}/favourites`),
     ]);
 
     // A rejection is the unreachable-API case, which `!response.ok` never reports.
@@ -174,6 +179,14 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     if (!profileResult.value.ok) throw badGateway();
 
     const profile = await profileResult.value.json() as PublicProfile;
+
+    // The name the profile has now, spelt as its owner spelt it, is the page's one address. Anything
+    // else is sent there for good: a link from before a rename, a name typed in capitals, the bare id.
+    // The redirect names the profile, so it keeps the profile's own window at the edge, which every
+    // withdrawal clears with the page (`/u/{id}*`, ADR 0058), and a browser keeps it no longer than
+    // that, since a permanent redirect with no policy is one it may keep for good: after a second
+    // rename back, the two old names would send each other round in a loop.
+    if (params.userName !== profile.userName) throw redirectResponse(profilePath(profile, page), CACHE_PROFILE);
 
     // Anything short of a 200 here costs the review list and nothing else.
     const reviews = reviewsResult.status === 'fulfilled' && reviewsResult.value.ok
@@ -270,7 +283,7 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
                         document at the edge; taken off the owner's own page after hydration. */}
                     <div className="public-profile-report">
                         <ReportButton
-                            target={{ userName: profile.userName }}
+                            target={{ publicId: profile.publicId }}
                             subject={`@${profile.userName}'s profile`}
                             label={`Report @${profile.userName}'s profile`}
                         />
@@ -369,6 +382,7 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
                         </section>
 
                         <PublicReviewList
+                            publicId={profile.publicId}
                             userName={profile.userName}
                             reviews={reviews}
                             total={profile.reviews}
@@ -388,15 +402,15 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
  * What this page says when there is no profile to show, inside the site's frame rather than in place
  * of it.
  *
- * A private profile and an unclaimed name are one 404 on purpose (ADR 0027 §7), so the words fit both
- * and tell nobody which it was: what would put a profile here is its owner making it public under the
- * name they have now, and that is what is said. A page of reviews that is not there is the same 404 with
+ * A private profile and an id nobody holds are one 404 on purpose (ADR 0027 §7), so the words fit both
+ * and tell nobody which it was: what would put a profile here is its owner making it public, and that
+ * is what is said. A page of reviews that is not there is the same 404 with
  * words of its own, which give nothing away — see `NO_SUCH_PAGE`. A failure is said as the lists page
  * says one, with its retry. The profile needs nothing from IGDB, so a failure here is ours.
  */
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     const revalidator = useRevalidator();
-    const { userName = '' } = useParams();
+    const { publicId = '', userName } = useParams();
     const button = 'inline-flex items-center gap-1.5 px-4 py-2 btn-primary text-sm';
     // The id of the request that failed, when the failure says, as the root's boundary shows it: this
     // one takes the root's place for this page's failures, and the id is what a report can quote.
@@ -412,7 +426,9 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                         titleAs="h1"
                         detail="This address asks for a page of reviews that is not there: past the last one, or not a page number at all."
                     >
-                        <Link to={`/u/${encodeURIComponent(userName)}`} className={button}>
+                        {/* The id is well formed by now, since a malformed one is refused first; the name, if
+                            there was one, is redirected by the first page if it is not the profile's. */}
+                        <Link to={userName ? profilePath({ publicId, userName }) : `/u/${publicId}`} className={button}>
                             Go to the first page
                         </Link>
                     </EmptyState>
@@ -421,7 +437,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                         icon={USER_ICON}
                         message="There is no profile to show here"
                         titleAs="h1"
-                        detail="A profile shows here once its owner makes it public, and only under the username they have now."
+                        detail="A profile shows here once its owner makes it public."
                     >
                         <Link to="/games" className={button}>Browse games</Link>
                     </EmptyState>
