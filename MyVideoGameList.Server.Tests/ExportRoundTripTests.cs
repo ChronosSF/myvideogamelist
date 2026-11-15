@@ -24,9 +24,10 @@ namespace MyVideoGameList.Server.Tests;
 /// </para>
 /// <para>
 /// The losses are asserted as firmly as what survives. The import writes no events, stamps no
-/// <c>ScoredAt</c> and no <c>StatusChangedAt</c>, and creates no review, on purpose (ADR 0026, 0062,
-/// 0037) — so a change that starts restoring any of them from our own file has to fail a test and
-/// come with a record of why, rather than be noticed in review.
+/// <c>ScoredAt</c>, and creates no review, on purpose (ADR 0026, 0062, 0037) — so a change that starts
+/// restoring any of them from our own file has to fail a test and come with a record of why, rather
+/// than be noticed in review. <c>StatusChangedAt</c> was one of them until ADR 0087 brought back every
+/// source's own moment for a status, ours included.
 /// </para>
 /// </remarks>
 public class ExportRoundTripTests
@@ -302,12 +303,29 @@ public class ExportRoundTripTests
 
         var entries = bob.Entries.ToDictionary(e => e.GameId);
         Assert.All(bob.Entries, e => Assert.Null(e.ScoredAt));
-        Assert.All(bob.Entries, e => Assert.Null(e.StatusChangedAt));
         Assert.Equal(EntryOrigins.MyVideoGameList, entries[100].Origin);
         Assert.Equal(EntryOrigins.MyVideoGameList, entries[200].Origin);
 
         // No status written, so nothing eventless to flag.
         Assert.Equal(EntryOrigins.Manual, entries[300].Origin);
+    }
+
+    [Fact]
+    public async Task RoundTrip_BringsBackWhenEachGameArrivedInItsList()
+    {
+        // ADR 0087: the source's own moment for a status comes back with it, from our own file as
+        // from Grouvee's shelves, so "recently moved" reads as it did. It is a moment and not an
+        // event: the history above stays behind.
+        using var db = NewDb();
+
+        var bob = await RoundTripAsync(db);
+
+        var entries = bob.Entries.ToDictionary(e => e.GameId);
+        Assert.Equal(On(2024, 2, 1), entries[100].StatusChangedAt);
+        Assert.Equal(On(2024, 3, 4), entries[200].StatusChangedAt);
+
+        // In no list, so no status was written for a moment to date.
+        Assert.Null(entries[300].StatusChangedAt);
     }
 
     [Fact]

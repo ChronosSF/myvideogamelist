@@ -14,12 +14,12 @@ namespace MyVideoGameList.Server.Services.Import;
 /// <b>A tracker export like any other, on purpose.</b> Everything after the seam is the shared
 /// import, so every rule it applies to Grouvee applies here, and the round trip is not perfect and
 /// is not meant to be (ADR 0083). What comes back is what the canonical row carries: the list, the
-/// score, the notes, the date the game was added, the wishlist and favourite marks, and each run's
-/// dates, minutes, type and platform. What does not is everything the row has no field for — the
-/// event log, when a score was given or a status changed, ownership, the hand-arranged orders, tags,
-/// list names, settings, and a run's notes. A review comes back appended to the notes and never as
-/// a review, because putting somebody's prose in front of other people is not an import's decision
-/// (ADR 0037).
+/// score, the notes, the date the game was added and the date it arrived in its list, the wishlist
+/// and favourite marks, and each run's dates, minutes, type and platform. What does not is everything
+/// the row has no field for — the event log, when a score was given, ownership, the hand-arranged
+/// orders, tags, list names, settings, and a run's notes. A review comes back appended to the notes
+/// and never as a review, because putting somebody's prose in front of other people is not an
+/// import's decision (ADR 0037).
 /// </para>
 /// <para>
 /// <b>Nothing in the file is trusted for having come from here.</b> It is a file its owner holds
@@ -157,7 +157,11 @@ internal sealed class MyVideoGameListImportSource : IImportSource
                     Favourite: favourites.ContainsKey(gameId),
                     Notes: MapNotes(entry?.Notes, reviews.GetValueOrDefault(gameId)),
                     AddedAt: AddedAt(entry, wishlist.GetValueOrDefault(gameId), favourites.GetValueOrDefault(gameId)),
-                    Playthroughs: runs.GetValueOrDefault(gameId) ?? []);
+                    Playthroughs: runs.GetValueOrDefault(gameId) ?? [],
+
+                    // When the game arrived in its list, as a Grouvee shelf's date is: the source's
+                    // own moment, which the commit writes only with the status (ADR 0087).
+                    StatusSince: Instant(entry?.StatusChangedAt));
             })
             .ToList();
     }
