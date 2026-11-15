@@ -1,6 +1,8 @@
 # 0018. Status changes are recorded in an append-only event log
 
-**Status:** Implemented
+**Status:** Implemented. The log is deleted in two ways, both its owner's and both behind the password: with
+the account ([0024](0024-the-ownership-contract.md) §6), and by starting over ([0095](0095-start-over-empties-the-library-and-keeps-the-account.md)), which
+empties the library and keeps the account. Nothing else deletes an event.
 
 ## Context
 

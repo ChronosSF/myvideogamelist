@@ -188,7 +188,7 @@ matters: the first is a sentence somebody acts on by trying later, the second by
 | S5 | Background execution for matching. A hosted service plus a queue is enough at this scale; do not add a broker for this |
 | S6 | CSV parsing via a real library (CsvHelper). Quoted multi-line review text is guaranteed to appear and hand-rolled splitting will corrupt it |
 | S7 | Upload limits — 5 MB and 5,000 rows, enforced before parsing. Reject non-CSV by content sniff, not by extension |
-| S8 | Commit is one transaction per job, upserting `UserGameList` entries. Existing entries are **not** overwritten by default — the review screen marks them "already in your library" — an entry in no list is one too, which "list" would deny — and the user opts in per row |
+| S8 | Commit is one transaction per job, upserting `UserGameList` entries. Existing entries are **not** overwritten by default — the review screen marks them "already in your library" — an entry in no list is one too, which "list" would deny — and the user opts in per row. A start over (ADR 0095) empties the library, so a pending job's matched rows on skip whose game it held go back to import |
 | S9 | ~~Jobs and their rows are deleted 7 days after completion.~~ **DONE**, and amended twice — see §5.1 below. A job's rows go at the moment it closes rather than a week later, and the job row itself has two windows rather than one. The uploaded file is never persisted at all |
 
 ### 5.1 Retention: the rows go at commit, the job keeps two windows
