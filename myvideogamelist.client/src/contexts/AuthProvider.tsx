@@ -9,65 +9,9 @@ import {
     type UserProfile,
 } from '@/types/auth';
 import type { Look } from '@/types/look';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, bodyOf, messageIn, problemMessage } from '@/lib/api';
 import { forgetLook } from '@/lib/look';
 import { AuthContext } from './AuthContext';
-
-/**
- * A failed response's body, or null when it is not JSON at all — a proxy error page, or an empty
- * 500. Read once, because a body can only be read once.
- */
-async function bodyOf(response: Response): Promise<unknown> {
-    try {
-        return await response.json();
-    } catch {
-        return null;
-    }
-}
-
-/**
- * The message a failed write should show the user, from the body it answered with.
- *
- * ASP.NET returns three shapes and they are not interchangeable. `ValidationProblemDetails` puts
- * the useful sentence inside `errors`, keyed by field — that is what the username endpoint returns
- * for "taken", "reserved" and "too soon", and reading only `message` would show a generic failure
- * in place of the one thing the user needs to know. `{ errors: [...] }` is Identity's own shape,
- * used by registration. `{ message }` is what this API's own auth failures carry, and `detail` or
- * `title` alone is a plain `ProblemDetails` — a rate-limited login, or anything the framework
- * answers before a controller runs.
- */
-function messageIn(body: unknown, fallback: string): string {
-    if (typeof body !== 'object' || body === null) return fallback;
-
-    const { errors, message, detail, title } = body as {
-        errors?: unknown;
-        message?: unknown;
-        detail?: unknown;
-        title?: unknown;
-    };
-
-    if (Array.isArray(errors)) return errors.join(' ') || fallback;
-
-    if (typeof errors === 'object' && errors !== null) {
-        const first = Object.values(errors as Record<string, unknown>)
-            .flatMap(value => (Array.isArray(value) ? (value as string[]) : []))
-            .find(text => typeof text === 'string' && text.length > 0);
-        if (first) return first;
-    }
-
-    // `message` is what this API's own auth failures carry. `detail` and `title` are
-    // ProblemDetails, which is what the framework produces - a rate-limited login being the
-    // one where the fallback ("Login failed") would be actively misleading.
-    for (const candidate of [message, detail, title]) {
-        if (typeof candidate === 'string' && candidate.length > 0) return candidate;
-    }
-
-    return fallback;
-}
-
-async function problem(response: Response, fallback: string): Promise<string> {
-    return messageIn(await bodyOf(response), fallback);
-}
 
 /**
  * Whether a refusal's body sets `flag` to true: how the API says which refusal it is, where the status
@@ -182,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         // Cloudflare not answering the API's question about the token is a 502 whose detail says so (ADR
         // 0092), read like any other refusal. A 502 with no such body is the edge's, with the API away.
-        if (!res.ok) throw new Error(await problem(res, 'Registration failed'));
+        if (!res.ok) throw new Error(await problemMessage(res, 'Registration failed'));
 
         return await res.json() as RegisterResult;
     };
@@ -193,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: emailOrUserName }),
         });
-        if (!res.ok) throw new Error(await problem(res, 'Could not send the link again. Please try again.'));
+        if (!res.ok) throw new Error(await problemMessage(res, 'Could not send the link again. Please try again.'));
     };
 
     const confirmEmail = async (userId: string, token: string) => {
@@ -202,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, token }),
         });
-        if (!res.ok) throw new Error(await problem(res, 'Could not confirm your address. Please try again.'));
+        if (!res.ok) throw new Error(await problemMessage(res, 'Could not confirm your address. Please try again.'));
     };
 
     const requestPasswordReset = async (emailOrUserName: string) => {
@@ -211,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: emailOrUserName }),
         });
-        if (!res.ok) throw new Error(await problem(res, 'Could not send the link. Please try again.'));
+        if (!res.ok) throw new Error(await problemMessage(res, 'Could not send the link. Please try again.'));
     };
 
     /**
@@ -244,7 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      */
     const logout = async () => {
         const res = await send('/api/auth/logout', { method: 'POST' });
-        if (!res.ok && res.status !== 401) throw new Error(await problem(res, 'Could not sign you out. Please try again.'));
+        if (!res.ok && res.status !== 401) throw new Error(await problemMessage(res, 'Could not sign you out. Please try again.'));
 
         setUser(null);
     };
@@ -270,7 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userName }),
         });
-        if (!res.ok) throw new Error(await problem(res, 'Failed to change your username'));
+        if (!res.ok) throw new Error(await problemMessage(res, 'Failed to change your username'));
 
         acceptProfile(await res.json() as UserProfile);
     };
@@ -281,7 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ profileVisibility }),
         });
-        if (!res.ok) throw new Error(await problem(res, 'Failed to change your profile visibility'));
+        if (!res.ok) throw new Error(await problemMessage(res, 'Failed to change your profile visibility'));
 
         acceptProfile(await res.json() as UserProfile);
     };
@@ -312,7 +256,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ palette, background, accent, pattern, tint }),
         });
-        if (!res.ok) throw new Error(await problem(res, 'Failed to save your look'));
+        if (!res.ok) throw new Error(await problemMessage(res, 'Failed to save your look'));
 
         acceptProfile(await res.json() as UserProfile);
     };
@@ -328,7 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password }),
         });
-        if (!res.ok) throw new Error(await problem(res, 'Failed to delete your account'));
+        if (!res.ok) throw new Error(await problemMessage(res, 'Failed to delete your account'));
 
         // Signing out keeps the browser's copy of the look; an account that is gone has none to keep.
         forgetLook();

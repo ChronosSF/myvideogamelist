@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services;
 
 namespace MyVideoGameList.Server.IntegrationTests;
 
@@ -48,7 +49,7 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
         var kept = await RowsOwnedByAsync(stayer.Id);
 
         var delete = await leaving.SendAsync(
-            HttpMethod.Delete, "/api/user", new DeleteAccountDto(Browsers.Password));
+            HttpMethod.Delete, "/api/user", new PasswordConfirmationDto(Browsers.Password));
         await delete.ExpectAsync(HttpStatusCode.NoContent);
 
         // One DeleteAsync on the account row, and the database does the rest (ADR 0024 §6).
@@ -71,6 +72,52 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
             delete.Headers.GetValues("Set-Cookie"),
             cookie => cookie.StartsWith($".AspNetCore.{IdentityConstants.ApplicationScheme}=;", StringComparison.Ordinal));
         await (await leaving.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task StartOver_WithARowInEveryTable_EmptiesTheLibraryKeepsTheRestAndTouchesNobodyElses()
+    {
+        // ADR 0095's division, as PostgreSQL carries it out: every table the service names as cleared
+        // is empty for the account, by its own DELETE or by the cascade from the entry, and every other
+        // table it owns, Identity's included, holds exactly what it held.
+        using var starting = api.CreateBrowser();
+        using var watching = api.CreateBrowser();
+        var starter = await RecordEverythingAsync(starting, "starter");
+        var bystander = await RecordEverythingAsync(watching, "bystander");
+
+        var held = await RowsOwnedByAsync(starter.Id);
+        AssertEveryTableHoldsARow(held);
+        var theirs = await RowsOwnedByAsync(bystander.Id);
+        var theirDecisions = await ImportDecisionsOfAsync(bystander.Id);
+
+        var response = await starting.SendAsync(
+            HttpMethod.Delete, "/api/user/library", new PasswordConfirmationDto(Browsers.Password));
+        var counts = await response.ReadAsync<StartOverResultDto>(HttpStatusCode.OK);
+
+        // One game, finished once; one wished for; one favourite; and the upload's row for the game it
+        // already held, selected again now that it does not.
+        Assert.Equal(new StartOverResultDto(Games: 1, Wishlist: 1, Favourites: 1, ImportRowsReselected: 1), counts);
+
+        HashSet<string> cleared;
+        await using (var db = api.Database())
+            cleared = [.. LibraryResetService.Cleared.Select(type => db.Model.FindEntityType(type)!.GetTableName()!)];
+
+        Assert.All(await RowsOwnedByAsync(starter.Id), table =>
+        {
+            if (cleared.Contains(table.Key))
+                Assert.True(table.Value == 0, $"{table.Value} row(s) of {table.Key} outlived the start over.");
+            else
+                Assert.True(table.Value == held[table.Key],
+                    $"The start over took {table.Key} from {held[table.Key]} row(s) to {table.Value}, and was meant to keep it.");
+        });
+        Assert.Equal(theirs, await RowsOwnedByAsync(bystander.Id));
+
+        // Counts would not show a re-selection that reached somebody else's pending import, since it
+        // changes a decision and no number of rows. The bystander's import holds the same games.
+        Assert.Equal(theirDecisions, await ImportDecisionsOfAsync(bystander.Id));
+
+        // The account is still there and still signed in, which is the point of not deleting it.
+        await (await starting.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -287,6 +334,18 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
             counts[entity.GetTableName() ?? entity.Name] = await CountOwnedAsync(db, entity, userId);
 
         return counts;
+    }
+
+    /// <summary>Every import row the account owns, with its decision, in id order.</summary>
+    private async Task<List<(int Id, string Decision)>> ImportDecisionsOfAsync(string userId)
+    {
+        await using var db = api.Database();
+        var rows = await db.ImportRows.AsNoTracking()
+            .Where(row => row.UserId == userId)
+            .OrderBy(row => row.Id)
+            .Select(row => new { row.Id, row.Decision })
+            .ToListAsync();
+        return [.. rows.Select(row => (row.Id, row.Decision))];
     }
 
     private static void AssertEveryTableHoldsARow(SortedDictionary<string, int> held) =>

@@ -4,7 +4,8 @@
 [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md) §6 left open. Amends 0058 §4: a request
 now carries one account's withdrawals over a pace, rather than one event's. Amends
 [0033](0033-what-the-api-refuses.md) §2: two writes are limited per account, alongside the per-address
-limit on the two that take a password.
+limit on the two that take a password. [0095](0095-start-over-empties-the-library-and-keeps-the-account.md)'s start over, a game's deletion for every game at once,
+is paced with the five in §2.
 
 ## Context
 

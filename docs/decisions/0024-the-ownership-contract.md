@@ -4,7 +4,10 @@
 the first consequence below declines to write, and a test that the snapshot holds, run against
 PostgreSQL in [0057](0057-the-api-is-tested-over-a-real-postgresql.md)'s integration suite. A
 deletion ends the account's sessions in every browser at once, not only in the one it was made in, since
-[0077](0077-a-deleted-accounts-sessions-end-with-it.md).
+[0077](0077-a-deleted-accounts-sessions-end-with-it.md). Since [0095](0095-start-over-empties-the-library-and-keeps-the-account.md) a second act takes the
+password: starting over, which empties the library and keeps the account, and whose division of the tables
+into what it empties and what it keeps is held to the manifest as the export is. Both now count a wrong password
+towards Identity's lockout, as a sign-in does, and refuse a locked account in the same words (§7).
 
 > **Later note.** The "No UI yet" consequence below is closed. `/user` has a "Your data" card:
 > *Download my data* fetches the export and saves it under the name the API's `Content-Disposition`

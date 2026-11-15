@@ -118,7 +118,7 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         Assert.Equal(2, await ReportsAboutAsync(account.Id));
 
         await (await author.SendAsync(HttpMethod.Delete, "/api/user",
-            new DeleteAccountDto(Browsers.Password))).ExpectAsync(HttpStatusCode.NoContent);
+            new PasswordConfirmationDto(Browsers.Password))).ExpectAsync(HttpStatusCode.NoContent);
 
         Assert.Equal(0, await ReportsAboutAsync(account.Id));
     }
