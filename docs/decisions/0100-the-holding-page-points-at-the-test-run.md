@@ -148,8 +148,8 @@ change to the page.
 - **The policy change waits for the deploy.** Merging changes nothing at the apex: no workflow deploys
   `Mvgl-prod-Holding`, which is deployed by hand with the command in `infra/README.md`. Deployed without the
   stack change, the page would draw in the fallback fonts, with a refusal for each in the console.
-- **The page weighs more**: 133 KiB on a first visit, before the edge compresses the page and the stylesheet,
-  where it was 21. The fonts are 85.5 KiB of it, the page 20, the stylesheet 23, the drawings and the favicon
+- **The page weighs more**: 134 KiB on a first visit, before the edge compresses the page and the stylesheet,
+  where it was 21. The fonts are 85.5 KiB of it, the page 20, the stylesheet 24, the drawings and the favicon
   the rest. Every file keeps 0066 §4's cache.
 - **The page names a promise.** Its section repeats #465's promise to the public at the domain, so the
   promise is now made where the real site will be, not only on dev and the Discord.
