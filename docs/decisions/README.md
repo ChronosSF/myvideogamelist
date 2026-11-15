@@ -113,6 +113,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0092](0092-sign-up-asks-cloudflare-whether-a-person-sent-it-before-anything-else.md) | Sign-up asks Cloudflare's Turnstile whether a person sent it, before anything else | Implemented; proved only by a deploy |
 | [0093](0093-the-ssr-server-holds-an-idle-connection-longer-than-the-balancer.md) | The SSR server holds an idle connection longer than the balancer does: a server of our own, `react-router-serve`'s app, told the balancer's timeout by the stack and refusing to start without it | Implemented; proved only by a deploy |
 | [0094](0094-the-community-figures-are-withheld-below-their-floors-by-the-api.md) | The community figures are withheld below their floors, by the API: the count travels, the figure does not, and the distribution waits for a higher bar | Implemented |
+| [0095](0095-start-over-empties-the-library-and-keeps-the-account.md) | Start over empties the library in one transaction and keeps the account, and the event log goes with the library | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

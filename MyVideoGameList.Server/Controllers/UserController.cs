@@ -23,6 +23,7 @@ public class UserController(
     IStatsService stats,
     IHistoryService history,
     IUserDataExporter exporter,
+    ILibraryResetService libraryReset,
     IUserNameClaimService claims,
     ITrackedNewsService trackedNews,
     IListNameService listNames,
@@ -528,14 +529,14 @@ public class UserController(
     /// </para>
     /// </remarks>
     [HttpDelete]
-    public async Task<IActionResult> DeleteAccount([FromBody] DeleteAccountDto dto)
+    public async Task<IActionResult> DeleteAccount([FromBody] PasswordConfirmationDto dto)
     {
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
         // The confirmation. A valid cookie says this browser signed in at some point; the password
         // says the account holder is here now, which is the bar an irreversible act should clear.
-        if (!await userManager.CheckPasswordAsync(user, dto.Password))
+        if (!await PasswordConfirmedAsync(user, dto.Password))
             return Unauthorized(new { message = "Password is incorrect." });
 
         // Taken while the account still exists: a public profile is about to stop existing, and
@@ -554,6 +555,60 @@ public class UserController(
         await signInManager.SignOutAsync();
 
         return NoContent();
+    }
+
+    /// <summary>
+    /// Empties the signed-in user's library and keeps their account: "Start over".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For somebody whose import went wrong, who until now could get back to an empty library only by
+    /// deleting their account. Every game goes, with its list, score, playthroughs, review and tags,
+    /// and so do the wishlist, the favourites and the event log; the account, its profile, look, tags,
+    /// list names and import receipts stay. See <see cref="LibraryResetService"/> and
+    /// <c>docs/decisions/0095-*</c>.
+    /// </para>
+    /// <para>
+    /// The password is the confirmation, as for deleting the account (ADR 0024 §7), because nothing it
+    /// deletes can be put back: the event log least of all (ADR 0018).
+    /// </para>
+    /// </remarks>
+    [HttpDelete("library")]
+    public async Task<ActionResult<StartOverResultDto>> StartOver(
+        [FromBody] PasswordConfirmationDto dto, CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        if (!await PasswordConfirmedAsync(user, dto.Password))
+            return Unauthorized(new { message = "Password is incorrect." });
+
+        return Ok(await libraryReset.StartOverAsync(user.Id, cancellationToken));
+    }
+
+    /// <summary>
+    /// Whether the password typed to confirm an irreversible act is the account's, counted as a
+    /// sign-in counts it.
+    /// </summary>
+    /// <remarks>
+    /// A wrong one counts towards Identity's lockout, and a locked account is refused as a wrong
+    /// password is, as <c>AuthController</c> does for the sign-in and the unconfirmed account.
+    /// Without it, a session that is not its owner's could guess the password here without limit:
+    /// through a start over, a right guess would even leave the account and its session standing
+    /// (ADR 0095).
+    /// </remarks>
+    private async Task<bool> PasswordConfirmedAsync(ApplicationUser user, string password)
+    {
+        if (await userManager.IsLockedOutAsync(user)) return false;
+
+        if (!await userManager.CheckPasswordAsync(user, password))
+        {
+            await userManager.AccessFailedAsync(user);
+            return false;
+        }
+
+        await userManager.ResetAccessFailedCountAsync(user);
+        return true;
     }
 
     /// <summary>

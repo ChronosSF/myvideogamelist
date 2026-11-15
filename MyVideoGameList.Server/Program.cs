@@ -83,6 +83,8 @@ builder.Services.AddScoped<IPublicProfileService, PublicProfileService>();
 builder.Services.AddScoped<IGameCommunityService, GameCommunityService>();
 builder.Services.AddScoped<ISitemapService, SitemapService>();
 builder.Services.AddScoped<IUserDataExporter, UserDataExporter>();
+// Start over: a library emptied and its account kept (ADR 0095).
+builder.Services.AddScoped<ILibraryResetService, LibraryResetService>();
 builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();
 builder.Services.AddScoped<IImportService, ImportService>();

@@ -347,7 +347,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   integration suite's `OwnershipCascadeTests`, which fails until its `RecordEverythingAsync` gives
   an account a row in the new table (`docs/decisions/0057-*`). The manifest is
   `UserDataExporter.Manifest`, keyed by entity `Type`, and it is the *only* place to register:
-  `ExportAsync` walks it. A new *column* on a registered table trips nothing, because each section is
+  `ExportAsync` walks it. The table must also be named in `LibraryResetService.Cleared` or `Kept`, whether
+  Start over empties it, and `LibraryResetTests` fails until it is (`docs/decisions/0095-*`). A new *column* on a registered table trips nothing, because each section is
   a hand-written projection — add it to that reader too, as `Ownership` and `Notes` were
   (`docs/decisions/0030-*`). Statuses export as their `Key`, never the seeded id. The export is free
   and stays free — portability is a right, and the paid "Export" in the monetisation table is a
@@ -505,7 +506,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   only, which share one budget (ADR 0089, 0090); not on the reset itself, whose token cannot be guessed — the SSR server calls this API for every visitor, so
   a limit partitioned by address anywhere a loader reaches would throttle the whole site as one
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
-  password, because announcing a lockout tells an attacker the account exists. Forwarded headers
+  password, because announcing a lockout tells an attacker the account exists. The password typed again
+  to delete the account or to start over counts towards it too (`docs/decisions/0095-*`). Forwarded headers
   are off until configured, and turning them on without naming the proxy **fails at startup** rather
   than trusting whoever sends the header. Behind CloudFront, **`ForwardLimit` stays 1**: the
   middleware checks each hop against the trust list, and the CDN's address is never in the
@@ -522,7 +524,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   and is the only record that a transition happened — `UserGameLists` holds current state and is
   overwritten on every move. A direct `UPDATE` to `StatusId` leaves a permanent hole in a history
   no migration can reconstruct. Go through `ListService`, and note that a move to the status a
-  game already holds must record nothing. See `docs/decisions/0018-*`.
+  game already holds must record nothing. Events are deleted only by their owner, behind the password: with
+  the account, and by Start over (`LibraryResetService`), which empties the library and keeps the account; a
+  game's own deletion keeps its events. See `docs/decisions/0018-*` and `0095-*`.
 
 - **The import is the one exemption from that rule, and `Origin` is what makes it checkable.**
   `ImportService` writes statuses without events, because a tracker export records a shelf rather

@@ -52,6 +52,14 @@ public class ImportService(
     /// </summary>
     internal const int MaxPendingJobs = 3;
 
+    /// <summary>
+    /// Whether a row starts out selected: resolved to a game, and that game not already in the library
+    /// (§M3, §S8). The one statement of the rule, which the upload and the matching pass both apply, and
+    /// which <see cref="SelectAgainRowsSkippedForTheLibraryAsync"/> applies again once the library is
+    /// emptied (ADR 0095).
+    /// </summary>
+    internal static bool PreChecked(bool matched, bool held) => matched && !held;
+
     /// <summary>How much of the file a preset is shown when asked whether it recognises it.</summary>
     private const int SniffLength = 2048;
 
@@ -173,7 +181,7 @@ public class ImportService(
                 // Only matched rows with nothing in their way are pre-checked (§M3). An unmatched
                 // row needs the user to say which game it is before it can mean anything, and a
                 // row whose game they already track would overwrite what they recorded by hand.
-                Decision = matched && !conflicts ? ImportDecisions.Import : ImportDecisions.Skip,
+                Decision = PreChecked(matched, held: conflicts) ? ImportDecisions.Import : ImportDecisions.Skip,
                 Payload = ImportPayloadJson.Write(payload)
             });
         }
@@ -316,7 +324,7 @@ public class ImportService(
             // Pre-checked on the same terms an id in the file earns (§M3): resolved beyond doubt,
             // and with nothing already in its way. An ambiguous row stays on skip, because nobody
             // has chosen anything yet.
-            if (result.GameId is { } gameId && !tracked.Contains(gameId))
+            if (result.GameId is { } gameId && PreChecked(matched: true, held: tracked.Contains(gameId)))
                 row.Decision = ImportDecisions.Import;
 
             examined.Add(row);
@@ -837,6 +845,45 @@ public class ImportService(
                 .Where(e => e.UserId == userId && e.Notes != null && gameIds.Contains(e.GameId))
                 .Select(e => e.GameId)
                 .ToListAsync(cancellationToken)];
+
+    /// <summary>
+    /// Selects again, in every pending import of the account, the matched rows on skip whose game the
+    /// library holds: the rows <see cref="PreChecked"/> left unchecked because of the library, for a
+    /// library about to be emptied by a start over (ADR 0095). Stamps each job it changes, because a
+    /// job's pending window counts from its last saved decision (ADR 0038).
+    /// </summary>
+    /// <remarks>
+    /// Run inside the start over's transaction, before the entries go, while the library can still say
+    /// which rows those are. The review cannot tell the upload's skip from one its owner chose for a
+    /// game they held; both had the library as their reason, and the library is what goes. A row
+    /// skipped for a game the library does not hold was skipped by its owner, and stays. Set-based, so
+    /// the in-memory provider cannot run it; the integration suite does.
+    /// </remarks>
+    /// <returns>How many rows were selected again.</returns>
+    internal static async Task<int> SelectAgainRowsSkippedForTheLibraryAsync(
+        ApplicationDbContext db, string userId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var held = db.UserGameEntries
+            .Where(entry => entry.UserId == userId)
+            .Select(entry => entry.GameId);
+
+        var reselect = db.ImportRows.Where(row =>
+            row.UserId == userId
+            && row.MatchKind == ImportMatchKinds.Matched
+            && row.Decision == ImportDecisions.Skip
+            && row.GameId != null
+            && held.Contains(row.GameId.Value)
+            && db.ImportJobs.Any(job => job.Id == row.ImportJobId && job.State == ImportJobStates.Pending));
+
+        await db.ImportJobs
+            .Where(job => job.UserId == userId
+                && job.State == ImportJobStates.Pending
+                && reselect.Any(row => row.ImportJobId == job.Id))
+            .ExecuteUpdateAsync(set => set.SetProperty(job => job.UpdatedAt, now), cancellationToken);
+
+        return await reselect
+            .ExecuteUpdateAsync(set => set.SetProperty(row => row.Decision, ImportDecisions.Import), cancellationToken);
+    }
 
     private async Task<HashSet<int>> TrackedGameIdsAsync(
         string userId, IReadOnlyCollection<int> gameIds, CancellationToken cancellationToken) =>

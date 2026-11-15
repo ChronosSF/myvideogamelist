@@ -14,6 +14,8 @@ dies outright and loses its queue is covered there too: every task starts by inv
 the profile sitemap files. §1's table gains a ninth event in
 [0076](0076-a-reader-reports-and-an-admin-withdraws.md) §5, a review an admin hid, which also makes
 the eighth from a second place, an admin's clear; both go at once, as 0081 §3 asks of a moderator's.
+And a tenth in [0095](0095-start-over-empties-the-library-and-keeps-the-account.md): a library emptied by a start over, the seventh event for every game at
+once, paced as the seventh is.
 
 ## Context
 

@@ -45,7 +45,8 @@ public enum ReviewWithdrawal
 /// with a seventh that can be one of them: everything recorded about a game deleted, which takes
 /// its review with it. ADR 0056 adds an eighth on the same argument as an edited review: a display
 /// name, an avatar or a bio rewritten or cleared, by its owner or, since ADR 0076, by an admin. And
-/// 0076 adds a ninth, a review an admin hid. Nothing else is. A favourite removed, a score
+/// 0076 adds a ninth, a review an admin hid, and 0095 a tenth that is the seventh many times over: a
+/// whole library deleted by a start over. Nothing else is. A favourite removed, a score
 /// changed, a statistic that moved: those are a profile's content changing, and they keep the
 /// window (ADR 0029).
 /// </para>
@@ -193,6 +194,19 @@ public sealed class ProfileWithdrawals(
     /// (ADR 0058 §1).
     /// </remarks>
     public Task EntryDeletedAsync(string userId) => ProfileChangedAsync(userId, "entry deleted", atOnce: false);
+
+    /// <summary>
+    /// Every game in a library deleted at once, by a start over: the same event as
+    /// <see cref="EntryDeletedAsync"/> for all of them, taking every review with them. Invalidates the
+    /// owner's profile if that profile is public now (ADR 0095).
+    /// </summary>
+    /// <remarks>
+    /// Paced, as a single game's deletion is: adding a game and starting over again repeats it, with
+    /// nothing limited in between but the password. The profile sitemap files are left alone. An
+    /// emptied profile drops out of them, as one emptied a game at a time does, and that is a change
+    /// to who is listed rather than a withdrawal: the profile is still public.
+    /// </remarks>
+    public Task LibraryEmptiedAsync(string userId) => ProfileChangedAsync(userId, "library emptied", atOnce: false);
 
     /// <summary>
     /// Invalidates the profile of the account a write has just changed, if that profile is public

@@ -58,6 +58,12 @@ vi.mock('@/components/TagsCard', () => ({
     TagsCard: () => <div>tags</div>,
 }));
 
+/** Start over reloads the lists, wishlist, favourites and tags, whose providers this page does not mount. */
+const { startOver } = vi.hoisted(() => ({
+    startOver: vi.fn(async () => ({ games: 0, wishlist: 0, favourites: 0, importRowsReselected: 0 })),
+}));
+vi.mock('@/hooks/useStartOver', () => ({ useStartOver: () => startOver }));
+
 /** The tab makes no request of its own, so a stray fetch fails loudly. */
 function stubFetch() {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -166,6 +172,7 @@ describe('UserSettingsPage sections', () => {
         const data = screen.getByRole('region', { name: 'Import and your data' });
         expect(within(data).getByRole('link', { name: 'Start an import' })).toHaveAttribute('href', '/import');
         expect(within(data).getByRole('button', { name: 'Download my data' })).toBeInTheDocument();
+        expect(within(data).getByRole('button', { name: 'Empty my library' })).toBeInTheDocument();
         expect(within(data).getByRole('button', { name: 'Delete my account' })).toBeInTheDocument();
     });
 

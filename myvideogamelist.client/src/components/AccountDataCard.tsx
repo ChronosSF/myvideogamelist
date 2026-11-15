@@ -1,51 +1,78 @@
 import { useEffect, useRef, useState } from 'react';
 import { DeleteAccountDialog } from '@/components/DeleteAccountDialog';
+import { StartOverDialog } from '@/components/StartOverDialog';
 import { useDataExport } from '@/hooks/useDataExport';
+import { startOverSummary, type StartOverResult } from '@/lib/startOver';
 
 interface Props {
     userName: string;
     /** Rejects with a sentence for the user. See `DeleteAccountDialog`. */
     onDeleteAccount: (password: string) => Promise<void>;
+    /** Empties the library and keeps the account. Rejects with a sentence for the user (ADR 0095). */
+    onStartOver: (password: string) => Promise<StartOverResult>;
 }
 
+/** Which of the card's two confirmations is open, if either. */
+type Confirming = 'start-over' | 'delete' | null;
+
 /**
- * Taking your data with you, and leaving with it — the two halves of ADR 0024's ownership contract,
- * which shipped as endpoints and waited here for their buttons.
+ * Taking your data with you, starting over, and leaving with it: ADR 0024's ownership contract, and
+ * ADR 0095's way back to an empty library that keeps the account.
  *
- * One card because they are one obligation seen from either side. The download is free and needs
- * no confirmation; the deletion needs the account's password, asked for in a dialog that offers
- * the download again.
+ * One card because they are one subject seen from three sides. The download is free and needs no
+ * confirmation; emptying the library and deleting the account each need the account's password,
+ * asked for in a dialog that offers the download again.
  */
-export function AccountDataCard({ userName, onDeleteAccount }: Props) {
+export function AccountDataCard({ userName, onDeleteAccount, onStartOver }: Props) {
     /**
-     * One download for the card and its dialog, held here because the card outlives the dialog. A
-     * download started in the dialog keeps the deletion held however the dialog is then closed —
-     * including by the browser, which can close a modal the dialog itself refuses to.
+     * One download for the card and its dialogs, held here because the card outlives them. A download
+     * started in a dialog keeps both deeds held however the dialog is then closed — including by the
+     * browser, which can close a modal the dialog itself refuses to.
      */
     const exporter = useDataExport();
-    const [confirming, setConfirming] = useState(false);
+    const [confirming, setConfirming] = useState<Confirming>(null);
+    const [startedOver, setStartedOver] = useState<StartOverResult | null>(null);
+    const startOverButton = useRef<HTMLButtonElement>(null);
     const deleteButton = useRef<HTMLButtonElement>(null);
 
     /**
-     * Set when the dialog is dismissed, and acted on once the dismissal has rendered. Focus cannot go
-     * back to the opener from the handler itself: the modal is still open at that point, the opener
+     * Which opener to hand focus back to, set when a dialog goes and acted on once that has rendered.
+     * Focus cannot go back from the handler itself: the modal is still open at that point, the opener
      * behind it is inert, and a browser ignores `focus()` on an inert element.
      */
-    const refocusOpener = useRef(false);
+    const refocusOpener = useRef<Confirming>(null);
 
     const closeDialog = () => {
-        refocusOpener.current = true;
-        setConfirming(false);
+        refocusOpener.current = confirming;
+        setConfirming(null);
     };
 
     // Runs after the commit that removes the dialog, when the page behind it is no longer inert.
     // Without it a keyboard user who cancels is left at the top of the document.
     useEffect(() => {
-        if (confirming || !refocusOpener.current) return;
+        if (confirming !== null || refocusOpener.current === null) return;
 
-        refocusOpener.current = false;
-        deleteButton.current?.focus();
+        const opener = refocusOpener.current === 'start-over' ? startOverButton : deleteButton;
+        refocusOpener.current = null;
+        opener.current?.focus();
     }, [confirming]);
+
+    // The dialog goes once the library is empty, and the card says what went where the button is. A
+    // download that failed in the dialog was reported there, and is forgotten rather than announced
+    // again by the card beside the news that the library is empty.
+    const startOver = async (password: string) => {
+        const result = await onStartOver(password);
+        exporter.clearError();
+        setStartedOver(result);
+        closeDialog();
+    };
+
+    // The last result is cleared as the dialog opens, so that the next one, even in the same words, is
+    // a change the live region announces.
+    const openStartOver = () => {
+        setStartedOver(null);
+        setConfirming('start-over');
+    };
 
     return (
         <div className="user-card">
@@ -58,8 +85,8 @@ export function AccountDataCard({ userName, onDeleteAccount }: Props) {
             </p>
 
             {/* A live region, because the button beside it just goes back to how it was. Not while
-                the dialog is open: the download is shared, and the dialog reports its own. */}
-            {exporter.error && !confirming && <p className="user-pref-error" role="alert">{exporter.error}</p>}
+                a dialog is open: the download is shared, and the dialog reports its own. */}
+            {exporter.error && confirming === null && <p className="user-pref-error" role="alert">{exporter.error}</p>}
 
             <button
                 type="button"
@@ -69,6 +96,35 @@ export function AccountDataCard({ userName, onDeleteAccount }: Props) {
             >
                 {exporter.downloading ? 'Preparing your file…' : 'Download my data'}
             </button>
+
+            <hr className="user-card-rule" />
+
+            <div className="user-card-label">Start over</div>
+            <p className="user-card-hint">
+                Empties your library and keeps your account, so you can import again from scratch.
+                Your lists, scores, playthroughs, reviews, wishlist, favourites and the history behind
+                your stats go; your profile, look, tags and list names stay. You will be asked for your
+                password first.
+            </p>
+
+            {/* Held while a download is running, as the deletion is: the export reads the account table
+                by table, and emptying those tables part way through would leave a partial copy. */}
+            <button
+                ref={startOverButton}
+                type="button"
+                className="user-btn user-btn-block user-btn-danger user-card-action"
+                onClick={openStartOver}
+                disabled={exporter.downloading}
+                aria-haspopup="dialog"
+            >
+                Empty my library
+            </button>
+
+            {/* In the document before it has anything to say, so that what it then says is announced:
+                the dialog that made the request has just gone. */}
+            <div role="status">
+                {startedOver !== null && <p className="user-card-hint">{startOverSummary(startedOver)}</p>}
+            </div>
 
             <hr className="user-card-rule" />
 
@@ -85,14 +141,23 @@ export function AccountDataCard({ userName, onDeleteAccount }: Props) {
                 ref={deleteButton}
                 type="button"
                 className="user-btn user-btn-block user-btn-danger user-card-action"
-                onClick={() => setConfirming(true)}
+                onClick={() => setConfirming('delete')}
                 disabled={exporter.downloading}
                 aria-haspopup="dialog"
             >
                 Delete my account
             </button>
 
-            {confirming && (
+            {confirming === 'start-over' && (
+                <StartOverDialog
+                    userName={userName}
+                    onCancel={closeDialog}
+                    onStartOver={startOver}
+                    exporter={exporter}
+                />
+            )}
+
+            {confirming === 'delete' && (
                 <DeleteAccountDialog
                     userName={userName}
                     onCancel={closeDialog}

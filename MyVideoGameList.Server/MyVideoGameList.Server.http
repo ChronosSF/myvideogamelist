@@ -128,6 +128,16 @@ X-MVGL-Request: 1
 GET {{MyVideoGameList.Server_HostAddress}}/api/user/export
 Accept: application/json
 
+### Start over: empty the signed-in user's library and keep the account
+# Irreversible. Every game, the wishlist, the favourites and the event log go; the account, its
+# tags and list names stay. The password is the confirmation. See docs/decisions/0095-*.
+DELETE {{MyVideoGameList.Server_HostAddress}}/api/user/library
+Content-Type: application/json
+
+{
+  "password": "your-password-here"
+}
+
 ### Delete the signed-in user's account
 # Irreversible, and it cascades to every user-owned table. The password is the confirmation.
 DELETE {{MyVideoGameList.Server_HostAddress}}/api/user

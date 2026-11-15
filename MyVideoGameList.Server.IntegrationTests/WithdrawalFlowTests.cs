@@ -57,7 +57,7 @@ public class WithdrawalFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         var sent = api.Edge.Sent.Count;
 
         await (await browser.SendAsync(HttpMethod.Delete, "/api/user",
-            new DeleteAccountDto(Browsers.Password))).ExpectAsync(HttpStatusCode.NoContent);
+            new PasswordConfirmationDto(Browsers.Password))).ExpectAsync(HttpStatusCode.NoContent);
 
         Assert.Equal(0, await StoredReviewsAsync(account.Id));
         var invalidation = Assert.Single(api.Edge.SentSince(sent));
