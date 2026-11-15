@@ -23,6 +23,7 @@ public class UserController(
     IStatsService stats,
     IHistoryService history,
     IUserDataExporter exporter,
+    ILibraryResetService libraryReset,
     IUserNameClaimService claims,
     ITrackedNewsService trackedNews,
     IListNameService listNames,
@@ -554,6 +555,35 @@ public class UserController(
         await signInManager.SignOutAsync();
 
         return NoContent();
+    }
+
+    /// <summary>
+    /// Empties the signed-in user's library and keeps their account: "Start over".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For somebody whose import went wrong, who until now could get back to an empty library only by
+    /// deleting their account. Every game goes, with its list, score, playthroughs, review and tags,
+    /// and so do the wishlist, the favourites and the event log; the account, its profile, look, tags,
+    /// list names and import receipts stay. See <see cref="LibraryResetService"/> and
+    /// <c>docs/decisions/0095-*</c>.
+    /// </para>
+    /// <para>
+    /// The password is the confirmation, as for deleting the account (ADR 0024 §7), because nothing it
+    /// deletes can be put back: the event log least of all (ADR 0018).
+    /// </para>
+    /// </remarks>
+    [HttpDelete("library")]
+    public async Task<ActionResult<StartOverResultDto>> StartOver(
+        [FromBody] StartOverDto dto, CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        if (!await userManager.CheckPasswordAsync(user, dto.Password))
+            return Unauthorized(new { message = "Password is incorrect." });
+
+        return Ok(await libraryReset.StartOverAsync(user.Id, cancellationToken));
     }
 
     /// <summary>

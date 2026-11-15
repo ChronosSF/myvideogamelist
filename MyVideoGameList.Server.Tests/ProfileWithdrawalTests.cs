@@ -88,6 +88,7 @@ public class ProfileWithdrawalTests
             services.AddScoped<ReviewService>();
             services.AddScoped<ListService>();
             services.AddScoped<ModerationService>();
+            services.AddScoped<ILibraryResetService>(_ => Substitute.For<ILibraryResetService>());
 
             root = services.BuildServiceProvider();
             scope = root.CreateScope();
@@ -159,6 +160,7 @@ public class ProfileWithdrawalTests
                 Substitute.For<IStatsService>(),
                 Substitute.For<IHistoryService>(),
                 Substitute.For<IUserDataExporter>(),
+                Get<ILibraryResetService>(),
                 Get<IUserNameClaimService>(),
                 Substitute.For<ITrackedNewsService>(),
                 Substitute.For<IListNameService>(),
@@ -894,6 +896,34 @@ public class ProfileWithdrawalTests
         await site.Get<ReviewService>().UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
 
         Assert.True(await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId));
+
+        Assert.Empty(edge.Sent);
+    }
+
+    [Fact]
+    public async Task LibraryEmptiedAsync_OnAPublicProfile_InvalidatesTheProfileAtTheAccountsPace()
+    {
+        // A start over is every game's deletion at once, and as repeatable as one: add a game, start
+        // over again. So it is paced like one, and leaves the sitemap files alone, since an emptied
+        // profile is still public (ADR 0095). That the service calls it only after its commit, and
+        // only when a game went, is shown against PostgreSQL by StartOverFlowTests.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+
+        await site.Get<ProfileWithdrawals>().LibraryEmptiedAsync(alice.Id);
+
+        AssertSent(edge, "library emptied", "/u/alice*");
+    }
+
+    [Fact]
+    public async Task LibraryEmptiedAsync_OnAPrivateProfile_InvalidatesNothing()
+    {
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+
+        await site.Get<ProfileWithdrawals>().LibraryEmptiedAsync(alice.Id);
 
         Assert.Empty(edge.Sent);
     }

@@ -322,3 +322,26 @@ public record ImportRowExportDto(
 /// at the keyboard is the account holder, now.
 /// </remarks>
 public record DeleteAccountDto([Required] string Password);
+
+/// <summary>
+/// Confirmation for emptying a library and keeping the account: the account's own password, typed
+/// again, for the reason <see cref="DeleteAccountDto"/> gives. Nothing it deletes can be put back.
+/// </summary>
+public record StartOverDto([Required] string Password);
+
+/// <summary>
+/// What a start over took, counted by the statements that took it, for the sentence the settings
+/// page says once it is done (ADR 0095).
+/// </summary>
+/// <param name="Games">
+/// Games that left the library, each with everything recorded about it: its list, score, notes,
+/// playthroughs, review and tags.
+/// </param>
+/// <param name="Wishlist">Games that left the wishlist.</param>
+/// <param name="Favourites">Games that left the favourites.</param>
+/// <param name="Events">Status changes deleted from the history behind the statistics.</param>
+/// <param name="ImportRowsReselected">
+/// Rows of imports still awaiting review that were set to skip only because their game was in the
+/// library, and are selected to import again now that it is not.
+/// </param>
+public record StartOverResultDto(int Games, int Wishlist, int Favourites, int Events, int ImportRowsReselected);

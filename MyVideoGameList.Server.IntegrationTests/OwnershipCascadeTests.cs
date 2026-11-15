@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services;
 
 namespace MyVideoGameList.Server.IntegrationTests;
 
@@ -71,6 +72,47 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
             delete.Headers.GetValues("Set-Cookie"),
             cookie => cookie.StartsWith($".AspNetCore.{IdentityConstants.ApplicationScheme}=;", StringComparison.Ordinal));
         await (await leaving.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task StartOver_WithARowInEveryTable_EmptiesTheLibraryKeepsTheRestAndTouchesNobodyElses()
+    {
+        // ADR 0095's division, as PostgreSQL carries it out: every table the service names as cleared
+        // is empty for the account, by its own DELETE or by the cascade from the entry, and every other
+        // table it owns, Identity's included, holds exactly what it held.
+        using var starting = api.CreateBrowser();
+        using var watching = api.CreateBrowser();
+        var starter = await RecordEverythingAsync(starting, "starter");
+        var bystander = await RecordEverythingAsync(watching, "bystander");
+
+        var held = await RowsOwnedByAsync(starter.Id);
+        AssertEveryTableHoldsARow(held);
+        var theirs = await RowsOwnedByAsync(bystander.Id);
+
+        var response = await starting.SendAsync(
+            HttpMethod.Delete, "/api/user/library", new StartOverDto(Browsers.Password));
+        var counts = await response.ReadAsync<StartOverResultDto>(HttpStatusCode.OK);
+
+        // One game, finished once; one wished for; one favourite; and the upload's row for the game it
+        // already held, selected again now that it does not.
+        Assert.Equal(new StartOverResultDto(Games: 1, Wishlist: 1, Favourites: 1, Events: 1, ImportRowsReselected: 1), counts);
+
+        HashSet<string> cleared;
+        await using (var db = api.Database())
+            cleared = [.. LibraryResetService.Cleared.Select(type => db.Model.FindEntityType(type)!.GetTableName()!)];
+
+        Assert.All(await RowsOwnedByAsync(starter.Id), table =>
+        {
+            if (cleared.Contains(table.Key))
+                Assert.True(table.Value == 0, $"{table.Value} row(s) of {table.Key} outlived the start over.");
+            else
+                Assert.True(table.Value == held[table.Key],
+                    $"The start over took {table.Key} from {held[table.Key]} row(s) to {table.Value}, and was meant to keep it.");
+        });
+        Assert.Equal(theirs, await RowsOwnedByAsync(bystander.Id));
+
+        // The account is still there and still signed in, which is the point of not deleting it.
+        await (await starting.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.OK);
     }
 
     [Fact]
