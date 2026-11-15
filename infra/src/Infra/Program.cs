@@ -89,10 +89,18 @@ internal static class Program
         var tag = imageTag ?? NoImageTag;
         var migrate = new MigrateStack(app, site.StackName("Migrate"),
             new StackProps { Env = regional }, site, data, tag);
-        // The distribution presents the us-east-1 certificate, carried over the same way the zone is
-        // carried into the certificate stack; the application stack opts in on its side.
+        // The web ACL on the distribution, in us-east-1 as CloudFront's certificate is, but disposable:
+        // it bills by the hour, so dev-env.mjs deploys it before App on a resume and destroys it after App
+        // on a park (ADR 0098). Not protected, for the same reason. The pipeline never deploys it.
+        var waf = new WafStack(app, site.StackName("Waf"),
+            new StackProps { Env = edge, CrossRegionReferences = true }, site);
+        // The distribution presents the us-east-1 certificate and names the us-east-1 web ACL, both
+        // carried over the same way the zone is carried into the certificate stack: a weak reference,
+        // read when App deploys, so the web ACL's stack has to be there by then. The application stack
+        // opts in on its side.
         var application = new AppStack(app, site.StackName("App"),
-            new StackProps { Env = regional, CrossRegionReferences = true }, site, dns.Zone, data, edgeCert.Certificate, tag);
+            new StackProps { Env = regional, CrossRegionReferences = true }, site, dns.Zone, data, edgeCert.Certificate,
+            waf.WebAclArn, tag);
         if (imageTag is null)
         {
             foreach (var stack in new Stack[] { migrate, application })

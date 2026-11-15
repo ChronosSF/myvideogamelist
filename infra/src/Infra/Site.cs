@@ -65,6 +65,15 @@ public sealed record Site(string Env)
     public string OriginVerifySecretName => $"mvgl/{Env}/origin-verify";
 
     /// <summary>
+    /// The web ACL on the distribution, which is also the name of its metrics, the <c>WebACL</c>
+    /// dimension, in <c>us-east-1</c> (ADR 0098).
+    /// </summary>
+    public string WebAclName => $"{Prefix}-edge";
+
+    /// <summary>Where the web ACL logs what it refused. AWS WAF takes only a name beginning <c>aws-waf-logs-</c>.</summary>
+    public string WebAclLogGroup => $"aws-waf-logs-{WebAclName}";
+
+    /// <summary>
     /// The topic every alarm of the environment is sent to, which the Alerts stack keeps and the
     /// alarms name rather than reference, so that no App deploy waits on it (ADR 0080).
     /// </summary>
