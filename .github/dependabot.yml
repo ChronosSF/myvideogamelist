@@ -103,6 +103,15 @@ updates:
       interval: monthly
     cooldown:
       default-days: 7
+  # The CDK CLI that Deploy dev and scripts/dev-env.mjs run, pinned beside the CDK app (#339). It has
+  # to read what the library above writes, which the Infrastructure job checks, so it moves on the same
+  # schedule. One package, so nothing to group.
+  - package-ecosystem: npm
+    directory: /infra
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -15,7 +15,7 @@ import { useWishlist } from '@/hooks/useWishlist';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useTags } from '@/hooks/useTags';
 import { type TagDto, tagsFor } from '@/types/tag';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, bodyOf, messageIn } from '@/lib/api';
 import { type EntryStatus, GameEntryContext, type GameEntryContextValue } from '@/contexts/GameEntryContext';
 
 interface GameEntryProviderProps {
@@ -580,24 +580,12 @@ const FALLBACKS: Record<'save' | 'delete' | 'saveReview' | 'deleteReview', (stat
  * ASP.NET returns a `ValidationProblemDetails` for a 400, whose `errors` carry the message the
  * user actually needs — "The finish date cannot be before the start date" beats "Could not save
  * your playthrough". Falls back to something plain rather than throwing on a body that is not
- * JSON at all, which is what a 500 or a proxy error looks like.
+ * JSON at all, which is what a 500 or a proxy error looks like. Read as every other write reads its
+ * refusal, through `bodyOf`, so the edge's 429 says what it is here too (ADR 0098).
  */
 async function problemMessage(
     response: Response,
     verb: 'save' | 'delete' | 'saveReview' | 'deleteReview',
 ): Promise<string> {
-    const fallback = FALLBACKS[verb](response.status);
-
-    try {
-        const problem = (await response.json()) as {
-            title?: string;
-            detail?: string;
-            errors?: Record<string, string[]>;
-        };
-
-        const firstFieldError = Object.values(problem.errors ?? {}).flat()[0];
-        return firstFieldError ?? problem.detail ?? problem.title ?? fallback;
-    } catch {
-        return fallback;
-    }
+    return messageIn(await bodyOf(response), FALLBACKS[verb](response.status));
 }

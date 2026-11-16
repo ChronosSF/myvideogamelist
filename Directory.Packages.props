@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <PackageVersion Include="Amazon.AspNetCore.DataProtection.SSM" Version="4.0.3" />
-    <PackageVersion Include="AWSSDK.CloudFront" Version="4.0.103.2" />
+    <PackageVersion Include="AWSSDK.CloudFront" Version="4.0.103.6" />
     <PackageVersion Include="AWSSDK.SecurityToken" Version="4.0.101.10" />
     <PackageVersion Include="AWSSDK.SimpleEmailV2" Version="4.0.106.10" />
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
@@ -26,7 +26,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
-    <PackageVersion Include="Scalar.AspNetCore" Version="2.18.3" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.19.0" />
     <!-- Referenced by the two test projects only, past the copies NuGet audit flags; the server
          gets the patched one from the shared framework. The test projects say which copies. -->
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.14" />

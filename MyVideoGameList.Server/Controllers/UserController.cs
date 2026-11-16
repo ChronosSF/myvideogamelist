@@ -36,11 +36,12 @@ public class UserController(
     /// How long an account must wait between renames.
     /// </summary>
     /// <remarks>
-    /// A username is a public address. Renaming breaks every link to the old one and releases it
-    /// for somebody else to claim, so a stream of renames is both how links rot and how a namespace
-    /// gets churned by a squatter cycling names. Thirty days is long enough to make that pointless
-    /// and short enough that somebody who mistyped their name at signup is not stuck with it for a
-    /// year. The first choice is free: <c>UserNameChangedAt</c> is null until the first rename.
+    /// A rename releases the old name for somebody else to claim, so a stream of renames is how a
+    /// namespace gets churned by a squatter cycling names. It no longer breaks a link, since a profile
+    /// is addressed by its public id (ADR 0096), which was ADR 0027's other reason. Thirty days is long
+    /// enough to make squatting pointless and short enough that somebody who mistyped their name at
+    /// signup is not stuck with it for a year. The first choice is free: <c>UserNameChangedAt</c> is
+    /// null until the first rename.
     /// </remarks>
     private static readonly TimeSpan RenameCooldown = TimeSpan.FromDays(30);
 
@@ -80,8 +81,8 @@ public class UserController(
             // cooldown as well.
             if (user.UserName != dto.UserName)
             {
-                // On a public profile each change of case sends both spellings to the edge at once,
-                // and the next names one this did not, so it is the one rename limited per account
+                // On a public profile each change of case goes to the edge at once, and can be
+                // repeated with nothing in between, so it is the one rename limited per account
                 // (ADR 0081 §4). A private profile sends nothing and is not counted. Handed back
                 // unless the change is saved.
                 using var permit = user.ProfileVisibility == ProfileVisibility.Public
@@ -89,18 +90,16 @@ public class UserController(
                     : null;
                 if (permit is { IsGranted: false }) return TooOften(Republish.NameCase, permit.RetryAfter);
 
-                var previousCase = user.UserName;
                 user.UserName = dto.UserName;
                 var saved = await userManager.UpdateAsync(user);
                 if (!saved.Succeeded) return NotSaved(saved);
                 permit?.Keep();
 
-                // It still invalidates, both spellings, though it releases no name. Invalidation
-                // paths are case-sensitive and every later withdrawal names the new spelling, so the
-                // copies the edge holds under the old one — the spelling the site itself linked to
-                // and the sitemap listed until now — would be out of reach of all of them (ADR 0058).
-                if (user.ProfileVisibility == ProfileVisibility.Public && previousCase is not null)
-                    withdrawals.ProfileRenamed(user.Id, previousCase, dto.UserName);
+                // It still invalidates, though it releases no name: the edge holds the page under the
+                // old spelling, which is a redirect to the new one now, and the sitemap lists the old
+                // one (ADR 0096).
+                if (user.ProfileVisibility == ProfileVisibility.Public)
+                    withdrawals.ProfileRenamed(user.Id, user.PublicId);
             }
 
             return Ok(Profile(user));
@@ -142,15 +141,12 @@ public class UserController(
             return ValidationProblem(ModelState);
         }
 
-        // The old name is released for anybody to claim, and the edge would go on serving this
-        // profile under it; the new one may hold a 404 from before it was taken. Both go, and the
-        // sitemap that lists the old one. A private profile has nothing at the edge to take.
-        if (user.ProfileVisibility == ProfileVisibility.Public
-            && previous is not null
-            && user.UserName is { } renamed)
-        {
-            withdrawals.ProfileRenamed(user.Id, previous, renamed);
-        }
+        // The edge would go on serving this profile's page under the old name, which is released
+        // for anybody to claim, where the origin now answers with a redirect to the new one. The
+        // profile's one path takes it, with the sitemap that lists the old address. A private profile
+        // has nothing at the edge to take.
+        if (user.ProfileVisibility == ProfileVisibility.Public)
+            withdrawals.ProfileRenamed(user.Id, user.PublicId);
 
         // SetUserNameAsync rotates the security stamp, and the cookie this request arrived with
         // carries the old one. Identity's SecurityStampValidator re-checks the cookie against the
@@ -163,7 +159,7 @@ public class UserController(
     }
 
     /// <summary>
-    /// Turns the public profile at <c>/u/{userName}</c> on or off.
+    /// Turns the public profile at <c>/u/{publicId}/{userName}</c> on or off.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -203,8 +199,8 @@ public class UserController(
         if (!saved.Succeeded) return NotSaved(saved);
         permit?.Keep();
 
-        if (wasPublic && user.ProfileVisibility != ProfileVisibility.Public && user.UserName is { } name)
-            withdrawals.ProfileMadePrivate(user.Id, name);
+        if (wasPublic && user.ProfileVisibility != ProfileVisibility.Public)
+            withdrawals.ProfileMadePrivate(user.Id, user.PublicId);
 
         return Ok(Profile(user));
     }
@@ -253,7 +249,7 @@ public class UserController(
     /// Each was judged by its attribute before this runs, as it will be stored; what is written is
     /// that stored form, so the response hands back exactly what the public profile will show. A
     /// blank clears its field. Saving them on a private profile publishes nothing: they reach
-    /// <c>/u/{userName}</c> only while the profile is public, with everything else on it.
+    /// <c>/u/{publicId}/{userName}</c> only while the profile is public, with everything else on it.
     /// </para>
     /// <para>
     /// Rewriting or clearing one of them on a public profile takes back something the page
@@ -291,8 +287,8 @@ public class UserController(
         var saved = await userManager.UpdateAsync(user);
         if (!saved.Succeeded) return NotSaved(saved);
 
-        if (takesBack && user.ProfileVisibility == ProfileVisibility.Public && user.UserName is { } name)
-            withdrawals.ProfileDetailsChanged(user.Id, name);
+        if (takesBack && user.ProfileVisibility == ProfileVisibility.Public)
+            withdrawals.ProfileDetailsChanged(user.Id, user.PublicId);
 
         return Ok(Profile(user));
 
@@ -540,14 +536,14 @@ public class UserController(
             return Unauthorized(new { message = "Password is incorrect." });
 
         // Taken while the account still exists: a public profile is about to stop existing, and
-        // the edge has to be told under the name it is cached by (ADR 0058).
-        var publicName = user.ProfileVisibility == ProfileVisibility.Public ? user.UserName : null;
+        // the edge has to be told under the id it is cached by (ADR 0058, 0096).
+        var publicId = user.ProfileVisibility == ProfileVisibility.Public ? user.PublicId : null;
 
         var result = await userManager.DeleteAsync(user);
         if (!result.Succeeded)
             return Problem(string.Join(" ", result.Errors.Select(e => e.Description)));
 
-        if (publicName is not null) withdrawals.AccountDeleted(user.Id, publicName);
+        if (publicId is not null) withdrawals.AccountDeleted(user.Id, publicId);
 
         // The account is gone, so the cookie now authenticates nothing. Clearing it here saves the
         // client from holding a credential for a user that cannot be looked up. A cookie for it held

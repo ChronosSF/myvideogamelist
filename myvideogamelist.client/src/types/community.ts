@@ -47,6 +47,8 @@ export interface GameReviews {
 }
 
 export interface GameReview {
+    /** The author's profile's public id, which the card links by with the name after it (ADR 0096). */
+    publicId: string;
     /** As its owner capitalised it. There is always a public profile behind it. */
     userName: string;
     /** Shown beside `userName`, never instead of it: the handle is what says whose review it is. */

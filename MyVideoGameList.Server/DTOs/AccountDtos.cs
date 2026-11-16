@@ -68,6 +68,12 @@ public record UserDataExportDto(
 /// whether they agreed to it being read would be missing the more consequential of the two.
 /// </para>
 /// <para>
+/// <paramref name="PublicId"/> is beside the username because it is the other half of the profile's
+/// address (ADR 0096): an export should say where its owner's page was. It is the one thing in this
+/// section that an import never carries, since the import fills an account that already has its own,
+/// which is the address of a different page.
+/// </para>
+/// <para>
 /// <paramref name="CreatedAt"/>, <paramref name="LastSeenAt"/> and <paramref name="SessionsEndedAt"/> are
 /// not data the user entered but data recorded about them, which is the stronger reason to hand them
 /// over: what the site keeps about somebody is theirs to see (ADR 0051). The last is when a password
@@ -77,6 +83,7 @@ public record UserDataExportDto(
 public record AccountExportDto(
     string? Email,
     string? UserName,
+    string PublicId,
     string? DisplayName,
     string? AvatarUrl,
     string? Bio,

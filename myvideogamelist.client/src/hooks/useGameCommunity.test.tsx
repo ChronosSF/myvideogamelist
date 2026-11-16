@@ -12,6 +12,7 @@ function scores(scored: number): CommunityScores {
 
 function review(userName: string): GameReview {
     return {
+        publicId: 'b4kz9q2mxw7c',
         userName,
         displayName: null,
         avatarUrl: null,

@@ -65,7 +65,7 @@ public class SitemapService(ApplicationDbContext db) : ISitemapService
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<string>> GetProfileNamesAsync(
+    public async Task<IReadOnlyList<SitemapProfileDto>> GetProfilesAsync(
         int page, CancellationToken cancellationToken = default)
     {
         if (OffsetFor(page) is not { } offset) return [];
@@ -76,7 +76,7 @@ public class SitemapService(ApplicationDbContext db) : ISitemapService
             .OrderBy(u => u.Id)
             .Skip(offset)
             .Take(PageSize)
-            .Select(u => u.UserName!)
+            .Select(u => new SitemapProfileDto(u.PublicId, u.UserName!))
             .ToListAsync(cancellationToken);
     }
 

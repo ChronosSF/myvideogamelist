@@ -173,6 +173,41 @@ public class UserNameClaimServiceTests
     }
 
     [Fact]
+    public async Task RegisterAsync_APublicIdALiveAccountHolds_IsDrawnAgainBeforeTheWrite()
+    {
+        // ADR 0096: a new account's id is random, and one that is taken would be refused by the unique
+        // index as a 500. Registration draws again instead, so a collision costs a second draw.
+        var store = Guid.NewGuid().ToString();
+        using var first = Request(store);
+        var taken = NewUser("sam");
+        Assert.True((await Manager(first).CreateAsync(taken, Password)).Succeeded);
+
+        using var second = Request(store);
+        var alex = NewUser("alex");
+        alex.PublicId = taken.PublicId;
+        var result = await Service(second).RegisterAsync(alex, Password);
+
+        Assert.True(result.Succeeded);
+        Assert.NotEqual(taken.PublicId, alex.PublicId);
+        Assert.True(PublicIdPolicy.IsWellFormed(alex.PublicId));
+        var stored = await Manager(second).FindByNameAsync("alex");
+        Assert.Equal(alex.PublicId, stored?.PublicId);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_AFreePublicId_IsKept()
+    {
+        var store = Guid.NewGuid().ToString();
+        using var request = Request(store);
+        var alex = NewUser("alex");
+        var drawn = alex.PublicId;
+
+        Assert.True((await Service(request).RegisterAsync(alex, Password)).Succeeded);
+
+        Assert.Equal(drawn, (await Manager(request).FindByNameAsync("alex"))?.PublicId);
+    }
+
+    [Fact]
     public async Task RenameAsync_LosingTheNameRace_ReportsDuplicateUserNameRatherThanThrowing()
     {
         var store = Guid.NewGuid().ToString();

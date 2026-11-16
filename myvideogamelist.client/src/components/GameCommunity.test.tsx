@@ -33,6 +33,7 @@ const PICTURE = 'https://avatars.githubusercontent.com/u/9919?v=4';
 
 function review(overrides: Partial<GameReview> = {}): GameReview {
     return {
+        publicId: 'b4kz9q2mxw7c',
         userName: 'alex',
         displayName: null,
         avatarUrl: null,
@@ -300,21 +301,22 @@ describe("GameCommunity members' score", () => {
 });
 
 describe('GameCommunity reviews', () => {
-    it("shows each review under its author's name, linked to their profile", () => {
-        // Always linkable: only a review on a public profile is ever listed.
-        renderSection(community({ reviews: [review({ userName: 'Nadia' })], total: 1 }));
+    it("shows each review under its author's name, linked to their profile by its id", () => {
+        // Always linkable: only a review on a public profile is ever listed. By the id, with the name
+        // after it, so a rename breaks no link (ADR 0096).
+        renderSection(community({ reviews: [review({ publicId: '7tn3vjh8p0sd', userName: 'Nadia' })], total: 1 }));
 
         expect(screen.getByText('The best side quests in the genre.')).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Nadia' })).toHaveAttribute('href', '/u/Nadia');
+        expect(screen.getByRole('link', { name: 'Nadia' })).toHaveAttribute('href', '/u/7tn3vjh8p0sd/Nadia');
     });
 
     it("puts the author's display name beside their handle, never in its place", () => {
         // As on the profile (ADR 0056): the handle is what says whose review it is. The name is in
         // a bdi, so one written right to left cannot reorder the handle after it.
-        renderSection(community({ reviews: [review({ userName: 'Nadia', displayName: 'Nadia Ali' })], total: 1 }));
+        renderSection(community({ reviews: [review({ publicId: '7tn3vjh8p0sd', userName: 'Nadia', displayName: 'Nadia Ali' })], total: 1 }));
 
         const link = screen.getByRole('link', { name: 'Nadia Ali @Nadia' });
-        expect(link).toHaveAttribute('href', '/u/Nadia');
+        expect(link).toHaveAttribute('href', '/u/7tn3vjh8p0sd/Nadia');
         expect(link.querySelector('bdi')).toHaveTextContent(/^Nadia Ali$/);
     });
 
@@ -355,10 +357,17 @@ describe('GameCommunity reviews', () => {
         expect(screen.getByText('9/10')).toBeInTheDocument();
     });
 
-    it("marks the reader's own review as theirs, and nobody else's", () => {
+    it("marks the reader's own review as theirs, by the id, and nobody else's", () => {
+        // By the id rather than the name, which can change while the list is on screen (ADR 0096).
         renderSection(
-            community({ reviews: [review({ userName: 'alex' }), review({ userName: 'sam' })], total: 2 }),
-            'alex',
+            community({
+                reviews: [
+                    review({ publicId: 'b4kz9q2mxw7c', userName: 'alex' }),
+                    review({ publicId: '7tn3vjh8p0sd', userName: 'sam' }),
+                ],
+                total: 2,
+            }),
+            'b4kz9q2mxw7c',
         );
 
         const list = screen.getByRole('list', { name: 'Member reviews' });

@@ -123,7 +123,7 @@ export default function GameOverviewPage() {
                     <GameCommunity
                         gameId={game.id}
                         community={{ ...community, scores: memberScores }}
-                        viewer={user?.userName ?? null}
+                        viewer={user?.publicId ?? null}
                     />
 
                     {/* Where it is sold. Hides itself when IGDB names no store. */}

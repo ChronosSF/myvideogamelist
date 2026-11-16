@@ -14,6 +14,7 @@
     "lint": "eslint . && node scripts/check-colours.mjs && node scripts/check-class-names.mjs",
     "audit": "node scripts/audit.mjs",
     "audit:lighthouse": "node scripts/audit.mjs lighthouse",
+    "audit:infra": "node scripts/audit.mjs ../infra",
     "fonts": "node scripts/subset-fonts.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

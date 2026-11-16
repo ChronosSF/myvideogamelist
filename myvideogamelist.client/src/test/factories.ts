@@ -269,6 +269,7 @@ export function userProfile(overrides: Partial<UserProfile> = {}): UserProfile {
     return {
         id: 'user-1',
         email: 'alex@test.local',
+        publicId: 'b4kz9q2mxw7c',
         userName: 'alex',
         displayName: null,
         avatarUrl: null,

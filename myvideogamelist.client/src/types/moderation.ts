@@ -25,11 +25,12 @@ export function reasonLabel(reason: string): string {
 export const REPORT_NOTE_MAX_LENGTH = 500;
 
 /**
- * What is reported, named the way the page names it: by the handle, and for a review the game it is about.
- * No game is the profile itself — its display name, picture and bio.
+ * What is reported, named the way the page names it: by the profile's public id, and for a review the game
+ * it is about. No game is the profile itself — its display name, picture and bio. The id rather than the
+ * handle, because a handle can change hands between the page's render and the report (ADR 0096).
  */
 export interface ReportTarget {
-    userName: string;
+    publicId: string;
     gameId?: number;
 }
 
@@ -42,6 +43,8 @@ export interface Report {
 
 export interface ReportedReview {
     reviewId: number;
+    /** The author's profile's public id, which the card links to the profile by. */
+    publicId: string;
     userName: string;
     displayName: string | null;
     gameId: number;
@@ -56,6 +59,7 @@ export interface ReportedReview {
 
 export interface ReportedProfile {
     accountId: string;
+    publicId: string;
     userName: string;
     displayName: string | null;
     avatarUrl: string | null;
@@ -67,6 +71,7 @@ export interface ReportedProfile {
 
 export interface HiddenReview {
     reviewId: number;
+    publicId: string;
     userName: string;
     gameId: number;
     gameTitle: string | null;

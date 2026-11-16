@@ -50,17 +50,19 @@ public class SitemapController(ISitemapService sitemap) : ControllerBase
     }
 
     /// <summary>
-    /// One file's worth of usernames, each with a public profile that has something on it.
+    /// One file's worth of profiles, each public and with something on it, as the two halves of its
+    /// address.
     /// </summary>
     /// <remarks>
-    /// Every name here is one its owner published, so this discloses nothing <c>/u/{name}</c> does
-    /// not. What it must never do is list a private one — see <c>SitemapService</c>.
+    /// Every profile here is one its owner published, so this discloses nothing
+    /// <c>/u/{publicId}/{userName}</c> does not. What it must never do is list a private one — see
+    /// <c>SitemapService</c>.
     /// </remarks>
     [HttpGet("profiles")]
-    public async Task<ActionResult<IReadOnlyList<string>>> GetProfiles(
+    public async Task<ActionResult<IReadOnlyList<SitemapProfileDto>>> GetProfiles(
         CancellationToken cancellationToken,
         [FromQuery][Range(1, int.MaxValue)] int page = 1)
     {
-        return Ok(await sitemap.GetProfileNamesAsync(page, cancellationToken));
+        return Ok(await sitemap.GetProfilesAsync(page, cancellationToken));
     }
 }

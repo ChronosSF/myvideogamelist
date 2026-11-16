@@ -118,12 +118,13 @@ describe('/sitemaps/:file', () => {
     it('holds a file of profiles no longer than a profile page is held', async () => {
         // A profile switched back to private has to leave this file as soon as it leaves the edge.
         asProduction();
-        stubApi({ '/api/sitemap/profiles?page=1': ['AliceInChains'] });
+        stubApi({ '/api/sitemap/profiles?page=1': [{ publicId: 'b4kz9q2mxw7c', userName: 'AliceInChains' }] });
 
         const response = await file('profiles-1.xml');
 
         expect(response.headers.get('Cache-Control')).toBe(CACHE_PROFILE);
-        expect(await response.text()).toContain('<loc>https://myvideogamelist.net/u/AliceInChains</loc>');
+        // The id and the name as its owner wrote it: the string the page gives as canonical (ADR 0096).
+        expect(await response.text()).toContain('<loc>https://myvideogamelist.net/u/b4kz9q2mxw7c/AliceInChains</loc>');
     });
 
     it('falls back to the request origin on a machine with no SITE_URL', async () => {
@@ -145,6 +146,16 @@ describe('/sitemaps/:file', () => {
 
     it('is an uncached 502 when the API fails', async () => {
         stubApi({});
+
+        const response = await file('profiles-1.xml');
+
+        expect(response.status).toBe(502);
+        expect(response.headers.get('Cache-Control')).toBe(PRIVATE_NO_STORE);
+    });
+
+    it('is an uncached 502 rather than a file of undefined addresses from an API a release behind', async () => {
+        // Mid-deploy, the API before ADR 0096 answers with names alone.
+        stubApi({ '/api/sitemap/profiles?page=1': ['AliceInChains'] });
 
         const response = await file('profiles-1.xml');
 

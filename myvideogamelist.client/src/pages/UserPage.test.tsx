@@ -187,7 +187,7 @@ describe('UserPage header', () => {
         expect(screen.getByText('@alex')).toBeInTheDocument();
 
         const asOthers = screen.getByRole('link', { name: 'See it as others do' });
-        expect(asOthers).toHaveAttribute('href', '/u/alex');
+        expect(asOthers).toHaveAttribute('href', '/u/b4kz9q2mxw7c/alex');
         expect(asOthers.parentElement).toHaveTextContent('Public profile · See it as others do');
         expect(screen.queryByRole('link', { name: 'Who can see it' })).not.toBeInTheDocument();
     });

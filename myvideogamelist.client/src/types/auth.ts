@@ -1,17 +1,20 @@
 import type { Look } from '@/types/look';
 
-/** Whether an account has a public page at `/u/{userName}`. */
+/** Whether an account has a public page at `/u/{publicId}/{userName}`. */
 export type ProfileVisibility = 'public' | 'private';
 
 /**
  * The signed-in user, mirroring `UserProfileDto` on the server.
  *
- * `userName` is the public handle — the whole of `/u/{userName}` — and is what the navbar renders.
- * The email is still here because the account settings page shows it, and nothing public does.
+ * `userName` is the public handle, and what the navbar renders; with `publicId` it is the address of the
+ * account's own profile, `/u/{publicId}/{userName}` (ADR 0096). The email is still here because the
+ * account settings page shows it, and nothing public does.
  */
 export interface UserProfile extends ProfileDetails {
     id: string;
     email: string;
+    /** The half of the profile's address that is looked up and never changes. Never the account `id`. */
+    publicId: string;
     userName: string;
     /**
      * Carried on every page load so the navbar can tell whether there is a public profile to link

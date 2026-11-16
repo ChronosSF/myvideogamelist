@@ -34,7 +34,19 @@ public class ContentReportServiceTests
     }
 
     private static ContentReportService NewService(ApplicationDbContext db, TimeProvider? clock = null) =>
-        new(db, new UpperInvariantLookupNormalizer(), clock ?? new Clock(Midday));
+        new(db, clock ?? new Clock(Midday));
+
+    /// <summary>
+    /// The public id each test account is given, from its name: a profile is reported by its id (ADR
+    /// 0096), and a test reads better naming the account than spelling out twelve characters.
+    /// </summary>
+    private static string PublicIdOf(string userName) => userName.ToLowerInvariant() switch
+    {
+        "alex" => "b4kz9q2mxw7c",
+        "sam" => "7tn3vjh8p0sd",
+        "nobody" => "zzzzzzzzzzzz",
+        _ => PublicIdPolicy.New(),
+    };
 
     private static string AddAccount(
         ApplicationDbContext db, string userName, string visibility = ProfileVisibility.Public)
@@ -43,6 +55,7 @@ public class ContentReportServiceTests
         db.Users.Add(new ApplicationUser
         {
             Id = id,
+            PublicId = PublicIdOf(userName),
             UserName = userName,
             NormalizedUserName = userName.ToUpperInvariant(),
             Email = $"{userName}@test.local",
@@ -75,7 +88,7 @@ public class ContentReportServiceTests
     }
 
     private static ReportInputDto Report(string userName, int? gameId = GameId, string reason = ReportReason.Spam, string? note = null) =>
-        new(userName, gameId, reason, note);
+        new(PublicIdOf(userName), gameId, reason, note);
 
     [Fact]
     public async Task ReportAsync_APublishedReview_IsRecordedAgainstThatReviewAlone()
@@ -144,13 +157,18 @@ public class ContentReportServiceTests
         Assert.Equal(2, db.ContentReports.Count());
     }
 
-    [Fact]
-    public async Task ReportAsync_AnyLetterCase_FindsTheProfile()
+    [Theory]
+    [InlineData("alex")]
+    [InlineData("Alex")]
+    public async Task ReportAsync_TheHandleInPlaceOfTheId_FindsNothing(string named)
     {
+        // A handle can change hands between the page's render and the report, so the report names the
+        // profile by its id, as every public read does, and a handle is never looked up (ADR 0096).
         using var db = NewDb();
         AddReview(db, AddAccount(db, "Alex"));
 
-        Assert.True(await NewService(db).ReportAsync("id-reader", Report(" ALEX ")));
+        Assert.False(await NewService(db).ReportAsync("id-reader", new ReportInputDto(named, GameId, ReportReason.Spam, null)));
+        Assert.Empty(db.ContentReports);
     }
 
     [Fact]
@@ -170,7 +188,7 @@ public class ContentReportServiceTests
         "a hidden review",
         "a public review on a private profile",
         "a private profile",
-        "an unclaimed name",
+        "an id nobody holds",
         "a game the author has not reviewed",
     ];
 
@@ -179,7 +197,7 @@ public class ContentReportServiceTests
     public async Task ReportAsync_WhatAReaderCannotSee_IsNotFoundAndRecordsNothing(string what)
     {
         // The public reads' gates, and the same answer for every one of them, so the endpoint cannot be
-        // used to ask whether a name has an account (ADR 0027 §7).
+        // used to ask whether an id has an account (ADR 0027 §7).
         using var db = NewDb();
         ReportInputDto input;
         switch (what)
@@ -200,7 +218,7 @@ public class ContentReportServiceTests
                 AddAccount(db, "alex", ProfileVisibility.Private);
                 input = Report("alex", gameId: null);
                 break;
-            case "an unclaimed name":
+            case "an id nobody holds":
                 input = Report("nobody", gameId: null);
                 break;
             default:

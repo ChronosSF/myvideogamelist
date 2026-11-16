@@ -3,6 +3,8 @@
 **Status:** Implemented. [#467](https://github.com/ChronosSF/myvideogamelist/issues/467). Amends
 [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) with the first host its `script-src` names. Proved
 on dev only once the owner has made the widget and set its pair (`infra/README.md`, "Turnstile, for sign-up").
+Its rollout says merging deploys the App stack, which is a run of Deploy dev by hand since
+[0099](0099-dev-is-deployed-by-hand.md).
 
 ## Context
 

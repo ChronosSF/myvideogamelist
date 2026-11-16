@@ -44,7 +44,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there; and beside it, a forgotten password reset from its email and signed in with (ADR 0090). Builds the front end and serves it with `server/index.ts`, as the image does, beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials, and stand-ins for Cloudflare's Turnstile script in the browser and its siteverify beside IGDB's (ADR 0092), so a run reaches no third party. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
 | `npm run lighthouse` | Lighthouse CI on five pages of the `npm run e2e` shape, on a phone and a desktop, then axe-core on the same pages. Fails on an accessibility, best-practices or SEO score, or a count of console errors, that leaves `lighthouse/budgets.ts`'s baseline, on layout shift over 0.02 or script or page weight over budget, and on an axe rule or contrast pair a page did not already break; performance warns. Needs PostgreSQL up, ports 5190–5193 free, IGDB's image host reachable and, once, `npx playwright install chromium`. Keeps `mvgl_lighthouse` (or `LIGHTHOUSE_CONNECTION_STRING`); reports in `lighthouse/reports/`. Run by CI. See ADR 0068 |
 | `npm run build` | Production build |
-| `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. `npm run audit:lighthouse` does the same over Lighthouse CI's lock file, and CI's Dependency audit job runs both. `scripts/audit.mjs` holds a list of accepted advisories for each, every entry with its reason and a date: the client's for want of any fix, Lighthouse CI's for want of one its dependents' ranges allow (ADR 0068 §9). See ADR 0061 |
+| `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. `npm run audit:lighthouse` does the same over Lighthouse CI's lock file, `npm run audit:infra` over the CDK CLI's, which Deploy dev runs (#339), and CI's Dependency audit job runs all three. `scripts/audit.mjs` holds a list of accepted advisories for each, every entry with its reason and a date: the client's for want of any fix, Lighthouse CI's for want of one its dependents' ranges allow (ADR 0068 §9). See ADR 0061 |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
 | `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, the cache refresh's lock and commit, and the export's snapshot. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
 | `dotnet format MyVideoGameList.slnx` | Formats the C# as `.editorconfig` says. With `--verify-no-changes` it is CI's check, in the Server job; `dotnet format infra/src/Infra/Infra.csproj` is the CDK app's |
@@ -55,8 +55,8 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
 | `docker compose down` | Stops it, keeping data. **`down -v` destroys the data volume** |
 | `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
-| `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database and gates the pipeline off; `resume` is the reverse at the newest pushed tag, migrating the database at that tag first, since a parked environment skips the pipeline's migrations, and proving the site answers through the door. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044, 0046 |
-| `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door |
+| `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database, destroys the web ACL's stack and gates the pipeline off; `resume` is the reverse at the newest pushed tag, migrating the database at that tag first, since a parked environment skips the pipeline's migrations, and proving the site answers through the door. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044, 0046 |
+| `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door; with the `mvgl-dev` profile signed in, also that the web ACL is on the distribution (ADR 0098) |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -80,7 +80,7 @@ MyVideoGameList.Server.IntegrationTests/  The API over PostgreSQL in a container
 myvideogamelist.client/
   src/root.tsx                  HTML document, providers, global ErrorBoundary
   src/entry.server.tsx          Owned, not generated. Where every document response gets its headers
-  src/routes.ts                 Route table. `/u/:userName` is the one public per-person page
+  src/routes.ts                 Route table. `/u/:publicId/:userName?` is the one public per-person page
   src/pages/                    Route modules (default export + optional loader/meta)
   src/resources/                Resource routes: robots.txt, the sitemaps and /version. A loader, no component
   src/lib/                      apiUrl(), useHydrated(), pageMeta(); loaderFetch() in trace.server.ts
@@ -119,16 +119,21 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   anything unbounded inside a transaction. Both limits are `Data/SessionLimits.cs`, which the CDK
   app compiles too, so it may use nothing past the base class library. See `docs/decisions/0079-*`.
 
-- **A merge to master builds and pushes dev's images, and deploys only when the environment is
-  awake.** `DEV_DEPLOY_ENABLED` on the `dev` GitHub environment is the gate, set by
+- **Dev deploys only when `Deploy dev` is run by hand, and only when the environment is awake.** A
+  merge to master builds and deploys nothing; a run builds master's head as it starts and deploys that
+  (ADR 0099). `DEV_DEPLOY_ENABLED` on the `dev` GitHub environment is the gate, set by
   `scripts/dev-env.mjs park` and `resume` and by nothing else: deploying the application stack
-  recreates it if it was destroyed, so an unconditional deploy-on-merge would silently un-park the
-  environment and start the balancer billing again. Every deploy of `Migrate` or `App`, in the
+  recreates it if it was destroyed, so a run dispatched while parked would silently un-park the
+  environment and start the balancer billing again. Parked, a run builds master's images and stops, so
+  run one before `resume`, which deploys the newest tag in ECR. Every deploy of `Migrate` or `App`, in the
   workflow and in the script, is `--exclusively`, so that the long-lived `Data` stack is never
   redeployed as a dependency by something that only meant to deploy a release. The balancer admits
   CloudFront's prefix list and nothing else, and its listener answers only the distribution that
   sends the origin-verify header; the site is behind basic auth at the edge, with three public
   aggregate endpoints exempt. See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
+  **The distribution's web ACL is `Mvgl-<env>-Waf`, in `us-east-1`, which the pipeline never deploys**:
+  `resume` makes it before `App`, which reads its ARN when it deploys and fails without it, and `park`
+  destroys it after. A change to its one rate rule is deployed by hand. See `docs/decisions/0098-*`.
 
 - **The SSR server holds an idle connection 5 seconds longer than the balancer, which the stack tells it,
   and it does not start without being told.** The server has to be the side that holds on longer. When Node
@@ -303,7 +308,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   wraps both writes and turns that into the same `DuplicateUserName`, so go through it; never call
   `CreateAsync` or `SetUserNameAsync` for a username directly. After a real rename, refresh the
   sign-in: `SetUserNameAsync` rotates the security stamp, and the validator signs the user out within
-  thirty minutes otherwise. See `docs/decisions/0027-*`.
+  thirty minutes otherwise. **A name is never an address**: a profile is `/u/{publicId}/{userName}`,
+  only the id is looked up (`PublicIdPolicy`), any other name is a 301 to the current one, and the id
+  is never Identity's account id. Build an address with `profilePath`, and never look a profile up by
+  name. See `docs/decisions/0027-*` and `0096-*`.
 
 - **A profile is private by default, and the public document is hand-assembled.**
   `ProfileVisibility` defaults to `private` for new accounts as well as backfilled ones, on ADR
@@ -311,8 +319,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   review on a private profile is visible to nobody. `PublicProfileService` reuses `StatsService`
   rather than re-deriving anything, but copies fields into `PublicProfileDto` **one at a time** —
   returning `UserStatsDto` would publish every figure ever added to the private profile, by nobody's
-  decision. A private profile and an unclaimed name are the same 404, so the endpoint cannot be used
-  to ask whether a name has an account.
+  decision. A private profile, an id nobody holds and a segment that cannot be an id are the same
+  404, before any redirect, so the endpoint cannot be used to ask whether an id has an account.
 
 - **A page loads images only from the hosts its policy names, and an avatar's host is in two
   lists.** The document policy's `img-src` is `IMAGE_SOURCES` in `@/lib/securityHeaders`: this
@@ -779,11 +787,12 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   and the API sends `X-Robots-Tag: noindex` so that `/api/` can stay crawlable — a crawler rendering
   a game page has to be able to fetch the member reviews the page fetches. An indexable route
   returns `pageMeta(...)` from `@/lib/seo` with a `path` **built from loader data, never from the
-  request** (`/u/ALICE` renders, and has to say it is `/u/alice`), and carries `site` in its loader
+  request** (`/games/0012` renders, and has to say it is `/games/12`), and carries `site` in its loader
   data because `meta` runs in the browser too. The sitemap reads `CachedGames` and public,
   non-empty profiles and makes no IGDB call; the empty-profile test lives in both
   `SitemapService.ListedProfiles` and `ProfilePage`'s `meta`, and they must agree. Resource routes
-  bypass `entry.server.tsx`, so they go out through `resourceResponse`. See
+  bypass `entry.server.tsx`, so they go out through `resourceResponse`, and so does a loader's
+  redirect, through `redirectResponse`, with a `Cache-Control` of its own. See
   `docs/decisions/0036-*`. Structured data is a `script:ld+json` descriptor returned from `meta`,
   which `<Meta>` escapes — never a script tag of our own — says only what the page shows, and rates
   a game by its members' score alone, at `MIN_MEMBER_SCORES`; see `docs/decisions/0069-*`.

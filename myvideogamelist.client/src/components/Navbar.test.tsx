@@ -435,7 +435,7 @@ describe('Navbar user menu', () => {
 
         await actor.click(screen.getByRole('button', { name: 'User menu' }));
 
-        expect(screen.getByRole('menuitem', { name: 'My public page' })).toHaveAttribute('href', '/u/alex');
+        expect(screen.getByRole('menuitem', { name: 'My public page' })).toHaveAttribute('href', `/u/${ALEX.publicId}/alex`);
     });
 
     it('links an admin to the admin page', async () => {

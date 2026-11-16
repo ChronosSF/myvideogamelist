@@ -1,13 +1,21 @@
 name: Deploy dev
 
-# Every green CI run on master builds both images and pushes them to ECR tagged with the commit,
-# at a cost of cents, so ECR holds an image for every commit that reached master. Only an awake
-# environment is deployed: the DEV_DEPLOY_ENABLED variable on the `dev` GitHub environment is the
-# gate, because deploying the application stack *recreates* it if it was destroyed, and an
-# unconditional deploy-on-merge would silently un-park the environment and start the balancer
-# billing again (ADR 0044, D-6). `node scripts/dev-env.mjs park|resume` sets the gate. The gate
-# is read once, when the job starts, so the job also refuses to create a stack it finds gone:
-# it only ever updates the application stack, and creating it is `resume`'s job alone.
+# Run by hand, from the Actions tab or with `gh workflow run deploy-dev.yml`: nothing deploys dev on
+# its own (ADR 0099). A run builds master as it is when the job starts, pushes both images to ECR
+# tagged with that commit, and deploys it if the environment is awake. So a merge reaches dev's
+# testers when the owner chooses, and a run that waited behind another, or a re-run of an old one,
+# deploys master's newest rather than the commit it was dispatched at, or stops if this file has
+# changed since. Nothing here checks CI: a commit reaches master through a pull request whose
+# required checks passed, strict, unless an admin bypassed the ruleset, which it allows.
+#
+# Only an awake environment is deployed: the DEV_DEPLOY_ENABLED variable on the `dev` GitHub
+# environment is the gate, because deploying the application stack *recreates* it if it was
+# destroyed, and a run dispatched while it is parked would silently un-park it and start the
+# balancer billing again (ADR 0044, D-6). `node scripts/dev-env.mjs park|resume` sets the gate.
+# Parked, a run builds and pushes and stops, which is how `resume`, deploying the newest tag in
+# ECR, gets master's: run this first. The gate is read once, when the job starts, so the job also
+# refuses to create a stack it finds gone: it only ever updates the application stack, and
+# creating it is `resume`'s job alone.
 #
 # No AWS key is stored in GitHub. The job proves who it is with a token GitHub signs, and AWS
 # exchanges it for an hour of credentials on a role whose trust policy admits exactly one subject:
@@ -17,17 +25,15 @@ name: Deploy dev
 # redeployed as a dependency by a job that was only ever meant to deploy these two.
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [master]
   workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
 
-# Two deploys never interleave; a second merge waits for the first.
+# Two deploys never interleave: a run dispatched while another runs waits for it. One dispatched
+# while a second waits replaces it, which loses nothing, since each builds master as it is when it
+# starts.
 concurrency:
   group: deploy-dev
   cancel-in-progress: false
@@ -35,26 +41,39 @@ concurrency:
 jobs:
   deploy:
     name: Build, push, and deploy when awake
-    # workflow_run fires on a failed CI too, and on CI runs for pull requests - a fork's branch
-    # called master passes the branch filter - so a green run alone would hand this repository's
-    # AWS role to anybody's code. Only a green run of a push to this repository's master deploys;
-    # a manual run always may, since dispatching one takes write access.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: dev
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       REGISTRY: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
       AWAKE: ${{ vars.DEV_DEPLOY_ENABLED }}
+      # No build record uploaded as an artifact, as in CI's Images job: nobody reads it, anyone signed in
+      # can download one from a public repository, and the build holds a token that can write the cache.
+      DOCKER_BUILD_RECORD_UPLOAD: false
     steps:
       - uses: actions/checkout@v7
         with:
-          # The commit CI tested, not whatever master is by the time this runs.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Master's head as the job starts, not the commit the run was dispatched at, which a run that
+          # waited, or a re-run, would otherwise deploy over anything newer. A branch's full name, not
+          # `master`, which fetches every branch whose name begins with it.
+          ref: refs/heads/master
+
+      # The steps a run executes are this file as it was at github.workflow_sha, the commit the run was
+      # dispatched at, whatever the checkout above holds. A re-run, or a run that waited while a merge
+      # changed this file, would run old steps against master's newer code, so a run whose file is not
+      # master's stops here, before it builds anything. A run of the current file passes.
+      - name: Is this master's workflow?
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$WORKFLOW_SHA" != "$(git rev-parse HEAD)" ]; then
+            git fetch --quiet --depth 1 origin "$WORKFLOW_SHA"
+            if ! git diff --quiet "$WORKFLOW_SHA" HEAD -- .github/workflows/deploy-dev.yml; then
+              echo "::error::This run's workflow is master's as of ${WORKFLOW_SHA:0:12}, and master's has changed since. Dispatch a new run."
+              exit 1
+            fi
+          fi
 
       # The tag, and what both images answer at /version and /api/version: the full commit and one
       # build time for the release. Compare the two answers by sha: a re-run that finishes a
@@ -152,16 +171,19 @@ jobs:
         with:
           node-version: '24.x'
 
+      # The version infra/package-lock.json pins, which the Dependency audit reads and the Infrastructure
+      # job synthesises with, rather than whatever is newest on the day (#339). No install script runs, so
+      # a later version that adds one cannot run it in the job that holds the deploy role.
       - name: Install the CDK CLI
         if: env.AWAKE == 'true'
-        run: npm install -g aws-cdk
+        run: npm ci --prefix infra --ignore-scripts
 
       - name: Deploy the migration task definition
         if: env.AWAKE == 'true'
         working-directory: infra
         env:
           TAG: ${{ steps.release.outputs.tag }}
-        run: cdk deploy Mvgl-dev-Migrate --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
+        run: node_modules/.bin/cdk deploy Mvgl-dev-Migrate --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
 
       # Before anything serves traffic: outside Development the application never migrates by
       # itself, and a deployed API against an un-migrated database passes /healthz and fails on
@@ -210,7 +232,16 @@ jobs:
             ABSENT|DELETE_*)
               echo "::warning::The environment was parked while this run was in flight. Images $TAG are pushed; nothing is deployed."
               echo "present=false" >> "$GITHUB_OUTPUT" ;;
-            *) echo "present=true" >> "$GITHUB_OUTPUT" ;;
+            # The settled states of a stack that exists, and the only ones a deploy updates.
+            CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE|IMPORT_COMPLETE|IMPORT_ROLLBACK_COMPLETE)
+              echo "present=true" >> "$GITHUB_OUTPUT" ;;
+            # Everything else stops the run. A creation that never finished, the CLI answers by creating
+            # the stack, which is resume's alone: it deletes one in ROLLBACK_COMPLETE or ROLLBACK_FAILED
+            # and creates it again, and counts REVIEW_IN_PROGRESS as absent (aws-cdk 2.1148.0's
+            # lib/index.js). And a change under way, or stuck, is somebody's to look at.
+            *)
+              echo "::error::Mvgl-dev-App is $STATUS, which a deploy would create anew or cannot update. Images $TAG are pushed; nothing is deployed."
+              exit 1 ;;
           esac
 
       - name: Deploy the application stack
@@ -218,7 +249,7 @@ jobs:
         working-directory: infra
         env:
           TAG: ${{ steps.release.outputs.tag }}
-        run: cdk deploy Mvgl-dev-App --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
+        run: node_modules/.bin/cdk deploy Mvgl-dev-App --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
 
       - name: Wait for both services
         if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
