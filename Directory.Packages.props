@@ -13,7 +13,7 @@
     <PackageVersion Include="AWSSDK.SecurityToken" Version="4.0.101.10" />
     <PackageVersion Include="AWSSDK.SimpleEmailV2" Version="4.0.106.10" />
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
-    <PackageVersion Include="CsvHelper" Version="33.1.0" />
+    <PackageVersion Include="CsvHelper" Version="34.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.Facebook" Version="10.0.14" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.14" />
     <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.14" />
