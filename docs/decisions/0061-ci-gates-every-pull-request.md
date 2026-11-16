@@ -4,7 +4,8 @@
 left to #106, a job that builds the client image, and one of what
 [0060](0060-one-browser-test-over-the-production-shape.md) lists as not covered, the images themselves.
 Branch protection and GitHub's own secret scanning are repository settings, which the owner turns on
-(§7); #106 stays open until they are.
+(§7); #106 stays open until they are. What it says of Deploy dev waiting on these jobs is history since
+[0099](0099-dev-is-deployed-by-hand.md): dev is deployed by hand.
 
 ## Context
 
@@ -293,8 +294,9 @@ The pull request that built this record gives the exact commands for both.
   disagrees turns every pull request red at once, and the answer is a `dotnet format` commit, or
   pinning the SDK in a `global.json`, which every job and every machine would then follow.
 - **A new lock file is not audited until it has a step**, as the client's and Lighthouse CI's have,
-  each against its own list in `audit.mjs`. The CDK CLI that Deploy dev installs has no lock file at
-  all (#339).
+  each against its own list in `audit.mjs`. The CDK CLI that Deploy dev installs had no lock file at
+  all; since #339 it has `infra/package-lock.json` and a step of its own, though the one package it
+  names bundles its dependencies, so the audit sees only advisories against `aws-cdk` itself.
 - **Pull requests merged before this one were never format-checked.** This one's own check runs over
   them once they land, so it merges last, after a `dotnet format` commit if its check asks for one;
   from then on each pull request passes the check itself.
