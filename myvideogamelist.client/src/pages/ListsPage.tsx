@@ -184,7 +184,8 @@ export function ListsPage() {
 
     // A list that starts again starts at its top, and so does the reader if they were below it. Mostly
     // they are at the top already, since that is where the sort and the filters are; this is for the
-    // change they did not make there — a ticked tag no longer offered, a saved sort arriving late —
+    // change they did not make there — a ticked tag no longer offered, a saved sort arriving late,
+    // another list reached by Back —
     // which would otherwise drop them at the foot of a page sixty games long, where the next chunk is
     // drawn and drawn again until it fills the screen, somewhere in a list that changed under them.
     const panel = useRef<HTMLDivElement>(null);

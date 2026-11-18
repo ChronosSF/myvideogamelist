@@ -265,6 +265,31 @@ describe('ListsPage and the list in its address', () => {
         await waitFor(() => selected(/Backlog/));
     });
 
+    it('starts a list reached by Back at its top, for a reader who was below it', async () => {
+        // The page's own rule, which the address does not change: a list that starts again is drawn from
+        // one chunk, so a reader left below its top would be at the foot of a page that just got shorter.
+        // jsdom lays nothing out: the list's top is put a long way above the window.
+        authAnswered(userProfile());
+        const scrolled = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            return this.id === 'lists-tabpanel' ? new DOMRect(0, -4000, 800, 6000) : new DOMRect(0, 0, 0, 0);
+        });
+        try {
+            const router = renderAt('/lists');
+            await act(() => router.navigate('/lists?list=finished'));
+            await waitFor(() => selected(/Finished/));
+            scrolled.mockClear();
+
+            await act(() => router.navigate(-1));
+            await waitFor(() => selected(/Playing/));
+
+            expect(scrolled).toHaveBeenCalledExactlyOnceWith({ block: 'start' });
+            expect(scrolled.mock.contexts[0]).toBe(screen.getByRole('tabpanel'));
+        } finally {
+            vi.restoreAllMocks();
+        }
+    });
+
     it('goes nowhere when the open tab is pressed again', async () => {
         authAnswered(userProfile());
         const router = renderAt('/lists?list=on_hold');
