@@ -82,7 +82,8 @@ export const CACHE_GAMES_LIST = sharedCache(600, 3600);
  *
  * Shared-cacheable at all, which is worth stating because the page is about one person: it is
  * identical for every reader, signed in or not, because the API behind it varies on nothing but
- * the username in the URL. The owner's own private figures are a different route.
+ * the public id in the URL. The owner's own private figures are a different route. The 301 that
+ * sends any other name to the profile's own does not use this: nobody keeps it (ADR 0096).
  *
  * It also varies on `?page=`, which pages the reviews. **The CloudFront cache policy must include
  * `page` in the cache key** for this route, exactly as `search` for the listing above.
@@ -95,7 +96,7 @@ export const CACHE_GAMES_LIST = sharedCache(600, 3600);
  * **A withdrawal does not wait for this window.** A profile switched back to private, renamed or
  * deleted, and a review its author makes private, edits or deletes, would otherwise stay servable
  * from the edge for all of it, since the page renders review bodies and the old text sits in the
- * cached HTML and its `.data` URL. The API invalidates `/u/{name}*` after each of those writes,
+ * cached HTML and its `.data` URL. The API invalidates `/u/{publicId}*` after each of those writes,
  * and the profile sitemap files on the first three (ADR 0058). This policy is the window only when
  * that fails, and the API's retry stops at the end of it — **so lengthening this has to lengthen
  * `CloudFrontEdgeInvalidator.Horizon` on the server too**, or a long CloudFront outage gives up while

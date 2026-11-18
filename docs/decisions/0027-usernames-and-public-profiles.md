@@ -1,6 +1,10 @@
 # 0027. Usernames are a namespace, and a profile is published only when asked
 
 **Status:** Implemented. Of the consequences below, the sitemap is [0036](0036-what-a-crawler-is-told.md), and the edge invalidation on withdrawal (D14) is [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md). "A withdrawn profile outlives its withdrawal at the edge" describes the site before 0058, which built the infrastructure it says is missing; the window it describes now remains only where an invalidation fails or the daily ceiling holds one back.
+Since [0096](0096-a-profile-is-addressed-by-a-public-id-with-its-username-after-it.md) a profile is addressed by a
+public id that never changes, `/u/{publicId}/{userName}`, and the name is never looked up: §4's "renaming breaks
+every link to the old one" and the consequence "a username change breaks inbound links, and nothing redirects"
+no longer hold, any other name is a 301 to the current one, and the cooldown stays for §4's other reason.
 
 ## Context
 
@@ -271,6 +275,11 @@ somebody else after the rename, so a stored redirect would eventually point at t
 which is worse than a 404. A username history table with a permanent tombstone on released names is
 the real answer, and it is a bigger commitment than a rename cooldown; the cooldown is what makes
 its absence survivable.
+
+> **Later note.** [0096](0096-a-profile-is-addressed-by-a-public-id-with-its-username-after-it.md) removes the
+> link from the name instead. The profile is at its public id, which is never another account's, with the name
+> after it, and any other name redirects to the current one. A released name takes no link with it, so neither
+> the redirect this paragraph rejected nor a tombstone is needed.
 
 **A returning user still sees the pitch for one request.** The home page is shared-cached and the
 server render has no cookie, so the signed-in half only appears after `AuthProvider` learns who the

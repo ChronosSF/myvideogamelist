@@ -17,11 +17,12 @@ import { ShowMoreGames } from '@/components/ShowMoreGames';
 import { Skeleton } from '@/components/Skeleton';
 import { useLists } from '@/hooks/useLists';
 import { useListView } from '@/hooks/useListView';
+import { useOpenList } from '@/hooks/useOpenList';
 import { useAuth } from '@/hooks/useAuth';
 import { useDrawLimit } from '@/hooks/useDrawLimit';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useReorder } from '@/hooks/useReorder';
-import { type ListEntryDto, type ListId, HAND_ORDERED_LISTS, LIST_IDS } from '@/types/list';
+import { type ListEntryDto, HAND_ORDERED_LISTS, LIST_IDS } from '@/types/list';
 import type { PlatformDto } from '@/types/game';
 import { GAME_GRID, GAME_GRID_FIRST_ROW } from '@/lib/gameGrid';
 import { MANUAL_SORT, sortEntries } from '@/lib/listSort';
@@ -104,7 +105,8 @@ export function ListsPage() {
     const signedIn = !authLoading && user !== null;
     const signedOut = !authLoading && user === null;
 
-    const [activeTab, setActiveTab] = useState<ListId>('playing');
+    // In the address, `/lists?list=finished`, so a reload or a saved link opens the same list.
+    const [activeTab, openList] = useOpenList();
 
     // Transient and deliberately not persisted, unlike the sort and the layout. An empty
     // selection means "everything", so the filter starts inert.
@@ -182,7 +184,8 @@ export function ListsPage() {
 
     // A list that starts again starts at its top, and so does the reader if they were below it. Mostly
     // they are at the top already, since that is where the sort and the filters are; this is for the
-    // change they did not make there — a ticked tag no longer offered, a saved sort arriving late —
+    // change they did not make there — a ticked tag no longer offered, a saved sort arriving late,
+    // another list reached by Back —
     // which would otherwise drop them at the foot of a page sixty games long, where the next chunk is
     // drawn and drawn again until it fills the screen, somewhere in a list that changed under them.
     const panel = useRef<HTMLDivElement>(null);
@@ -218,7 +221,7 @@ export function ListsPage() {
                             aria-selected={activeTab === id}
                             aria-controls="lists-tabpanel"
                             className={`lists-tab-btn${activeTab === id ? ' active' : ''}`}
-                            onClick={() => setActiveTab(id)}
+                            onClick={() => openList(id)}
                         >
                             {nameFor(id)}
                             <span className="lists-tab-count">{lists[id].length}</span>

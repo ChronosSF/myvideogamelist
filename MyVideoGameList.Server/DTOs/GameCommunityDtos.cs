@@ -84,6 +84,10 @@ public record GameReviewsDto(
 /// the public profile itself leaves out.
 /// </para>
 /// </remarks>
+/// <param name="PublicId">
+/// The author's profile's public id, which the card links by with the name after it (ADR 0096). Public
+/// by design, as the name is: it names nobody the name does not already name.
+/// </param>
 /// <param name="UserName">As its owner capitalised it.</param>
 /// <param name="DisplayName">
 /// Shown beside the handle and never instead of it, or null when the author has none. Never unique,
@@ -98,6 +102,7 @@ public record GameReviewsDto(
 /// wrote about the game without scoring it.
 /// </param>
 public record GameReviewDto(
+    string PublicId,
     string UserName,
     string? DisplayName,
     string? AvatarUrl,

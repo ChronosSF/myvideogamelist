@@ -6,6 +6,8 @@ import { TURNSTILE } from '../e2e/stand-ins';
 /** The run's throwaway account. */
 export interface Account {
     userName: string;
+    /** The half of the profile's address that is looked up, read once the account is made (ADR 0096). */
+    publicId: string;
     email: string;
     password: string;
 }
@@ -82,7 +84,8 @@ const REVIEWS = [
  */
 export async function seedAccount(site: string, outbox: string): Promise<Account> {
     const userName = newUserName('lh_');
-    const account = { userName, email: `${userName}@test.local`, password: 'lighthouse-1' };
+    const credentials = { userName, email: `${userName}@test.local`, password: 'lighthouse-1' };
+    let publicId: string;
     const api = await request.newContext({ baseURL: site, extraHTTPHeaders: WRITE });
 
     const write = async (method: 'post' | 'put', path: string, data: unknown) => {
@@ -94,10 +97,14 @@ export async function seedAccount(site: string, outbox: string): Promise<Account
 
     try {
         // With the token Cloudflare's test widget hands over, which the stand-in for siteverify passes (ADR 0092).
-        await write('post', '/api/auth/register', { ...account, turnstileToken: TURNSTILE.token });
+        await write('post', '/api/auth/register', { ...credentials, turnstileToken: TURNSTILE.token });
         // An account signs in once its address is confirmed (ADR 0089), with the link its email carries.
-        await write('post', '/api/auth/confirm-email', confirmationIn(confirmationLinkFor(outbox, account.email)));
-        await write('post', '/api/auth/login', { email: account.email, password: account.password, rememberMe: true });
+        await write('post', '/api/auth/confirm-email', confirmationIn(confirmationLinkFor(outbox, credentials.email)));
+        await write('post', '/api/auth/login', { email: credentials.email, password: credentials.password, rememberMe: true });
+        // The profile is addressed by its id, which the account drew when it was made.
+        const me = await api.get('/api/auth/me');
+        if (!me.ok()) throw new Error(`GET /api/auth/me answered ${me.status()}: ${await me.text()}`);
+        ({ publicId } = await me.json() as { publicId: string });
         try {
             await write('put', '/api/user/privacy', { profileVisibility: 'public' });
 
@@ -118,14 +125,14 @@ export async function seedAccount(site: string, outbox: string): Promise<Account
             }
         } catch (error) {
             // Half a library is nobody's: the account goes, so that it is not on the next run's pages.
-            await api.delete('/api/user', { data: { password: account.password } });
+            await api.delete('/api/user', { data: { password: credentials.password } });
             throw error;
         }
     } finally {
         await api.dispose();
     }
 
-    return account;
+    return { ...credentials, publicId };
 }
 
 /**

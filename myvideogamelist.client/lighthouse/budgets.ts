@@ -1,4 +1,5 @@
 import { CHROME_PROFILE, GAME_ID, SITE } from './harness';
+import { profilePath } from '../src/lib/profilePath';
 import type { Account } from './seed';
 
 /** Mobile is the headline run: Lighthouse's default, a mid-range phone on a slow 4G connection. */
@@ -12,7 +13,7 @@ export const PAGES = [
     { key: 'home', name: 'Home, signed out', path: () => '/' },
     { key: 'games', name: 'Browse', path: () => '/games' },
     { key: 'game', name: 'Game', path: () => `/games/${GAME_ID}` },
-    { key: 'profile', name: 'Public profile', path: (account: Account) => `/u/${account.userName}` },
+    { key: 'profile', name: 'Public profile', path: (account: Account) => profilePath(account) },
     { key: 'lists', name: 'Lists, signed in', path: () => '/lists', signedIn: true },
 ] as const;
 

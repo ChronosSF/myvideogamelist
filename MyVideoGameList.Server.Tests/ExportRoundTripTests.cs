@@ -329,6 +329,24 @@ public class ExportRoundTripTests
     }
 
     [Fact]
+    public async Task RoundTrip_TheAccount_IsLeftBehindAndKeepsItsOwnPublicId()
+    {
+        // The export says where its owner's profile was, and the import reads nothing of the account
+        // section: Bob's page stays at Bob's id, under Bob's name (ADR 0096). An id carried across would
+        // either be refused by the unique index or move Bob's profile to Alice's address.
+        using var db = NewDb();
+
+        var bob = await RoundTripAsync(db);
+
+        var alicesId = db.Users.Single(u => u.Id == Alice).PublicId;
+        var bobsId = db.Users.Single(u => u.Id == Bob).PublicId;
+        Assert.Equal(alicesId, (await new UserDataExporter(db, new FixedClock(Now)).ExportAsync(Alice, CancellationToken.None)).Account.PublicId);
+        Assert.NotEqual(alicesId, bobsId);
+        Assert.Equal(bobsId, bob.Account.PublicId);
+        Assert.Equal("bob", bob.Account.UserName);
+    }
+
+    [Fact]
     public async Task RoundTrip_LeavesBehindWhatTheRowHasNoFieldFor()
     {
         using var db = NewDb();

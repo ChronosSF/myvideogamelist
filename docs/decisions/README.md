@@ -114,7 +114,10 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0093](0093-the-ssr-server-holds-an-idle-connection-longer-than-the-balancer.md) | The SSR server holds an idle connection longer than the balancer does: a server of our own, `react-router-serve`'s app, told the balancer's timeout by the stack and refusing to start without it | Implemented; proved only by a deploy |
 | [0094](0094-the-community-figures-are-withheld-below-their-floors-by-the-api.md) | The community figures are withheld below their floors, by the API: the count travels, the figure does not, and the distribution waits for a higher bar | Implemented |
 | [0095](0095-start-over-empties-the-library-and-keeps-the-account.md) | Start over empties the library in one transaction and keeps the account, and the event log goes with the library | Implemented |
+| [0096](0096-a-profile-is-addressed-by-a-public-id-with-its-username-after-it.md) | A profile is addressed by a public id that never changes, with its username after it for people to read: only the id is looked up, any other name is a 301, and a rename moves nothing | Implemented |
 | [0097](0097-a-list-move-asks-before-it-touches-a-playthrough.md) | A list move asks before it touches a playthrough, and only the reader's yes writes one: two moves ask, on the reader's day, and the yes is guarded under the entry's lock | Implemented |
+| [0098](0098-one-rate-rule-at-the-edge.md) | One rate rule at the edge: an address past 300 requests in five minutes is answered 429, by a web ACL in a stack of its own that parks with the environment | Implemented on dev; proved only by a resume |
+| [0099](0099-dev-is-deployed-by-hand.md) | Dev is deployed by hand: Deploy dev runs when dispatched and builds master as it starts, so no merge deploys and no run goes backwards | Implemented; proved only by a dispatch |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

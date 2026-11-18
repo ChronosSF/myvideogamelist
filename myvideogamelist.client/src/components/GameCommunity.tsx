@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef } from 'react';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import type { CommunityScores, GameReview } from '@/types/community';
 import { formatCount } from '@/lib/format';
+import { isPublicId, profilePath } from '@/lib/profilePath';
 import { formatDate } from '@/lib/stats';
 import {
     hasMemberDistribution,
@@ -30,8 +31,9 @@ interface GameCommunityProps {
     /** From `useGameCommunity`, which the page calls so the hero's badge and this share one fetch. */
     community: UseGameCommunityResult;
     /**
-     * The signed-in reader's username, so their own review can say it is theirs. Null when nobody is
-     * signed in, and while auth has not answered.
+     * The signed-in reader's public id, so their own review can say it is theirs: an id rather than a
+     * name, which can change while the list is on screen (ADR 0096). Null when nobody is signed in, and
+     * while auth has not answered.
      */
     viewer: string | null;
 }
@@ -295,14 +297,15 @@ function MemberReviews({ gameId, community, viewer, reviews, total }: MemberRevi
             {/* Named, because the section holds a second list — the score columns — right above. */}
             <ol ref={list} className="review-list" aria-label="Member reviews">
                 {reviews.map(review => (
-                    // The name and the moment it was written, not the name alone. Names can change
-                    // hands while somebody reads, and a key two reviews shared would hand one card's
-                    // state — a spoiler already revealed — to the other.
+                    // The author's public id, which never changes or changes hands, and the moment it was
+                    // written: a key two reviews shared would hand one card's state — a spoiler already
+                    // revealed — to the other. The handle stands in where an API a release behind sends
+                    // no id, mid-deploy.
                     <GameReviewCard
-                        key={`${review.userName}@${review.createdAt}`}
+                        key={`${isPublicId(review.publicId ?? '') ? review.publicId : review.userName}@${review.createdAt}`}
                         gameId={gameId}
                         review={review}
-                        isViewer={review.userName === viewer}
+                        isViewer={!!viewer && review.publicId === viewer}
                     />
                 ))}
             </ol>
@@ -352,7 +355,7 @@ function GameReviewCard({ gameId, review, isViewer }: { gameId: number; review: 
                                 (ADR 0056), in a `bdi` so a name written right to left cannot reorder
                                 the handle after it. Tested for presence: an API a release behind
                                 sends no display name, and the handle alone is right for that. */}
-                            <Link to={`/u/${review.userName}`} className="review-card-title">
+                            <Link to={profilePath(review)} className="review-card-title">
                                 {review.displayName ? (
                                     <>
                                         <bdi>{review.displayName}</bdi>{' '}
@@ -385,7 +388,7 @@ function GameReviewCard({ gameId, review, isViewer }: { gameId: number; review: 
             revealLabel={`Show ${review.userName}'s review — they marked it as containing spoilers`}
             actions={
                 <ReportButton
-                    target={{ userName: review.userName, gameId }}
+                    target={{ publicId: review.publicId, gameId }}
                     subject={`${review.userName}'s review`}
                     label={`Report ${review.userName}'s review`}
                 />

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
+import { isProfileAddress, profilePath } from '@/lib/profilePath';
 import {
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH,
@@ -186,9 +187,11 @@ export function AccountIdentityCard({ user }: { user: UserProfile }) {
             {visibilityError
                 && <p className="user-pref-error" role="alert">{visibilityError}</p>}
 
-            {isPublic && (
+            {isPublic && isProfileAddress(user) && (
                 <p className="username-link">
-                    <Link to={`/u/${user.userName}`}>/u/{user.userName}</Link>
+                    {/* The address as others will share it: the id that never changes, and the name after
+                        it for people to read (ADR 0096). */}
+                    <Link to={profilePath(user)}>{profilePath(user)}</Link>
                 </p>
             )}
         </div>

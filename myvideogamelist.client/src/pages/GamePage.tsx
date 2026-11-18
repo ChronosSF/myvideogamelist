@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, Outlet, data, isRouteErrorResponse, useLoaderData, useMatch, useRevalidator, type RouterContextProvider } from 'react-router';
 import type { Route } from './+types/GamePage';
+import { RATE_LIMITED, isRateLimited } from '@/lib/api';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import { isUpstreamFailure } from '@/lib/trace';
 import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
@@ -464,7 +465,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
             <ErrorState
                 title="Failed to load this game"
                 titleAs="h1"
-                onRetry={() => void revalidator.revalidate()}
+                // Not for the edge's 429, which asking again at once only prolongs (ADR 0098).
+                onRetry={isRateLimited(error) ? undefined : () => void revalidator.revalidate()}
                 retrying={revalidator.state === 'loading'}
                 reference={reference}
             >
@@ -483,6 +485,8 @@ function whoseFailure(error: unknown): string {
     if (isRouteErrorResponse(error) && error.status === 503) {
         return 'Too many people are browsing games at once. Try again in a moment; lists and profiles are unaffected.';
     }
+    // The edge's, for this reader's address alone, which nothing on our side failed (ADR 0098).
+    if (isRateLimited(error)) return RATE_LIMITED;
     return 'Something went wrong on our side, so this game could not be loaded just now.';
 }
 

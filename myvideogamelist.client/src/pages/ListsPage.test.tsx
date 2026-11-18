@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router';
 import { ListsPage } from '@/pages/ListsPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
@@ -195,6 +195,110 @@ describe('ListsPage once auth has answered', () => {
         expect(screen.getByText(/no games in playing yet/i)).toBeInTheDocument();
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
         expect(screen.queryByText(/sign in to manage your game lists/i)).not.toBeInTheDocument();
+    });
+});
+
+describe('ListsPage and the list in its address', () => {
+    /** The page under a router whose address the test can read and move, as the browser's is. */
+    function renderAt(address: string) {
+        const router = createMemoryRouter(
+            [{ path: '/lists', element: <ListsPage /> }],
+            { initialEntries: [address] },
+        );
+        render(<RouterProvider router={router} />);
+        return router;
+    }
+
+    const selected = (name: RegExp) =>
+        expect(screen.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
+
+    it('opens Playing where the address names no list', () => {
+        authAnswered(userProfile());
+        renderAt('/lists');
+
+        selected(/Playing/);
+    });
+
+    it('opens the list the address names, which is what a reload or a saved link asks for', () => {
+        authAnswered(userProfile());
+        renderAt('/lists?list=finished');
+
+        selected(/Finished/);
+        expect(screen.getByText(/no games in finished yet/i)).toBeInTheDocument();
+    });
+
+    it('finds a renamed list by its id, since the name is its owner\'s to change', () => {
+        authAnswered(userProfile());
+        lists.nameFor = (id: ListId) => (id === 'finished' ? 'Beaten' : LIST_NAMES[id]);
+        renderAt('/lists?list=finished');
+
+        selected(/Beaten/);
+    });
+
+    it('opens Playing for an address that names no real list', () => {
+        authAnswered(userProfile());
+        renderAt('/lists?list=shelved');
+
+        selected(/Playing/);
+    });
+
+    it('puts the list a tab opens into the address, and takes it out again for Playing', async () => {
+        authAnswered(userProfile());
+        const router = renderAt('/lists');
+
+        await userEvent.click(screen.getByRole('tab', { name: /Finished/ }));
+        await waitFor(() => selected(/Finished/));
+        expect(router.state.location.search).toBe('?list=finished');
+
+        await userEvent.click(screen.getByRole('tab', { name: /Playing/ }));
+        await waitFor(() => selected(/Playing/));
+        expect(router.state.location.search).toBe('');
+    });
+
+    it('comes back to the list before on Back', async () => {
+        authAnswered(userProfile());
+        const router = renderAt('/lists?list=backlog');
+
+        await userEvent.click(screen.getByRole('tab', { name: /Dropped/ }));
+        await waitFor(() => selected(/Dropped/));
+
+        await act(() => router.navigate(-1));
+        await waitFor(() => selected(/Backlog/));
+    });
+
+    it('starts a list reached by Back at its top, for a reader who was below it', async () => {
+        // The page's own rule, which the address does not change: a list that starts again is drawn from
+        // one chunk, so a reader left below its top would be at the foot of a page that just got shorter.
+        // jsdom lays nothing out: the list's top is put a long way above the window.
+        authAnswered(userProfile());
+        const scrolled = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            return this.id === 'lists-tabpanel' ? new DOMRect(0, -4000, 800, 6000) : new DOMRect(0, 0, 0, 0);
+        });
+        try {
+            const router = renderAt('/lists');
+            await act(() => router.navigate('/lists?list=finished'));
+            await waitFor(() => selected(/Finished/));
+            scrolled.mockClear();
+
+            await act(() => router.navigate(-1));
+            await waitFor(() => selected(/Playing/));
+
+            expect(scrolled).toHaveBeenCalledExactlyOnceWith({ block: 'start' });
+            expect(scrolled.mock.contexts[0]).toBe(screen.getByRole('tabpanel'));
+        } finally {
+            vi.restoreAllMocks();
+        }
+    });
+
+    it('goes nowhere when the open tab is pressed again', async () => {
+        authAnswered(userProfile());
+        const router = renderAt('/lists?list=on_hold');
+        const before = router.state.location.key;
+
+        await userEvent.click(screen.getByRole('tab', { name: /On Hold/ }));
+
+        expect(router.state.location.key).toBe(before);
     });
 });
 

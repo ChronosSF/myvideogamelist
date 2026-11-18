@@ -1,18 +1,25 @@
-# Version updates, monthly, grouped so that a run is a handful of pull requests rather than one per
-# package. Without this file Dependabot opens security updates only, so a pinned version - the CDK
-# library in infra/, pinned on purpose so that synthesis cannot change under an unchanged source -
-# would never move at all.
+# Version updates, monthly, and few: an entry opens one pull request for all of its minor and patch
+# updates, and one for each major. Without this file Dependabot opens security updates only, so a
+# pinned version - the CDK library in infra/, pinned on purpose so that synthesis cannot change under
+# an unchanged source - would never move at all.
 #
 # None of the easing below touches security updates: they ignore the schedule and the cooldown,
 # arrive as soon as an advisory is published, and have their own limit of ten open pull requests.
 #
-# Within an entry, a package joins the first group it matches, so the named groups come first and
-# the catch-all last. The catch-all takes minor and patch updates only: a major version gets a pull
-# request of its own, because that is the one that needs reading.
+# A group takes a package by its name and an update by its size, and a package a group turns away
+# for its size is still open to the groups after it. So the named groups take majors only, for
+# packages that cannot go to a new major one at a time, and every minor and patch falls through to
+# the catch-all, where those packages move together anyway. A major outside the named groups gets a
+# pull request of its own, because that is the one that needs reading.
 #
-# The cooldown waits a week after a release before proposing it, so a package that ships three
-# patches in four days - AWSSDK does - arrives once, at the last of them, and a release withdrawn
-# within days never arrives at all.
+# The cooldown is how old a release has to be before it is proposed: two weeks, and a month for a
+# major. Dependabot takes the newest release that is old enough, not the newest one, so a package
+# that ships three patches in four days - AWSSDK does - arrives once, and a release withdrawn or
+# found to be bad within two weeks never arrives at all.
+#
+# A merge that changes this file runs the updates straight away, whatever the schedule says: #478
+# added the infra/ entry and seven pull requests followed within four minutes. So a batch in the
+# middle of a month is this file's own doing, not the schedule's.
 version: 2
 updates:
   # The API and both test projects, through the one manifest at the root, Directory.Packages.props.
@@ -23,9 +30,10 @@ updates:
     schedule:
       interval: monthly
     cooldown:
-      default-days: 7
+      default-days: 14
+      semver-major-days: 30
     groups:
-      # The framework's own packages, which move together on patch Tuesday.
+      # The framework's own packages, which go to a new major together, with the runtime.
       dotnet:
         patterns:
           - "Microsoft.AspNetCore.*"
@@ -34,11 +42,15 @@ updates:
           # Pinned for both test projects, past the copy the SSM provider pulls in; it moves with
           # the framework.
           - "System.Security.Cryptography.Xml"
+        update-types:
+          - major
       # The test framework both test projects run on.
       test:
         patterns:
           - "xunit*"
           - "Microsoft.NET.Test.Sdk"
+        update-types:
+          - major
       minor-and-patch:
         patterns:
           - "*"
@@ -51,9 +63,11 @@ updates:
     schedule:
       interval: monthly
     cooldown:
-      default-days: 7
+      default-days: 14
+      semver-major-days: 30
     groups:
-      # The CDK library and its constructs package, which move together.
+      # The CDK library and its constructs package, which move together, and are all this entry
+      # holds, so the one group takes every size of update.
       cdk:
         patterns:
           - "Amazon.CDK.*"
@@ -63,7 +77,8 @@ updates:
     schedule:
       interval: monthly
     cooldown:
-      default-days: 7
+      default-days: 14
+      semver-major-days: 30
     ignore:
       # The types describe the Node the code runs on, 24 in CI and in the image, so they move to a
       # new major when the runtime does and not when the types package does.
@@ -71,10 +86,13 @@ updates:
         update-types:
           - "version-update:semver-major"
     groups:
+      # Four packages on one version.
       react-router:
         patterns:
           - "react-router"
           - "@react-router/*"
+        update-types:
+          - major
       # React and its renderer, and their types. react-dom refuses to load beside any other version
       # of react, and nothing moves react-dom when react moves, so a PR for react alone fails every
       # client test — which is how 19.3 arrived.
@@ -84,11 +102,15 @@ updates:
           - "react-dom"
           - "@types/react"
           - "@types/react-dom"
+        update-types:
+          - major
       # One release, three packages: the metapackage, the parser and the plugin.
       typescript-eslint:
         patterns:
           - "typescript-eslint"
           - "@typescript-eslint/*"
+        update-types:
+          - major
       minor-and-patch:
         patterns:
           - "*"
@@ -102,8 +124,28 @@ updates:
     schedule:
       interval: monthly
     cooldown:
-      default-days: 7
+      default-days: 14
+      semver-major-days: 30
+  # The CDK CLI that Deploy dev and scripts/dev-env.mjs run, pinned beside the CDK app (#339). It has
+  # to read what the library above writes, which the Infrastructure job checks, so it moves on the same
+  # schedule. One package, so nothing to group.
+  - package-ecosystem: npm
+    directory: /infra
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+      semver-major-days: 30
+  # Every workflow names an action by its major, so a new major is the only update there is: they
+  # come as one pull request, and wait the month a major waits. An action's cooldown takes the one
+  # number, default-days, and no other.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 30
+    groups:
+      actions:
+        patterns:
+          - "*"

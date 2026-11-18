@@ -9,3 +9,13 @@ namespace MyVideoGameList.Server.DTOs;
 /// both halves come from the same place.
 /// </remarks>
 public record SitemapSummaryDto(int Games, int Profiles, int PageSize);
+
+/// <summary>
+/// One public profile the sitemap lists: the two halves of its address, <c>/u/{publicId}/{userName}</c>
+/// (ADR 0096).
+/// </summary>
+/// <param name="UserName">
+/// As its owner capitalised it, which is what the profile page builds its canonical address from, so
+/// the sitemap and the page write the same string.
+/// </param>
+public record SitemapProfileDto(string PublicId, string UserName);

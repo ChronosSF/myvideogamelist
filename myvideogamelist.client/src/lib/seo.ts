@@ -95,6 +95,26 @@ export function resourceResponse(
 }
 
 /**
+ * A redirect a loader throws, such as a profile's under a name it no longer has (ADR 0096).
+ *
+ * It never passes through `entry.server.tsx` either. React Router 8 hands a loader's redirect back as
+ * it was thrown for a document request, so what that file adds to a document is added here by hand,
+ * and the `Cache-Control` here is the only one it goes out with: a route's `headers` export is not
+ * asked. For a `.data` request it becomes the 202 that carries the redirect, with these headers copied
+ * onto it, and `handleDataRequest` adds its own. Seen in `react-router`'s `server-runtime`, 8.5.
+ *
+ * A permanent redirect with no `Cache-Control` is one a browser may keep for good, so the caller always
+ * states one.
+ */
+export function redirectResponse(location: string, cacheControl: string, status = 301): Response {
+    const headers = new Headers({ Location: location, 'Cache-Control': cacheControl });
+    applySecurityHeaders(headers, RESOURCE_POLICY);
+    applyIndexingHeaders(headers);
+
+    return new Response(null, { status, headers });
+}
+
+/**
  * robots.txt, for either kind of deployment.
  *
  * Nothing is disallowed in either. The per-user pages are kept out of an index by a `noindex` of
@@ -164,8 +184,9 @@ export interface PageMeta {
     /**
      * The one address this page answers to, from the site root and including any query string that
      * picks a different document. **Built from the data, never from the request**: `/games/0012`
-     * and `/u/ALICE` both render, and the canonical URL is what says they are `/games/12` and
-     * `/u/alice`. Omit it on a page that is `noindex` — the two together are mixed signals.
+     * renders, and the canonical URL is what says it is `/games/12`; a profile's comes from the id and
+     * the name the API answered with (ADR 0096). Omit it on a page that is `noindex` — the two together
+     * are mixed signals.
      */
     path?: string;
     /** Open Graph's own list, which has no type for a game: https://ogp.me/#types */

@@ -94,7 +94,7 @@ of the full sections, one panel that says plainly what the paid tier adds, as a 
 by name. No blurred chart, no sample data, no figure the account is not entitled to: the server
 does not send them (§4), so the client could not fake them if it tried.
 
-### 3.2 The public page — `/u/{name}`
+### 3.2 The public page — `/u/{publicId}/{name}`
 
 **The owner's entitlement decides, never the viewer's.** The statistics are the owner's showcase,
 like the favourites; a visitor who has paid sees nothing extra on somebody else's page. A private

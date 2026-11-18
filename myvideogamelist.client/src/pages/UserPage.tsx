@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { type PageTab, PageTabs } from '@/components/PageTabs';
 import { Skeleton } from '@/components/Skeleton';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
+import { isProfileAddress, profilePath } from '@/lib/profilePath';
 import { NOINDEX } from '@/lib/seo';
 import type { UserPageOutlet } from '@/lib/userPage';
 import './UserPage.css';
@@ -78,8 +79,8 @@ function ProfileHeader({ user }: { user: UserProfile | null }) {
                             {user.displayName !== null && <span className="ml-2 type-meta text-fg-faint">@{user.userName}</span>}
                         </p>
                         <p className="type-meta text-fg-faint">
-                            {user.profileVisibility === 'public' ? (
-                                <>Public profile · <Link to={`/u/${user.userName}`} className="text-link">See it as others do</Link></>
+                            {user.profileVisibility === 'public' && isProfileAddress(user) ? (
+                                <>Public profile · <Link to={profilePath(user)} className="text-link">See it as others do</Link></>
                             ) : (
                                 <>Private profile · <Link to="/user/settings#account" className="text-link">Who can see it</Link></>
                             )}

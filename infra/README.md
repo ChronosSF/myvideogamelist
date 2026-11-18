@@ -3,7 +3,7 @@
 The AWS environment, as one CDK app in C#. What it builds and why is ADR 0044; the records it
 rests on are 0007, 0014, 0015 and 0043.
 
-Six stacks, split by lifetime, named `Mvgl-<env>-<part>`:
+Seven stacks, split by lifetime, named `Mvgl-<env>-<part>`:
 
 | Stack | Lifetime | Holds |
 |---|---|---|
@@ -12,6 +12,7 @@ Six stacks, split by lifetime, named `Mvgl-<env>-<part>`:
 | `EdgeCert` | long-lived, `us-east-1` | the certificate CloudFront uses |
 | `Alerts` | long-lived | the topic the alarms send to, and the owner's email subscription to it (ADR 0080) |
 | `Migrate` | each release | the task that runs the migration bundle |
+| `Waf` | disposable, `us-east-1` | the web ACL on the distribution, its one rate rule, and the log of what it refuses (ADR 0098) |
 | `App` | disposable | the balancer, both services, the distribution in front of the balancer, the DNS alias, the alarms |
 
 Context: `env` (required) and `imageTag` (the git SHA; without it `Migrate` and `App` synthesise
@@ -22,8 +23,13 @@ cdk synth --profile mvgl-dev -c env=dev -c imageTag=<sha>
 cdk deploy Mvgl-dev-Data --profile mvgl-dev -c env=dev
 ```
 
+The CLI the pipeline runs is the one `package-lock.json` here pins, which CI audits and synthesises
+with: `npm ci` here installs it, `npx cdk …` runs it, and `scripts/dev-env.mjs` runs it once it is
+installed (#339). A `cdk` installed globally is whatever version it was when installed.
+
 The long-lived stacks are deployed from a developer machine; the pipeline deploys `Migrate` and
-`App` only, as the deploy role the `Data` stack creates. The balancer admits CloudFront's
+`App` only, as the deploy role the `Data` stack creates, and `scripts/dev-env.mjs` makes and destroys
+`Waf` around `App`. The balancer admits CloudFront's
 origin-facing prefix list and nothing else, so there is no way to reach the environment except
 through the distribution, and no parameter that would open one.
 
@@ -176,17 +182,20 @@ there is the placeholder still in the secret, or a task started before the pair 
 
 ## The pipeline
 
-`.github/workflows/deploy-dev.yml` runs after every green CI run of a push to master, and by
-hand. CI runs on pull requests too, and a fork's branch called `master` passes the branch
-filter, so the automatic path also requires the triggering run to be a `push` to this
-repository - without that, a green CI run would hand the AWS role to anybody's code. The job
-assumes the deploy role through OIDC - no AWS key is stored in GitHub - builds both images and
-pushes them tagged with the commit, and then stops unless `DEV_DEPLOY_ENABLED` is `true` on the
-`dev` GitHub environment. Awake, it deploys `Migrate`, runs the migration task and fails the
+`.github/workflows/deploy-dev.yml` runs by hand and only by hand, from the Actions tab or with
+`gh workflow run deploy-dev.yml` (ADR 0099): a merge reaches dev when the owner chooses. The job
+assumes the deploy role through OIDC - no AWS key is stored in GitHub - checks out master's head as it
+starts, builds both images and pushes them tagged with that commit, and then stops unless
+`DEV_DEPLOY_ENABLED` is `true` on the `dev` GitHub environment. Because it takes master's head
+rather than the commit it was dispatched at, a run that waited behind another, or a re-run of an old
+one, deploys master's newest and never an older commit; and one whose workflow file is no longer
+master's stops before it builds, since it would run old steps against new code. Awake, it deploys `Migrate`, runs the migration task and fails the
 release on a non-zero exit, deploys `App`, waits for both services, invalidates the distribution
 and waits for that too, then checks target health and the site through the distribution: a 401
 without the basic-auth pair, and with it `/readyz` and `/` answering 200. The distribution id is
-read from the `App` stack's outputs, since it changes on every resume.
+read from the `App` stack's outputs, since it changes on every resume. It never deploys `Waf`: `App`
+reads the web ACL's ARN from that stack when it deploys, so a change to the rule reaches dev by hand or
+with the next resume ([The rate rule](#the-rate-rule)).
 Both deploys are `--exclusively`, and the `App` deploy only ever *updates* the stack: the gate is
 read once, when the job starts, so a park that began mid-run would otherwise be undone by a job
 that recreates the stack over a stopped database. Creating `App` is `resume`'s job alone. A
@@ -255,8 +264,83 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   alone:
 
   ```bash
-  aws cloudfront create-invalidation --profile mvgl-dev --distribution-id <DistributionId output> --paths "/u/<name>*" "/sitemaps/profiles-*"
+  aws cloudfront create-invalidation --profile mvgl-dev --distribution-id <DistributionId output> --paths "/u/<publicId>*" "/sitemaps/profiles-*"
   ```
+
+## The rate rule
+
+One web ACL, `mvgl-<env>-edge`, on the distribution, with one rule, `requests-per-address`: an address that
+sends more than 300 requests in five minutes, counting everything but `/assets/` and `/__manifest`, is
+answered 429 until it slows down. Everything else is allowed. It is there so that no one address can spend the four IGDB calls a
+second the whole site shares; why 300, and everything else about it, is ADR 0098, and the arithmetic is
+beside `RequestsPerFiveMinutes` in `src/Infra/WafStack.cs`.
+
+- **It lives in `Mvgl-<env>-Waf`, in `us-east-1`**, the only Region a CloudFront ACL can be made in, and it
+  bills by the hour, so it parks with the environment: `resume` deploys it just before `App`, which reads its
+  ARN when it deploys, and `park` destroys it after `App` (the distribution holds the ACL, and AWS WAF will not
+  delete an ACL something still uses) and after the database stops. Its destroy is `--exclusively`, because
+  `App` depends on it and `cdk destroy` would otherwise take `App` too.
+- **The pipeline never deploys it.** A change to the rule is deployed by hand, before Deploy dev next runs if
+  `App`'s reference changes with it, and otherwise whenever:
+
+  ```bash
+  cdk deploy Mvgl-dev-Waf --exclusively --profile mvgl-dev -c env=dev
+  ```
+
+  AWS resets a rate rule's counts when its settings change, and can pause it for up to a minute.
+- **If dev is awake when a `Waf` stack first reaches `master`, deploy it by hand first**, with the command
+  above, before the next Deploy dev run. That run's `App` deploy reads its output, and fails without it,
+  keeping the release before.
+- **A refused reader is told so, and never that we failed.** A page loaded while refused is the rule's own
+  small HTML page; a page reached inside the site, or a write, shows the client's sentence for it,
+  `RATE_LIMITED` in `@/lib/api`.
+- **It counts before basic auth and before the cache.** While the door is on, a request without the pair is
+  counted and then answered 401; a page served from the edge counts like any other.
+- **An IPv6 address counts alone**, and an IPv6 connection usually has a whole /64 to move about in, so the
+  rule holds the careless and the greedy, not the determined (ADR 0098 §5).
+- **What it refused is logged** to `aws-waf-logs-mvgl-<env>-edge` in `us-east-1`, for two weeks or until the
+  next park: blocked and counted requests only, with `Authorization`, `Cookie`, `Referer` and the query
+  string redacted, because a search can be an email address. In CloudWatch Logs Insights, in `us-east-1`,
+  on that group:
+
+  ```text
+  fields @timestamp, httpRequest.clientIp, httpRequest.uri, terminatingRuleId, action
+  | filter action = "BLOCK"
+  | stats count() by httpRequest.clientIp
+  ```
+
+  The addresses it is refusing now, the id being the last part of the `Waf` stack's `WebAclArn` output:
+
+  ```bash
+  aws wafv2 get-rate-based-statement-managed-keys --profile mvgl-dev --region us-east-1 --scope CLOUDFRONT --web-acl-name mvgl-dev-edge --web-acl-id <id> --rule-name requests-per-address
+  ```
+- **It costs about $6 a month awake**: $5 for the ACL and $1 for the rule, prorated by the hour, and $0.60 a
+  million requests. Nothing parked.
+- **No alarm yet.** WAF reports a CloudFront ACL's metrics in `us-east-1`, so an alarm on it needs a topic
+  there, which is #434's.
+
+**Proving it, on the resume after it first deploys.** `scripts/dev-check.mjs` with the profile signed in
+checks that the distribution names the ACL, that the ACL holds the one rule and that it logs. Then a burst
+from one address, best from AWS CloudShell so that your own address keeps browsing: it is refused for up to
+five minutes after the burst stops. With a made-up pair, every answer is a 401 while the door is on (a 200
+once it is off) until the rule trips, and a 429 after, which shows the rule and that it counts before the
+door; the made-up pair also shows the log's redaction:
+
+```bash
+for i in $(seq 1 1000); do curl -s -o /dev/null -w "%{http_code}\n" -u nobody:nothing https://dev.myvideogamelist.net/robots.txt; done | uniq -c
+```
+
+Expect 401s for the first 300 or so, and for as many more as arrive while AWS catches up (it checks the rate
+about every ten seconds, and says blocking usually starts within thirty), then 429s to the end.
+`curl -si https://dev.myvideogamelist.net/` from the same address then shows the rule's page, with
+`Retry-After: 60`. The log names
+that address under `httpRequest.clientIp`, with `terminatingRuleId` `requests-per-address` and the
+`authorization` header redacted: `xxx` by AWS's guide, `REDACTED` by its API reference, and this run says
+which. After the next `park`, no web ACL is left:
+
+```bash
+aws wafv2 list-web-acls --scope CLOUDFRONT --region us-east-1 --profile mvgl-dev
+```
 
 ## Alarms
 
@@ -337,12 +421,14 @@ of which should match, but AWS documents neither, so that release is the check.
 
 The balancer, not the containers, is what an idle environment pays for, so the lever that matters
 is destroying the `App` stack; stopping the database afterwards reaches the idle floor
-(ADR 0044). `node scripts/dev-env.mjs park` does both in that order and gates the pipeline off;
-`resume` starts the database, migrates it at the newest pushed tag, deploys `App` at that tag,
-checks the site through the distribution and gates it back on; `status` says which cost row the
-environment is on. The migrations are `resume`'s because a parked environment skips the pipeline's
-along with its deploys, while every merge still pushes images: the newest tag can need migrations
-the database never had, and a failed one stops the resume before anything is deployed. Run them
+(ADR 0044). `node scripts/dev-env.mjs park` does both in that order, then destroys the web ACL's
+stack, and gates the pipeline off; `resume` starts the database, migrates it at the newest pushed
+tag, deploys the web ACL's stack and then `App` at that tag, checks the site through the
+distribution and gates it back on; `status` says which cost row the
+environment is on. Run Deploy dev first: parked, it builds master's images and stops, which makes
+master's head the newest tag `resume` finds. The migrations are `resume`'s because that run skips
+them along with the deploy: the newest tag can need migrations the database never had, and a failed
+one stops the resume before anything is deployed. Run them
 from the repository root with the `mvgl-dev` profile signed in. The `App` stack includes the
 distribution, so a park and a resume each take several minutes longer than the services alone
 would; a resume creates a new distribution with a new id, and nothing is cached across one.
@@ -354,7 +440,9 @@ it after any change to the stacks and after every resume. Without the pair it ch
 the three exempt paths and the redirect; with it, health, the crawler headers, `SITE_URL`, every
 route's `Cache-Control`, where the cache hits and where it never may, that a 404 is a 404, and
 that the write guard survives the edge. `--alb <dns name>` adds the check that the balancer does
-not answer directly.
+not answer directly. With the `mvgl-dev` profile signed in it first asks AWS whether the web ACL is
+on the distribution, and last whether the run itself stayed under half the rate rule's limit; it
+sends 42 requests the rule counts with the pair.
 
 ## Things that will bite you
 

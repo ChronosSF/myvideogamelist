@@ -10,7 +10,9 @@ import type { ActivityMonth, LibraryStats, ScoreStats } from './stats';
  * here was put here deliberately — see `docs/decisions/0027-*`.
  */
 export interface PublicProfile {
-    /** As its owner capitalised it, not as the URL was typed. */
+    /** The half of the address that is looked up and never changes (ADR 0096). */
+    publicId: string;
+    /** As its owner capitalised it, not as the URL was typed. The page redirects any other name to this. */
     userName: string;
     /** Shown beside `userName`, never instead of it: the handle is what says whose page this is. */
     displayName: string | null;

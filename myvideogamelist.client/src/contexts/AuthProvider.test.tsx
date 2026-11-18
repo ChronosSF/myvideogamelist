@@ -626,7 +626,7 @@ async function renderSignedIn(routes: ApiRoutes) {
 
 describe('AuthProvider account writes', () => {
     it('shows the new name once the API has stored it', async () => {
-        // The account page and the navbar build `/u/{name}` from what the provider holds.
+        // The account page and the navbar build `/u/{publicId}/{name}` from what the provider holds.
         const actor = quickActor();
         await renderSignedIn({ 'PUT /api/user/username': () => json({ ...ALEX, userName: 'alex_two' }) });
 

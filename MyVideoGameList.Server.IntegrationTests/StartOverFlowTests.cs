@@ -162,7 +162,7 @@ public class StartOverFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         // window runs out, as they do a profile emptied a game at a time.
         var invalidation = Assert.Single(api.Edge.SentSince(sent));
         Assert.Equal("library emptied", invalidation.Reason);
-        Assert.Equal([$"/u/{account.UserName}*"], invalidation.Paths);
+        Assert.Equal([$"/u/{account.PublicId}*"], invalidation.Paths);
         Assert.Equal(account.Id, invalidation.Account);
         Assert.False(invalidation.AtOnce);
     }

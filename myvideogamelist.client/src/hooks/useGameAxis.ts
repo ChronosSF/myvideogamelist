@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useState } from 'react';
 import type { GameDto } from '@/types/game';
 import { useAuth } from '@/hooks/useAuth';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, refusedWith } from '@/lib/api';
 import { moveInHandOrder } from '@/lib/handOrderMove';
 
 /**
@@ -493,7 +493,7 @@ export function useGameAxis({ endpoint, loadFailed, loadUnreachable, mutationFai
                 return true;
             }
             dispatch({ type: 'DROP_ITEM', session, gameId: game.id });
-            dispatch({ type: 'MUTATION_ERROR', session, error: mutationFailed });
+            dispatch({ type: 'MUTATION_ERROR', session, error: refusedWith(res, mutationFailed) });
             return false;
         } catch {
             dispatch({ type: 'DROP_ITEM', session, gameId: game.id });
@@ -525,7 +525,7 @@ export function useGameAxis({ endpoint, loadFailed, loadUnreachable, mutationFai
                 return true;
             }
             if (removed) dispatch({ type: 'RESTORE_ITEM', session, item: removed });
-            dispatch({ type: 'MUTATION_ERROR', session, error: mutationFailed });
+            dispatch({ type: 'MUTATION_ERROR', session, error: refusedWith(res, mutationFailed) });
             return false;
         } catch {
             if (removed) dispatch({ type: 'RESTORE_ITEM', session, item: removed });
