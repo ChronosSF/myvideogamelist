@@ -29,11 +29,15 @@ import { fileURLToPath } from 'node:url';
 const ACCEPTED = {
     // The client's own lock file.
     '.': [
-        // {
-        //     advisory: 'https://github.com/advisories/GHSA-xxxx-xxxx-xxxx',
-        //     reason: 'Why it cannot reach anything here, and the issue that removes this entry.',
-        //     until: '2026-12-31',
-        // },
+        {
+            advisory: 'https://github.com/advisories/GHSA-fc5q-39xc-vjpf',
+            reason: 'picomatch, under Vite, Vitest, tinyglobby and typescript-eslint, which compile the glob '
+                + 'patterns this repository writes in its own configuration: the attack is a pattern an '
+                + 'attacker supplies, and none comes from a request. The image installs it, under '
+                + '@react-router/dev, and the server loads neither. No version fixes it: the newest, 4.0.7, '
+                + 'is affected, so no newer Vite or Vitest can bring a fixed one.',
+            until: '2027-01-24',
+        },
     ],
     // Lighthouse CI's. The audit runs `lhci collect`, `assert` and `upload` to the filesystem, in
     // Playwright's Chromium, launched by its path; nothing else of LHCI's runs, here or in CI.
