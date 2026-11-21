@@ -23,10 +23,10 @@
     "lighthouse": "npm install --prefix lighthouse --no-audit --no-fund && react-router build && playwright test -c lighthouse/playwright.config.ts"
   },
   "dependencies": {
-    "@react-router/dev": "^8.5.0",
-    "@react-router/express": "^8.5.0",
+    "@react-router/dev": "^8.5.1",
+    "@react-router/express": "^8.5.1",
     "@react-router/node": "^8.3.0",
-    "@tailwindcss/vite": "^4.2.2",
+    "@tailwindcss/vite": "^4.3.4",
     "compression": "^1.8.2",
     "express": "^5.3.0",
     "isbot": "^5.2.2",
@@ -58,7 +58,7 @@
     "eslint": "^10.14.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.7",
-    "globals": "^17.13.0",
+    "globals": "^17.14.0",
     "jsdom": "^31.0.0",
     "postcss": "^8.5.32",
     "subset-font": "^2.9.0",
