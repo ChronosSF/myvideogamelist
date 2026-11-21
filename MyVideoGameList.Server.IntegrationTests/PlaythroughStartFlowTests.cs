@@ -100,10 +100,10 @@ public class PlaythroughStartFlowTests(ApiFactory api) : IClassFixture<ApiFactor
     }
 
     [Fact]
-    public async Task AddAndUpdatePlaythrough_ByHand_WaitForTheEntryAsAStartOrAFinishDoes()
+    public async Task AddUpdateAndDeletePlaythrough_ByHand_WaitForTheEntryAsAStartOrAFinishDoes()
     {
-        // A run logged or edited by hand checks nothing, but it must not land between a start's check and
-        // its commit, or between a finish's read and its write, so it takes the same lock.
+        // A run logged, edited or deleted by hand checks nothing, but it must not land between a start's
+        // check and its commit, or between a finish's read and its write, so it takes the same lock.
         const int gameId = 3104;
         await api.CacheGamesAsync(gameId);
 
@@ -120,6 +120,7 @@ public class PlaythroughStartFlowTests(ApiFactory api) : IClassFixture<ApiFactor
                          new PlaythroughInputDto(null, null, null, Day, Day, null)),
                      () => browser.SendAsync(HttpMethod.Put, $"/api/entries/{gameId}/playthroughs/{run.Id}",
                          new PlaythroughInputDto(null, null, 60, Day, Day, null)),
+                     () => browser.SendAsync(HttpMethod.Delete, $"/api/entries/{gameId}/playthroughs/{run.Id}"),
                  })
         {
             await using var holder = await OpenAsync(api.ConnectionString);

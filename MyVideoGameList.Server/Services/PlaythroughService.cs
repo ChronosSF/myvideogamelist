@@ -239,7 +239,7 @@ public class PlaythroughService(
 
     /// <summary>
     /// Runs a write of a game's runs in a transaction that holds the game's entry row, so that two of them
-    /// for one game take turns: a start, a finish, and a run added or edited by hand.
+    /// for one game take turns: a start, a finish, and a run added, edited or deleted by hand.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -253,7 +253,8 @@ public class PlaythroughService(
     /// <para>
     /// The hand's writes take it too, though they check nothing, because a start and a finish check: a run
     /// logged by hand landing between a start's check and its commit would leave two unfinished, and an edit
-    /// putting a finish date on a run between a finish's read and its write would be written over. Only the
+    /// putting a finish date on a run between a finish's read and its write would be written over, and a run
+    /// deleted there would leave the finish updating a row that has gone. Only the
     /// import's commit writes runs without it, all at once and from a file.
     /// </para>
     /// <para>
@@ -302,14 +303,20 @@ public class PlaythroughService(
     public async Task<bool> DeleteAsync(
         string userId, int gameId, int playthroughId, CancellationToken cancellationToken = default)
     {
-        var playthrough = await FindOwnedAsync(userId, gameId, playthroughId, cancellationToken);
-        if (playthrough is null) return false;
+        // Under the game's lock, so that a run deleted while a finish is between its read and its write
+        // makes that finish wait and then find nothing, a 404, rather than update a row that has gone.
+        var deleted = await UnderEntryLockAsync(userId, gameId, async token =>
+        {
+            var playthrough = await FindOwnedAsync(userId, gameId, playthroughId, token);
+            if (playthrough is null) return false;
 
-        db.UserGamePlaythroughs.Remove(playthrough);
-        await db.SaveChangesAsync(cancellationToken);
+            db.UserGamePlaythroughs.Remove(playthrough);
+            await db.SaveChangesAsync(token);
+            return true;
+        }, cancellationToken);
 
-        EvictCommunityTimes(gameId);
-        return true;
+        if (deleted) EvictCommunityTimes(gameId);
+        return deleted;
     }
 
     public async Task<CommunityTimesDto> GetCommunityTimesAsync(
