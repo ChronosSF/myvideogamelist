@@ -2064,7 +2064,7 @@ describe('a run the playthrough prompt wrote (ADR 0097)', () => {
 
     function renderWithPrompt(prompt: ReturnType<typeof promptWrites>) {
         render(
-            <PlaythroughPromptContext.Provider value={{ written: prompt.written }}>
+            <PlaythroughPromptContext.Provider value={{ written: prompt.written, clear: () => {} }}>
                 {tree(
                     { lists: contextValue(), wishlist: wishlistValue(), favourites: favouritesValue(), tags: tagsValue() },
                     'private',
@@ -2125,6 +2125,40 @@ describe('a run the playthrough prompt wrote (ADR 0097)', () => {
         });
 
         expect(screen.getByLabelText('Finished')).toHaveValue('2026-11-15');
+    });
+
+    it('loads what a re-read finds into the form open on that run, after a refusal', async () => {
+        // Another tab finished the run, and this tab's yes was refused: the form must not keep its older copy.
+        stubEntryFetch(null, 200, [playthrough({ id: 7, startedOn: '2026-08-02', finishedOn: null, type: null })],
+            url => (url === '/api/entries/1/playthroughs'
+                ? new Response(JSON.stringify([playthrough({
+                    id: 7, startedOn: '2026-08-02', finishedOn: '2026-11-15', type: null, updatedAt: '2026-11-15T10:00:00Z',
+                })]), { status: 200 })
+                : new Response(null, { status: 204 })));
+        const prompt = promptWrites();
+        renderWithPrompt(prompt);
+        await settled();
+        await userEvent.click(screen.getByRole('button', { name: 'Edit playthrough 1' }));
+
+        await prompt.publish({ session: 'user-1', gameId: 1, playthrough: null });
+
+        await waitFor(() => expect(screen.getByLabelText('Finished')).toHaveValue('2026-11-15'));
+    });
+
+    it('closes the form open on a run a re-read no longer finds', async () => {
+        stubEntryFetch(null, 200, [playthrough({ id: 7, startedOn: '2026-08-02', finishedOn: null, type: null })],
+            url => (url === '/api/entries/1/playthroughs'
+                ? new Response(JSON.stringify([]), { status: 200 })
+                : new Response(null, { status: 204 })));
+        const prompt = promptWrites();
+        renderWithPrompt(prompt);
+        await settled();
+        await userEvent.click(screen.getByRole('button', { name: 'Edit playthrough 1' }));
+        expect(screen.getByLabelText('Finished')).toBeInTheDocument();
+
+        await prompt.publish({ session: 'user-1', gameId: 1, playthrough: null });
+
+        await waitFor(() => expect(screen.queryByLabelText('Finished')).not.toBeInTheDocument());
     });
 
     it("leaves another game's run, and one written for another account, alone", async () => {

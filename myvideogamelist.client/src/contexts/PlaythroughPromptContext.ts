@@ -21,11 +21,19 @@ export interface PlaythroughWrites {
 
 export interface PlaythroughPromptContextValue {
     written: PlaythroughWrites;
+    /**
+     * Takes away whatever the toast is saying, a question or a report. For a write that empties the
+     * library at once, Start over: no move is told for it, and a yes after it would start a run of a game
+     * the reader has just cleared away, or a report's "Add details" would open a run that is gone.
+     */
+    clear: () => void;
 }
 
 /**
- * Outside the provider — a test that renders a page alone — nothing is ever written, so nothing is told.
+ * Outside the provider — a test that renders a page alone — nothing is ever written, so nothing is told,
+ * and there is nothing to clear.
  */
 export const PlaythroughPromptContext = createContext<PlaythroughPromptContextValue>({
     written: { subscribe: () => () => {} },
+    clear: () => {},
 });

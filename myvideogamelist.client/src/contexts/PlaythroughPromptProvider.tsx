@@ -55,6 +55,7 @@ type PromptAction =
     | { type: 'RESET'; session: string | null }
     | { type: 'ASK'; session: string | null; game: GameDto; ask: PromptAsk }
     | { type: 'STALE'; session: string | null; gameId: number }
+    | { type: 'CLEAR'; session: string | null }
     | { type: 'DISMISS'; session: string | null; id: number }
     | { type: 'SAVING'; session: string | null; id: number }
     | { type: 'FAILED'; session: string | null; id: number }
@@ -108,6 +109,9 @@ function reducer(state: PromptState, action: PromptAction): PromptState {
                 : state;
         case 'DISMISS':
             return withToast(state, action.id, () => null);
+        case 'CLEAR':
+            // The library was emptied: no question about one of its games stands, and no report of a run in it.
+            return state.toast === null ? state : { ...state, toast: null };
         case 'SAVING':
             return withToast(state, action.id, toast => ({ ...toast, phase: 'saving', refusal: null }));
         case 'FAILED':
@@ -380,7 +384,11 @@ export function PlaythroughPromptProvider({ children }: { children: ReactNode })
         restoreFocus();
     }, [popup, restoreFocus, state.session, written]);
 
-    const value = useMemo<PlaythroughPromptContextValue>(() => ({ written }), [written]);
+    const clear = useCallback(() => {
+        dispatch({ type: 'CLEAR', session: state.session });
+    }, [state.session]);
+
+    const value = useMemo<PlaythroughPromptContextValue>(() => ({ written, clear }), [written, clear]);
 
     // Loaded before the popup is ever opened (`openDetails`), so this is set whenever there is one to draw.
     const Popup = popupModule?.PlaythroughPopup ?? null;

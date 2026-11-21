@@ -188,7 +188,11 @@ export function GameEntryProvider({ game, account, profileVisibility, onCommunit
             fetch(`/api/entries/${game.id}/playthroughs`, { credentials: 'include', signal: controller.signal })
                 .then(res => (res.ok ? (res.json() as Promise<PlaythroughDto[]>) : null))
                 .then(runs => {
-                    if (runs !== null && !controller.signal.aborted) setPlaythroughs(sorted(runs));
+                    if (runs === null || controller.signal.aborted) return;
+                    setPlaythroughs(sorted(runs));
+                    // A form open on a run takes the run as it is now, as above, or closes if it is gone:
+                    // saving its older copy would undo whatever the other tab wrote.
+                    setEditing(current => (current === null ? null : runs.find(run => run.id === current.id) ?? null));
                 })
                 // What is shown stays: it is only older than it might be, and the next read puts it right.
                 .catch(() => {});

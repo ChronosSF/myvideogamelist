@@ -300,6 +300,36 @@ public class ListServiceTests
         Assert.Empty(db.UserGamePlaythroughs);
     }
 
+    [Theory]
+    [InlineData(ListStatusKeys.OnHold)]
+    [InlineData(ListStatusKeys.Dropped)]
+    [InlineData(ListStatusKeys.Backlog)]
+    public async Task SetListEntryAsync_AMoveThatCannotAsk_AnswersWithNoRunEvenWithOneUnfinished(string status)
+    {
+        // Only a move to Playing or Finished asks anything, so no other pays the read (ADR 0097 §2).
+        using var db = NewDb();
+        var service = NewService(db);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        await LogRun(db, new DateOnly(2026, 8, 2), null);
+
+        var answer = await service.SetListEntryAsync(UserId, 10, status);
+
+        Assert.Equal(new ListMoveDto(true, null), answer);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_ToTheListAlreadyHeld_AnswersWithNoRunEvenWithOneUnfinished()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+        await LogRun(db, new DateOnly(2026, 8, 2), null);
+
+        var answer = await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+
+        Assert.Equal(new ListMoveDto(false, null), answer);
+    }
+
     [Fact]
     public async Task SetListEntryAsync_OnlyFinishedRuns_AnswersNothingUnfinished()
     {

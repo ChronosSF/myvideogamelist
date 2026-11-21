@@ -48,7 +48,8 @@ public record SetListEntryDto(
 /// <param name="UnfinishedPlaythrough">
 /// The game's playthrough with no finish date, or null when it has none. With several, the one started
 /// most recently, or the one logged most recently where none says when it started
-/// (<c>UnfinishedPlaythroughs</c>).
+/// (<c>UnfinishedPlaythroughs</c>). Read only for a move that can ask, one that changed the list to
+/// Playing or to Finished, and null for every other.
 /// </param>
 public record ListMoveDto(bool Moved, UnfinishedPlaythroughDto? UnfinishedPlaythrough);
 

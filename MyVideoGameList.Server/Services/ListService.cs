@@ -103,10 +103,13 @@ public class ListService(
         return await AnswerAsync(moved: true);
 
         // The game's unfinished run, read after the move and never written: a move asks the reader
-        // about a run and leaves the answer to them (ADR 0025 §4, ADR 0097). A game with no entry until
-        // now has no runs, which the read finds out for itself.
+        // about a run and leaves the answer to them (ADR 0025 §4, ADR 0097). Read only for a move that can
+        // ask, one that changed the list to Playing or to Finished; every other move's answer is all the
+        // client needs from it, and the read would be one more query for every add to the Backlog.
         async Task<ListMoveDto> AnswerAsync(bool moved) =>
-            new(moved, await UnfinishedPlaythroughs.LatestAsync(db, userId, gameId, cancellationToken));
+            new(moved, moved && target.Key is ListStatusKeys.Playing or ListStatusKeys.Finished
+                ? await UnfinishedPlaythroughs.LatestAsync(db, userId, gameId, cancellationToken)
+                : null);
     }
 
     /// <summary>

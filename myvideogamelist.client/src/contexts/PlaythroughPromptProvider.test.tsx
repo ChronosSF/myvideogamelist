@@ -3,7 +3,9 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { PlaythroughPromptProvider } from '@/contexts/PlaythroughPromptProvider';
+import { useContext } from 'react';
 import { useLists } from '@/hooks/useLists';
+import { PlaythroughPromptContext } from '@/contexts/PlaythroughPromptContext';
 import type { ListId, ListMoveDto } from '@/types/list';
 import { entry, game, playthrough, platform } from '@/test/factories';
 
@@ -90,6 +92,7 @@ function stubApi() {
 /** Buttons that move a game, as any card or the game page's row would, through the one `addToList`. */
 function Mover() {
     const { addToList, removeFromList, loading } = useLists();
+    const { clear } = useContext(PlaythroughPromptContext);
     if (loading) return <p>Loading</p>;
     const move = (listId: ListId, which = CELESTE) => () => void addToList(listId, which);
     return (
@@ -102,6 +105,7 @@ function Mover() {
             <button type="button" onClick={move('playing', HADES)}>Hades to playing</button>
             <button type="button" onClick={move('dropped', HADES)}>Hades to dropped</button>
             <button type="button" onClick={() => void removeFromList('playing', CELESTE.id)}>Celeste out of playing</button>
+            <button type="button" onClick={clear}>Library emptied</button>
         </div>
     );
 }
@@ -266,6 +270,27 @@ describe('one toast at a time', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Celeste out of playing' }));
 
         await waitFor(() => expect(toast()).not.toBeInTheDocument());
+    });
+
+    it('takes the question away when the library is emptied, as Start over does', async () => {
+        await renderPrompt();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Celeste to playing' }));
+        await screen.findByText('Playthrough · Celeste');
+        await userEvent.click(screen.getByRole('button', { name: 'Library emptied' }));
+
+        expect(toast()).not.toBeInTheDocument();
+    });
+
+    it('takes a confirmation away too when the library is emptied, since its run is gone', async () => {
+        await renderPrompt();
+        await userEvent.click(screen.getByRole('button', { name: 'Celeste to playing' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Start it' }));
+        await screen.findByText('Playthrough started today.');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Library emptied' }));
+
+        expect(toast()).not.toBeInTheDocument();
     });
 
     it('leaves the question up when another game moves and asks nothing', async () => {

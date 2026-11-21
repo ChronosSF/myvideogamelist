@@ -71,7 +71,8 @@ where the game was is not consulted.
 is one rule in one place, `UnfinishedPlaythroughs`, which the move and the start both read: with several
 unfinished, the one started most recently; where none says when it started, the one logged most recently; a
 dated run before an undated one, since a date is what the question shows. Runs logged by hand can overlap, and
-nothing forbids it.
+nothing forbids it. The run is read only for a move that can ask, one that changed the list to Playing or to
+Finished; any other move answers with none, rather than pay a query whose answer the client would not use.
 
 A client from before this ignores the body. A client from after it asks nothing of a 204, so a page served
 by a new SSR task against an API still mid-deploy simply does not ask.
