@@ -91,6 +91,8 @@ const NAMES = {
     apiRepository: 'mvgl/api',
     ssrRepository: 'mvgl/ssr',
     gateVariable: `${ENV.toUpperCase()}_DEPLOY_ENABLED`,
+    // Who the admin is: an account id set by hand, which the API's task reads as it starts (ADR 0102).
+    adminParameter: `/mvgl/${ENV}/admin-account-id`,
     gitHubEnvironment: ENV,
 };
 
@@ -491,7 +493,21 @@ async function migrate(tag) {
     note('Migrated.');
 }
 
+/**
+ * The App stack does not deploy in an account where nobody has made the admin's parameter: CloudFormation
+ * looks for it as it builds the change set (ADR 0102). Asked here first, so that a resume says so before it
+ * has waited for the database, migrated it and made the web ACL.
+ */
+function requireAdminParameter() {
+    const r = aws(['ssm', 'get-parameter', '--name', NAMES.adminParameter, '--query', 'Parameter.Name'], { allowFailure: true });
+    if (r.ok) return;
+    if (!/ParameterNotFound/.test(r.error)) fail(r.error);
+    fail(`${NAMES.adminParameter} is not set, and ${NAMES.appStack} does not deploy without it (ADR 0102). `
+        + `Until an account is the admin:\n  aws ssm put-parameter --profile ${PROFILE} --name ${NAMES.adminParameter} --type String --value none`);
+}
+
 async function resume() {
+    requireAdminParameter();
     const db = databaseStatus();
     if (db === null) fail(`Database ${NAMES.database} does not exist. Deploy ${NAMES.dataStack} first.`);
     if (db === 'stopped') {

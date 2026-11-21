@@ -3,6 +3,8 @@
 **Status:** Implemented — the first admin page is #163. Amended by
 [0076](0076-a-reader-reports-and-an-admin-withdraws.md): on a reader's report, an admin page also
 withdraws what a member published, by hiding a review or clearing a display name, picture or bio.
+And by [0102](0102-a-deployed-admin-is-a-hand-set-parameter-the-task-reads.md): where a deployment gets
+`Admin__AccountIds__0` from, a parameter set by hand that the API's task reads as it starts.
 
 Records the admin model [`specs/release-timeline-and-calendar.md`](../../specs/release-timeline-and-calendar.md)
 §7 specified, because it is not the calendar's alone: the next thing an operator has to change

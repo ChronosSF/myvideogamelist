@@ -85,6 +85,17 @@ public sealed record Site(string Env)
     /// </summary>
     public string AlarmEmailParameter => $"/mvgl/{Env}/alarm-email";
 
+    /// <summary>
+    /// The Parameter Store parameter holding the id of the account that is the environment's admin
+    /// (ADR 0042, 0102). Set by hand, since an account has an id only once somebody has signed up for
+    /// it and the repository is public, and read by the API's task as it starts. Until there is such
+    /// an account it holds <see cref="NoAdmin"/>.
+    /// </summary>
+    public string AdminAccountIdParameter => $"/mvgl/{Env}/admin-account-id";
+
+    /// <summary>What the parameter holds while nobody is the admin: a word no account id can be.</summary>
+    public const string NoAdmin = "none";
+
     /// <summary>The namespace of the metrics the API's log feeds.</summary>
     public string MetricNamespace => $"MVGL/{Env}";
 
