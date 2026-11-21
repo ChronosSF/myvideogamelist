@@ -8,8 +8,9 @@ page keeps no pattern. The call to action comes off when the test run ends (§5)
 ## Context
 
 - **Dev is about to open to real testers for about two weeks.** Stamen resumes the environment and takes its
-  basic auth off himself, and testers are recruited by link, on the Discord and elsewhere. Their accounts and
-  lists are real data from the first sign-up, promised to move to production at launch
+  basic auth off, by `Site.BehindBasicAuth` ([0101](0101-devs-basic-auth-comes-off-for-the-trial.md)), and
+  testers are recruited by link, on the Discord and elsewhere. Their accounts and lists are real data from
+  the first sign-up, promised to move to production at launch
   ([#465](https://github.com/ChronosSF/myvideogamelist/issues/465)).
 - **The domain's own page knows nothing of it.** `myvideogamelist.net` is 0066's holding page. It says
   "Coming soon", and its one button is the Discord, so somebody who types the name they were told arrives at
@@ -123,9 +124,9 @@ becomes the filled button, the head's title and descriptions lose "open for test
 again under the next version, and this record's status and its row in the index say the call to action is
 off.
 
-It has to come off **no later than dev closes to the public**: when its basic auth goes back on, the button
-leads to a 401, and when dev is parked, to nothing. Until then, removing it is the same hand deploy as any
-change to the page.
+It has to come off **no later than dev closes to the public**: when its basic auth goes back on (0101's one
+line), the button leads to a 401, and when dev is parked, to nothing. Until then, removing it is the same
+hand deploy as any change to the page.
 
 ## Alternatives
 
