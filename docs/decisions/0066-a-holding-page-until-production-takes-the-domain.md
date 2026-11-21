@@ -5,7 +5,9 @@ outside: the apex answers with every header in §6, `www` and plain HTTP redirec
 missing page is a 404 with the same headers. Destroyed when production takes the domain
 ([#98](https://github.com/ChronosSF/myvideogamelist/issues/98)). Answers #98's open question, apex or
 `www`, and with it D7, the cookie's domain. Builds on [0036](0036-what-a-crawler-is-told.md) and
-[0044](0044-what-the-deployment-walkthrough-settled.md).
+[0044](0044-what-the-deployment-walkthrough-settled.md). §1, §5, §6 and what is not on the page are
+amended by [0100](0100-the-holding-page-points-at-the-test-run.md): the page points at dev's test run
+while it lasts, in the site's own look and fonts, which the content policy now admits.
 
 ## Context
 
@@ -29,6 +31,10 @@ production is #98, which is not paid for yet. Four things want an address that a
 One HTML page and its 404, a stylesheet, a favicon, a share image, `robots.txt` and a sitemap, in
 `holding/site`, from a private S3 bucket through CloudFront. No server, no script, no cookie, no
 analytics, and nothing from another origin.
+
+> **Amended by [0100](0100-the-holding-page-points-at-the-test-run.md).** The folder also holds the
+> site's fonts, with their licences, and the two drawings of the pixel matrix behind the page, all
+> served from the same bucket, so still nothing comes from another origin.
 
 The application was the alternative, and it is the wrong size. Production's own list in #98 —
 private subnets behind NAT, Multi-AZ, an approval gate — comes before it serves anybody, and dev,
@@ -102,6 +108,10 @@ The share image is the holding page's own, rendered from `holding/share`. The ap
 image, the same layout without "Coming soon", is drawn from `myvideogamelist.client/share/` since
 [#139](https://github.com/ChronosSF/myvideogamelist/issues/139), and stays when this page goes.
 
+> **Amended by [0100](0100-the-holding-page-points-at-the-test-run.md).** The holding page's image is no
+> longer the app's layout with "Coming soon": it is the headline beside a drawing of the lists, flagged
+> "Open for testing" while the test run lasts, in the page's own fonts.
+
 ### 6. The headers
 
 The app's document set, from `entry.server.tsx` and 0033 §5: `nosniff`,
@@ -110,6 +120,9 @@ The app's document set, from `entry.server.tsx` and 0033 §5: `nosniff`,
 - **A stricter content policy than an app document can carry**, because this page has no script:
   `default-src 'none'`, with the page's own stylesheet and favicon allowed, `base-uri` and
   `form-action` closed, and `frame-ancestors 'none'`.
+
+  > **Amended by [0100](0100-the-holding-page-points-at-the-test-run.md).** `font-src 'self'` joins
+  > it, for the site's fonts, which the page now serves as its own files; nothing else does.
 - **HSTS as 0033 states it**: a year, subdomains included, preload off. The app's documents do not
   send it yet (#109), so this is the first response at the apex that does, and it commits the
   domain to more than "use HTTPS":
@@ -171,3 +184,8 @@ What stays behind is meant to, or is harmless:
   `DISCORD_INVITE_URL`. A change to either does not reach the page by itself.
 - **Not here:** analytics of any kind — Search Console's reports are the measure — a contact
   address, and a mailing list.
+
+> **Amended by [0100](0100-the-holding-page-points-at-the-test-run.md).** The copies are more since:
+> the fonts and their licences, the corner tokens, the type roles and shapes, and the pattern's
+> drawings; `holding/README.md` lists them. And while the test run lasts, the page names the support
+> address, for testers who will not join the Discord; it comes off with the test run's section.

@@ -10,8 +10,8 @@
  *     npx --prefix myvideogamelist.client playwright install chromium
  *     node holding/share/render.mjs
  *
- * The text is set in the machine's own interface font, as the page's is, so a render on another
- * system differs from the committed image in its letterforms. Look at the result before committing it.
+ * The text is set in the page's own fonts, from ../site/fonts through the page's stylesheet, so a render
+ * on another system draws the same letterforms. Look at the result before committing it all the same.
  */
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';

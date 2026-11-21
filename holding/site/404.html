@@ -9,13 +9,22 @@
         It is also an object in the bucket, so /404.html itself answers 200; the noindex is for that
         address, and no canonical URL goes with it, since the two together say different things.
         Every link is from the root, because this page is served at whatever address was asked for.
+
+        It says nothing about the test run (ADR 0100), so it does not change when the test run ends.
     -->
     <title>Page not found - MyVideoGameList</title>
     <meta name="robots" content="noindex">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <!-- Each face draws part of the first screen; index.html says why crossorigin. -->
+    <link rel="preload" href="/fonts/archivo-display-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/archivo-title-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/dm-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+    <div class="page-pattern" aria-hidden="true"></div>
+
     <header class="site-header">
         <div class="wrap">
             <a class="brand" href="/">
@@ -38,21 +47,26 @@
 
     <main class="not-found">
         <div class="wrap">
-            <h1>Page not found</h1>
+            <p class="type-kicker kicker">Error 404</p>
+            <h1 class="type-display">Page not found</h1>
             <p class="lead">
-                There is nothing at this address yet. MyVideoGameList is not open, and its home page
-                says what it will be.
+                There is nothing at this address. The home page says what MyVideoGameList is.
             </p>
-            <p class="actions">
-                <a class="button" href="/">Go to the home page</a>
+            <p class="ways-in">
+                <a class="btn btn-primary" href="/">Go to the home page</a>
             </p>
         </div>
     </main>
 
-    <footer class="site-footer">
+    <footer class="site-footer rule-heavy">
         <div class="wrap">
-            <p>&copy; 2026 MyVideoGameList</p>
-            <p><a href="https://github.com/ChronosSF/myvideogamelist">Code on GitHub</a></p>
+            <div class="foot-meta type-meta">
+                <p>&copy; 2026 MyVideoGameList</p>
+                <p class="foot-links">
+                    <a href="https://discord.gg/pPnapgG3WU">Discord</a>
+                    <a href="https://github.com/ChronosSF/myvideogamelist">Code on GitHub</a>
+                </p>
+            </div>
         </div>
     </footer>
 </body>

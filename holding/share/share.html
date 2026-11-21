@@ -6,14 +6,27 @@
         The source of ../site/share.png, the holding page's share image: 1200 by 630, the size Open
         Graph and the large card are drawn at. render.mjs beside it draws this with Chromium.
 
-        The page's own stylesheet supplies the tokens and the logo's classes, so the image is in the
-        page's colours by construction. Everything that matters stays inside the middle 1200 by 600,
-        because the large card crops the image to two to one.
+        The page's own stylesheet supplies the tokens, the fonts, the logo's classes and the drawing of
+        the lists, so the image is in the page's look by construction, and is set in the page's own
+        type on any machine that renders it. Everything that matters stays inside the middle 1200 by
+        600, because the large card crops the image to two to one.
 
-        It shows the brand and nothing else: no game's art, so no credit is owed to anybody.
+        It shows the brand and a drawing of the lists, with made-up games and tinted covers: no game's
+        art, so no credit is owed to anybody. No pixel matrix behind it, as the page has: Chromium
+        fetches a mask image in CORS mode, which a page opened from disk cannot satisfy, and the glow then
+        draws unmasked over the whole top.
+
+        The flag between the "TEST RUN" comments is the test run's (ADR 0100). When the test ends it
+        comes off with its two rules below, the image is drawn again, the page's og:image:alt loses "Open
+        for testing", and its og:image address takes the next version.
     -->
     <link rel="stylesheet" href="../site/style.css">
     <style>
+        /* rem is a fifth larger than the page's, so the drawing of the lists reads at a card's size. */
+        html {
+            font-size: 20px;
+        }
+
         html,
         body {
             width: 1200px;
@@ -24,127 +37,65 @@
 
         body {
             display: grid;
-            grid-template-columns: 1fr 400px;
+            grid-template-columns: minmax(0, 1fr) 440px;
             align-items: center;
             gap: 64px;
-            padding: 72px 80px;
-            background:
-                radial-gradient(ellipse 900px 600px at 0% 0%, color-mix(in srgb, var(--color-primary-950) 90%, transparent), transparent 70%),
-                var(--color-page);
+            padding: 56px 72px;
         }
 
         .lockup {
             display: flex;
             align-items: center;
-            gap: 20px;
-            color: var(--color-fg);
-            font-size: 44px;
-            font-weight: 700;
-            letter-spacing: -0.01em;
+            gap: 18px;
+            color: var(--color-fg-strong);
+            font-size: 34px;
         }
 
         .lockup svg {
-            width: 72px;
-            height: 72px;
+            width: 56px;
+            height: 56px;
         }
 
         .headline {
             margin-top: 44px;
             color: var(--color-fg-strong);
-            font-size: 60px;
-            font-weight: 700;
-            line-height: 1.12;
-            letter-spacing: -0.02em;
+            font-size: 64px;
+            line-height: 0.98;
         }
 
-        .soon {
-            display: inline-block;
-            margin-top: 36px;
-            padding: 8px 20px;
-            border: 2px solid color-mix(in srgb, var(--color-primary-500) 45%, transparent);
-            border-radius: 999px;
-            background: color-mix(in srgb, var(--color-primary-900) 45%, transparent);
-            color: var(--color-primary-300);
-            font-size: 22px;
-            font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
+        /* The test run's flag (ADR 0100), which goes with it. */
+        .flag {
+            margin-top: 40px;
+            gap: 14px;
+            font-size: 20px;
+        }
+
+        .flag::before {
+            width: 14px;
+            height: 14px;
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary-500) 25%, transparent);
         }
 
         .domain {
-            margin-top: 22px;
+            margin-top: 18px;
             color: var(--color-fg-muted);
-            font-size: 26px;
+            font-size: 22px;
+            letter-spacing: 0.04em;
         }
 
-        /* A list as the app draws one, with nothing real in it: a cover, two lines of text and the
-           status, once for each of the five. */
-        .list {
-            display: grid;
-            gap: 14px;
-            padding: 22px;
-            border: 2px solid var(--color-line);
-            border-radius: 24px;
-            background: color-mix(in srgb, var(--color-surface) 70%, transparent);
-            box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.5);
+        .demo {
+            padding: 22px 26px 26px;
         }
 
-        .row {
-            display: grid;
-            grid-template-columns: 52px 1fr auto;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .cover {
-            width: 52px;
-            height: 68px;
-            border-radius: 8px;
-            background: linear-gradient(160deg, color-mix(in srgb, var(--dot) 55%, var(--color-surface)), var(--color-sunken));
-        }
-
-        .lines {
-            display: grid;
-            gap: 10px;
-        }
-
-        .lines span {
-            display: block;
-            height: 12px;
-            border-radius: 6px;
-            background: var(--color-line-strong);
-        }
-
-        .lines span + span {
-            width: 55%;
-            height: 10px;
-            background: var(--color-line);
-        }
-
-        .chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 4px 12px;
-            border: 2px solid var(--color-line-strong);
-            border-radius: 999px;
-            color: var(--color-fg-soft);
-            font-size: 16px;
-            white-space: nowrap;
-        }
-
-        .chip::before {
-            content: "";
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: var(--dot);
+        .demo-row:last-child {
+            border-bottom: 0;
+            padding-bottom: 0;
         }
     </style>
 </head>
 <body>
     <div>
-        <div class="lockup">
+        <div class="lockup type-display">
             <svg viewBox="0 0 64 64" aria-hidden="true">
                 <mask id="logo-gap">
                     <rect width="64" height="64" fill="white"/>
@@ -159,17 +110,70 @@
             </svg>
             <span>MyVideoGame<span class="brand-accent">List</span></span>
         </div>
-        <p class="headline">Every game you&rsquo;ve played, <span class="accent">in one list</span></p>
-        <p class="soon">Coming soon</p>
-        <p class="domain">myvideogamelist.net</p>
+        <p class="headline type-display">Every game you&rsquo;ve played, <span class="accent">in one list</span></p>
+        <!-- TEST RUN (ADR 0100): from here... -->
+        <p class="flag type-kicker trial-flag">Open for testing</p>
+        <!-- TEST RUN: ...to here. -->
+        <p class="domain type-meta">myvideogamelist.net</p>
     </div>
 
-    <div class="list" aria-hidden="true">
-        <div class="row status-playing"><span class="cover"></span><span class="lines"><span style="width: 88%"></span><span></span></span><span class="chip">Playing</span></div>
-        <div class="row status-finished"><span class="cover"></span><span class="lines"><span style="width: 72%"></span><span></span></span><span class="chip">Finished</span></div>
-        <div class="row status-on-hold"><span class="cover"></span><span class="lines"><span style="width: 94%"></span><span></span></span><span class="chip">On Hold</span></div>
-        <div class="row status-backlog"><span class="cover"></span><span class="lines"><span style="width: 66%"></span><span></span></span><span class="chip">Backlog</span></div>
-        <div class="row status-dropped"><span class="cover"></span><span class="lines"><span style="width: 80%"></span><span></span></span><span class="chip">Dropped</span></div>
+    <div class="demo" aria-hidden="true">
+        <div class="demo-tabs">
+            <span class="demo-tab">Backlog <span class="type-meta">41</span></span>
+            <span class="demo-tab is-current">Playing <span class="type-meta">3</span></span>
+            <span class="demo-tab">On Hold <span class="type-meta">2</span></span>
+            <span class="demo-tab">Finished <span class="type-meta">128</span></span>
+        </div>
+
+        <div class="demo-row">
+            <span class="demo-cover is-a"></span>
+            <span class="demo-name">
+                <span class="type-title">Night Harbour</span>
+                <span class="type-meta">PC &middot; 27 h played</span>
+            </span>
+            <svg class="demo-stars" viewBox="0 0 128 24" aria-hidden="true">
+                <defs>
+                    <path id="star" d="m12 1.5 3.1 6.4 7 1-5.05 4.95 1.2 7L12 17.55l-6.25 3.3 1.2-7L1.9 8.9l7-1Z"/>
+                    <clipPath id="star-half"><rect width="12" height="24"/></clipPath>
+                </defs>
+                <use href="#star" class="star-on"/>
+                <use href="#star" x="26" class="star-on"/>
+                <use href="#star" x="52" class="star-on"/>
+                <use href="#star" x="78" class="star-on"/>
+                <use href="#star" x="104" class="star-off"/>
+                <use href="#star" x="104" class="star-on" clip-path="url(#star-half)"/>
+            </svg>
+        </div>
+
+        <div class="demo-row">
+            <span class="demo-cover is-b"></span>
+            <span class="demo-name">
+                <span class="type-title">Copper Sky Rally</span>
+                <span class="type-meta">Switch &middot; 12 h played</span>
+            </span>
+            <svg class="demo-stars" viewBox="0 0 128 24" aria-hidden="true">
+                <use href="#star" class="star-on"/>
+                <use href="#star" x="26" class="star-on"/>
+                <use href="#star" x="52" class="star-on"/>
+                <use href="#star" x="78" class="star-on"/>
+                <use href="#star" x="104" class="star-off"/>
+            </svg>
+        </div>
+
+        <div class="demo-row">
+            <span class="demo-cover is-c"></span>
+            <span class="demo-name">
+                <span class="type-title">The Long Archive</span>
+                <span class="type-meta">PS5 &middot; 2 h played</span>
+            </span>
+            <svg class="demo-stars" viewBox="0 0 128 24" aria-hidden="true">
+                <use href="#star" class="star-off"/>
+                <use href="#star" x="26" class="star-off"/>
+                <use href="#star" x="52" class="star-off"/>
+                <use href="#star" x="78" class="star-off"/>
+                <use href="#star" x="104" class="star-off"/>
+            </svg>
+        </div>
     </div>
 </body>
 </html>
