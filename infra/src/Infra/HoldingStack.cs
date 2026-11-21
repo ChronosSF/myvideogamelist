@@ -34,11 +34,12 @@ public sealed class HoldingStack : Stack
 
     /// <summary>
     /// Stricter than any of the app's documents can be, since they run React Router's scripts and
-    /// this page runs none: nothing loads but its own stylesheet and favicon, and no form goes
-    /// anywhere.
+    /// this page runs none: nothing loads but its own stylesheet, its images and its fonts, and no
+    /// form goes anywhere. The fonts are the app's, copied into <c>holding/site/fonts</c> rather than
+    /// fetched from a font host, so <c>font-src</c> names this origin and nothing else (ADR 0100).
     /// </summary>
     private const string ContentSecurityPolicy =
-        "default-src 'none'; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+        "default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
     public HoldingStack(Construct scope, string id, IStackProps props, Site site) : base(scope, id, props)
     {
