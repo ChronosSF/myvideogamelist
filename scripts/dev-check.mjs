@@ -18,12 +18,19 @@
  * budget for five minutes. Prints one line per check and exits 1 if any failed. Nothing here
  * writes anything anywhere: the one POST that reaches the API is a sign-out by nobody.
  *
+ * A site deployed open (ADR 0101) asks nobody for the pair, so there the whole list runs without
+ * it and the pair, if set, is never sent. Which the site is, it is asked: /healthz with no
+ * credentials is a 401 behind basic auth and a 200 without. Whether that is what was meant is the
+ * App stack's BasicAuth output, read when the profile is signed in, and a site that disagrees with
+ * its stack fails the first check.
+ *
  * With the environment's AWS profile signed in (--profile, mvgl-<env> by default), it first asks AWS,
  * read only, whether the edge's web ACL is on the distribution, holds its one rate rule and logs what
  * it refuses (ADR 0098); without it, those checks are skipped, and the run says so. Every request this
  * script sends through the distribution is counted, and when the rule's limit is known the last check
  * is that the run stayed under half of it, which leaves the rest for whoever runs it to browse with
- * from the same address. A run sends 42 such requests with the pair, 53 with --limiter, and 8 without.
+ * from the same address. Behind basic auth a run sends 43 such requests with the pair, 54 with
+ * --limiter, and 9 without; of an open site, 42, or 53 with --limiter.
  */
 
 import { runAws } from './aws-cli.mjs';
@@ -41,7 +48,9 @@ const SITE = `https://${HOST}`;
 const GAME = option('--game', '1942');
 const ALB = option('--alb', null);
 const PAIR = process.env.MVGL_DEV_BASIC_AUTH;
-const AUTH = PAIR ? { authorization: `Basic ${Buffer.from(PAIR).toString('base64')}` } : null;
+// The pair as a header, where there is one. Set aside by `theDoorIs` on finding the site open, so that
+// a credential nothing asks for is never sent to it.
+let AUTH = PAIR ? { authorization: `Basic ${Buffer.from(PAIR).toString('base64')}` } : null;
 
 let failed = 0;
 let skipped = 0;
@@ -100,8 +109,7 @@ function stackOutput(stack, key, region = []) {
 }
 
 /** The rule's limit and window when the ACL could be read, so the run can be held to it at the end. */
-async function theFirewall() {
-    const who = runAws(PROFILE, ['sts', 'get-caller-identity']);
+async function theFirewall(who) {
     if (!who.ok) {
         skip("the edge's web ACL", who.missing ? who.error : `the ${PROFILE} profile is not signed in (aws sso login --profile ${PROFILE})`);
         return null;
@@ -141,19 +149,51 @@ async function theFirewall() {
 // Without credentials.
 // ---------------------------------------------------------------------------------------------
 
-async function theDoor() {
+/**
+ * Whether the site is behind basic auth, 'on' or 'off', by asking it: /healthz with no credentials is
+ * a 401 with a Basic challenge behind the door and a 200 without it (ADR 0101). Where AWS can be asked,
+ * the App stack's BasicAuth output says which was deployed, and the site has to agree: a door found
+ * open that was meant shut is the failure this script most exists to catch. A stack from before that
+ * output is 'on', as every deploy before it was.
+ */
+async function theDoorIs(signedIn) {
+    const r = await get('/healthz');
+    const found = r.status === 401 && /^Basic /.test(r.headers.get('www-authenticate') ?? '') ? 'on'
+        : r.status === 200 ? 'off'
+            : null;
+    if (found === null) {
+        report(false, '/healthz without credentials says whether the site is behind basic auth', `${r.status}, ${xcache(r)}`);
+        return 'on';
+    }
+    if (signedIn) {
+        const meant = stackOutput(APP_STACK, 'BasicAuth') === 'off' ? 'off' : 'on';
+        report(found === meant, `basic auth at the edge is ${meant}, as ${APP_STACK} was deployed`, `found ${found}`);
+    } else {
+        skip(`whether basic auth is meant to be ${found}`, `found ${found}; ${APP_STACK} says which was deployed, and the ${PROFILE} profile is not signed in`);
+    }
+    if (found === 'off') AUTH = null;
+    return found;
+}
+
+async function theDoor(door) {
     for (const path of ['/', '/healthz', '/lists']) {
         const r = await get(path);
-        report(r.status === 401 && /^Basic /.test(r.headers.get('www-authenticate') ?? ''),
-            `${path} without credentials is a 401 with a Basic challenge`, `${r.status}, ${xcache(r)}`);
+        report(door === 'on'
+            ? r.status === 401 && /^Basic /.test(r.headers.get('www-authenticate') ?? '')
+            : r.status === 200,
+        door === 'on' ? `${path} without credentials is a 401 with a Basic challenge` : `${path} answers anybody`,
+        `${r.status}, ${xcache(r)}`);
     }
     // ADR 0044, D-8: fetched with credentials: 'omit', so exempt - and GET only.
     for (const tail of ['reviews', 'community-scores', 'community-times']) {
         const r = await get(`/api/games/${GAME}/${tail}`);
         report(r.status === 200, `/api/games/${GAME}/${tail} answers without credentials (D-8)`, `${r.status}`);
     }
-    const post = await get(`/api/games/${GAME}/reviews`, { method: 'POST', headers: { 'X-MVGL-Request': '1' } });
-    report(post.status === 401 || post.status === 503, `POST to an exempt path is not exempt`, `${post.status}`);
+    // Only a door has an exemption to check the edges of. On an open site this POST reaches the API.
+    if (door === 'on') {
+        const post = await get(`/api/games/${GAME}/reviews`, { method: 'POST', headers: { 'X-MVGL-Request': '1' } });
+        report(post.status === 401 || post.status === 503, `POST to an exempt path is not exempt`, `${post.status}`);
+    }
 
     const http = await get('/', { base: `http://${HOST}`, redirect: 'manual' });
     report(http.status === 301 && (http.headers.get('location') ?? '').startsWith(SITE),
@@ -318,17 +358,21 @@ async function writeGuard() {
     report(marked.status === 401, 'a write with X-MVGL-Request reaches the API (401: nobody signed in)', `${marked.status}`);
 }
 
-console.log(`Checking ${SITE}${AUTH ? '' : ' (no MVGL_DEV_BASIC_AUTH: credential-free checks only)'}`);
+console.log(`Checking ${SITE}`);
+// Whether AWS can be asked at all, once, for the web ACL and for what the App stack was deployed as.
+const who = runAws(PROFILE, ['sts', 'get-caller-identity']);
 // Apart from the site's own checks, so that nothing AWS answers can keep them from running.
 let rule = null;
 try {
-    rule = await theFirewall();
+    rule = await theFirewall(who);
 } catch (error) {
     report(false, "the edge's web ACL could be read", error.message);
 }
 try {
-    await theDoor();
-    if (AUTH) {
+    const door = await theDoorIs(who.ok);
+    if (door === 'on' && !AUTH) console.log('  (behind basic auth, and no MVGL_DEV_BASIC_AUTH: credential-free checks only)');
+    await theDoor(door);
+    if (door === 'off' || AUTH) {
         await health();
         await crawlers();
         await cacheHeaders();

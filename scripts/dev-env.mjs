@@ -41,6 +41,8 @@
  * without credentials - and, when MVGL_DEV_BASIC_AUTH holds the pair as `user:password`, that
  * /healthz answers Healthy through it. Without the variable the gate still goes on: target health
  * is what `ecs wait services-stable` already proved, and the variable is the stronger proof.
+ * Where the stack was deployed open (its BasicAuth output is `off`, ADR 0101), the proof is /healthz
+ * answering Healthy to nobody in particular, and the pair is not sent.
  *
  * ---------------------------------------------------------------------------------------------
  * WHAT IT DOES NOT DO
@@ -191,6 +193,16 @@ function stackStatus(name, region = null) {
     return r.value;
 }
 
+/**
+ * Whether the application stack was deployed behind basic auth: its BasicAuth output, 'on' or 'off'
+ * (ADR 0101). A stack with no such output is 'on', which every deploy before that output was.
+ */
+function basicAuth() {
+    const r = aws(['cloudformation', 'describe-stacks', '--stack-name', NAMES.appStack,
+        '--query', "Stacks[0].Outputs[?OutputKey=='BasicAuth'].OutputValue | [0]"], { allowFailure: true });
+    return r.ok && r.value === 'off' ? 'off' : 'on';
+}
+
 function databaseStatus() {
     const r = aws(['rds', 'describe-db-instances', '--db-instance-identifier', NAMES.database,
         '--query', 'DBInstances[0].DBInstanceStatus'], { allowFailure: true });
@@ -247,17 +259,21 @@ function hasTag(repository, tag) {
  * `user:password`, the proof is /healthz answering Healthy through CloudFront, the balancer and
  * its origin-verify rule. A new distribution can take a few minutes to answer by its alias. A
  * function error rather than a 401 means the store has no key: the function fails closed.
+ *
+ * Deployed open (ADR 0101), the proof is /healthz answering Healthy to nobody in particular, and
+ * the pair is never sent. Which it is, `door` says, from the stack that was just deployed.
  */
-async function healthy(attempts = 18) {
+async function healthy(door, attempts = 18) {
     const url = `https://${NAMES.host}/healthz`;
-    const pair = process.env.MVGL_DEV_BASIC_AUTH;
+    const pair = door === 'off' ? undefined : process.env.MVGL_DEV_BASIC_AUTH;
     const headers = pair ? { authorization: `Basic ${Buffer.from(pair).toString('base64')}` } : {};
-    const expecting = pair ? '200 Healthy' : 'a 401 at the door';
+    const answers = door === 'off' || pair;
+    const expecting = answers ? '200 Healthy' : 'a 401 at the door';
     for (let i = 1; i <= attempts; i++) {
         try {
             const response = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
             const body = (await response.text()).trim();
-            if (pair ? response.status === 200 && body === 'Healthy' : response.status === 401) return true;
+            if (answers ? response.status === 200 && body === 'Healthy' : response.status === 401) return true;
             note(`  ${url}: ${response.status} ${body.slice(0, 80)} (attempt ${i} of ${attempts}, expecting ${expecting})`);
         } catch (error) {
             note(`  ${url}: ${error.cause?.code ?? error.name} (attempt ${i} of ${attempts})`);
@@ -311,6 +327,7 @@ function status() {
     console.log(`Environment: ${ENV} (profile ${PROFILE})`);
     console.log(`  ${NAMES.dataStack}: ${data ?? 'absent'}`);
     console.log(`  ${NAMES.appStack}:  ${app ?? 'absent'}`);
+    if (app !== null) console.log(`  basic auth at the edge: ${basicAuth()}`);
     console.log(`  ${NAMES.wafStack}:  ${waf ?? 'absent'} (${NAMES.edgeRegion})`);
     console.log(`  database ${NAMES.database}: ${db ?? 'absent'}`);
     console.log(`  services: ${running.length === 0 ? 'none' : running.map((s) => `${s.name} ${s.running}/${s.desired}`).join(', ')}`);
@@ -531,16 +548,21 @@ async function resume() {
     note('Waiting for both services to be stable…');
     aws(['ecs', 'wait', 'services-stable', '--cluster', NAMES.cluster, '--services', 'api', 'ssr']);
 
+    const door = basicAuth();
     note(`Checking https://${NAMES.host}/healthz through the distribution — a new one can take a few minutes to answer by its alias.`);
-    if (!(await healthy())) {
+    if (!(await healthy(door))) {
         // The gate stays off: an environment that cannot be shown to answer is not one Deploy dev
         // should deploy to. This command is safe to repeat once the cause is fixed.
-        fail(`https://${NAMES.host}/healthz did not answer as expected, so the gate stays off. A function error rather `
-            + 'than a 401 means the basic-auth key is not in the store: set it, then `resume` again.');
+        fail(`https://${NAMES.host}/healthz did not answer as expected, so the gate stays off. `
+            + (door === 'off'
+                ? `${NAMES.appStack} was deployed open, so a 401 means a behaviour still names the basic-auth function.`
+                : 'A function error rather than a 401 means the basic-auth key is not in the store: set it, then `resume` again.'));
     }
-    note(process.env.MVGL_DEV_BASIC_AUTH
-        ? 'Healthy, through the distribution.'
-        : 'The door is on: a 401 without credentials. Set MVGL_DEV_BASIC_AUTH to user:password for the stronger check.');
+    note(door === 'off'
+        ? 'Healthy, through the distribution, to anybody: the site is deployed without basic auth (ADR 0101).'
+        : process.env.MVGL_DEV_BASIC_AUTH
+            ? 'Healthy, through the distribution.'
+            : 'The door is on: a 401 without credentials. Set MVGL_DEV_BASIC_AUTH to user:password for the stronger check.');
 
     gate(true);
     console.log('');
