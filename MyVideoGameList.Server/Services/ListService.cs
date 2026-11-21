@@ -74,7 +74,7 @@ public class ListService(
         return new EntryDto(ToDto(entry, game, tags), entry.Ownership, entry.Notes);
     }
 
-    public async Task SetListEntryAsync(
+    public async Task<ListMoveDto> SetListEntryAsync(
         string userId, int gameId, string status, CancellationToken cancellationToken = default)
     {
         var target = await db.ListStatuses
@@ -86,8 +86,8 @@ public class ListService(
 
         // A move to the status the game already holds is not an event. The optimistic-update UI
         // and ordinary double-clicks both send these, and recording them would inflate every
-        // count later derived from the log.
-        if (entry.StatusId == target.Id) return;
+        // count later derived from the log. Nor is it a reason to ask anything about a run.
+        if (entry.StatusId == target.Id) return await AnswerAsync(moved: false);
 
         AppendEvent(userId, gameId, from: entry.StatusId, to: target.Id);
         entry.StatusId = target.Id;
@@ -100,6 +100,16 @@ public class ListService(
         // One SaveChanges, so the event and the state change land in the same transaction or
         // neither does. A recorded transition that did not happen is as bad as a missing one.
         await db.SaveChangesAsync(cancellationToken);
+        return await AnswerAsync(moved: true);
+
+        // The game's unfinished run, read after the move and never written: a move asks the reader
+        // about a run and leaves the answer to them (ADR 0025 §4, ADR 0097). Read only for a move that can
+        // ask, one that changed the list to Playing or to Finished; every other move's answer is all the
+        // client needs from it, and the read would be one more query for every add to the Backlog.
+        async Task<ListMoveDto> AnswerAsync(bool moved) =>
+            new(moved, moved && target.Key is ListStatusKeys.Playing or ListStatusKeys.Finished
+                ? await UnfinishedPlaythroughs.LatestAsync(db, userId, gameId, cancellationToken)
+                : null);
     }
 
     /// <summary>

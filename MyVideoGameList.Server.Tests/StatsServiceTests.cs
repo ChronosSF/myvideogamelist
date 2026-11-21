@@ -745,6 +745,29 @@ public class StatsServiceTests
     }
 
     [Fact]
+    public async Task GetStatsAsync_ARunStartedAndFinishedByYesToTheMovesQuestions_CountsEachActOnce()
+    {
+        // The toast's case (ADR 0097): a move to Playing, a yes that starts a run on the reader's day, a
+        // move to Finished and a yes that finishes it. The finish move lands at 22:30 UTC on the 30th of
+        // April, which is the 1st of May for a reader at UTC+3, and the run carries the reader's day. The
+        // moves are the record and the run's dates are not counted beside them (ADR 0047), so the yes
+        // adds neither a second start nor a May finish.
+        using var db = NewDb();
+        AddEvent(db, 1, null, ListStatusKeys.Playing, new DateTimeOffset(2026, 4, 10, 9, 0, 0, TimeSpan.Zero));
+        AddEvent(db, 1, ListStatusKeys.Playing, ListStatusKeys.Finished, new DateTimeOffset(2026, 4, 30, 22, 30, 0, TimeSpan.Zero));
+        AddPlaythrough(db, gameId: 1, startedOn: new DateOnly(2026, 4, 10), finishedOn: new DateOnly(2026, 5, 1));
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        var months = activity.Months.ToDictionary(m => m.Month);
+        Assert.Equal(1, months["2026-04"].Started);
+        Assert.Equal(1, months["2026-04"].Finished);
+        Assert.Equal(0, months["2026-05"].Started);
+        Assert.Equal(0, months["2026-05"].Finished);
+        Assert.Equal(1, activity.LongestStreakMonths);
+    }
+
+    [Fact]
     public async Task GetStatsAsync_AFinishDateWithNoFinishEvent_CountsBesideOtherEvents()
     {
         // Precedence is per kind of act, not per game as a whole. A move to Playing says when the

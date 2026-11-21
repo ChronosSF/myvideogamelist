@@ -13,7 +13,7 @@ import {
     type ImportSkippedRow,
 } from '@/types/import';
 import type { ListEntryDto } from '@/types/list';
-import type { ListsPending } from '@/contexts/ListsContext';
+import type { ListMoves, ListsPending } from '@/contexts/ListsContext';
 import type { CommunityScores } from '@/types/community';
 import type { TagDto } from '@/types/tag';
 import type { CommunityTimes, EntryDetailDto, PlaythroughDto, PlaythroughTypeKey, ReviewDto } from '@/types/playthrough';
@@ -30,6 +30,14 @@ export function listPending(locked: Iterable<number> | ((gameId: number) => bool
         ? { has: locked } as unknown as ReadonlySet<number>
         : new Set(locked);
     return { subscribe: () => () => {}, current: () => set };
+}
+
+/**
+ * The lists provider's saved moves, for a hand-built lists context: a store nobody ever publishes to, as a
+ * context that saves nothing would have.
+ */
+export function listMoves(): ListMoves {
+    return { subscribe: () => () => {} };
 }
 
 /**

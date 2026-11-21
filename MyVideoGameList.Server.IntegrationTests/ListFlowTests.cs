@@ -22,13 +22,19 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         await browser.RegisterAsync(Browsers.NewUserName("player"));
 
         // Playing twice: a move to the status a game already holds is not a transition and must
-        // record nothing (ADR 0018), however it arrives — a second tab, a retried request.
+        // record nothing (ADR 0018), however it arrives — a second tab, a retried request. Its answer
+        // says so, which is what keeps the client from asking about a run (ADR 0097).
+        var moved = new List<bool>();
         foreach (var status in new[]
                  { ListStatusKeys.Backlog, ListStatusKeys.Playing, ListStatusKeys.Playing, ListStatusKeys.Finished })
         {
             var move = await browser.SendAsync(HttpMethod.Put, $"/api/lists/{gameId}", new SetListEntryDto(status));
-            await move.ExpectAsync(HttpStatusCode.NoContent);
+            var answer = await move.ReadAsync<ListMoveDto>(HttpStatusCode.OK);
+            moved.Add(answer.Moved);
+            Assert.Null(answer.UnfinishedPlaythrough);
         }
+
+        Assert.Equal([true, true, false, true], moved);
 
         var lists = await browser.GetJsonAsync<ListsDto>("/api/lists");
         var listed = Assert.Single(lists.Lists[ListStatusKeys.Finished]);
@@ -64,7 +70,7 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         await browser.RegisterAsync(Browsers.NewUserName("remover"));
 
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{gameId}",
-            new SetListEntryDto(ListStatusKeys.Backlog))).ExpectAsync(HttpStatusCode.NoContent);
+            new SetListEntryDto(ListStatusKeys.Backlog))).ExpectAsync(HttpStatusCode.OK);
         await (await browser.SendAsync(HttpMethod.Put, $"/api/entries/{gameId}/score",
             new SetScoreDto(8))).ExpectAsync(HttpStatusCode.NoContent);
 
@@ -105,7 +111,7 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         await browser.RegisterAsync(Browsers.NewUserName("stale"));
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{gameId}",
-            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.NoContent);
+            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.OK);
 
         var igdb = api.Igdb.Calls.Count;
         var lists = await browser.GetJsonAsync<ListsDto>("/api/lists");

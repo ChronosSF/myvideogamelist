@@ -7,7 +7,7 @@ import { FavouritesContext, type FavouritesContextValue } from '@/contexts/Favou
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { GAME_GRID_COVER_SIZES } from '@/lib/gameGrid';
-import { game, listPending } from '@/test/factories';
+import { game, listMoves, listPending } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
 
 // Stable object: the card only reads `user`, and going through the real provider would mean
@@ -33,6 +33,7 @@ function listsValue(overrides: Partial<ListsContextValue> = {}): ListsContextVal
         mutationError: null,
         reload: vi.fn(),
         pending: listPending(),
+        moves: listMoves(),
         addToList: vi.fn(async () => true),
         removeFromList: vi.fn(async () => true),
         isInList: () => false,

@@ -530,6 +530,15 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   account cannot spend the day's invalidations. A moderator's withdrawal goes at once. See
   `docs/decisions/0081-*`.
 
+- **A list move asks about a playthrough and never writes one.** `PUT /api/lists/{gameId}` answers whether it
+  moved and the game's unfinished run (`UnfinishedPlaythroughs`), and once it has saved, the toast asks to start
+  a run (to Playing, nothing unfinished) or finish that one (to Finished); nothing else asks, because a run
+  cannot say "abandoned" and a finish date counts as a finish (ADR 0047). Only a yes writes, through
+  `/playthroughs/start` and `/{id}/finish`, which take the entry's row lock so a late or doubled yes makes no
+  second unfinished run, as every write of a game's runs in `PlaythroughService` does: keep it there. The day is the reader's, named in the toast
+  and sent as shown. Every move reaches the toast through `ListsProvider.addToList`'s `moves`, and its wording
+  and timings are `@/lib/playthroughPrompt`'s alone. See `docs/decisions/0097-*`.
+
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
   overwritten on every move. A direct `UPDATE` to `StatusId` leaves a permanent hole in a history

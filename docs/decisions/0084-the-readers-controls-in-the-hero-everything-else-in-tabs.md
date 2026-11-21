@@ -155,5 +155,6 @@ everybody else: their picture, handle, and whether anybody can read their profil
   query with IGDB's own answer, recorded on 2026-11-05 into `lighthouse/igdb.json`, so the audited game page
   draws the series rail it draws deployed, fourteen covers and the editions; any other game's gets nothing,
   as IGDB would answer for a game in no series.
-- Moving a game to Finished still does nothing to an open playthrough. That automation, and a prompt after a
-  list move that offers the matching change to a run, are #222's.
+- Moving a game to Finished still writes nothing to an open playthrough by itself. Since
+  [0097](0097-a-list-move-asks-before-it-touches-a-playthrough.md) it asks, and a yes finishes the run; a move
+  to Playing with no run going asks to start one, and the form opens in a popup, in place.

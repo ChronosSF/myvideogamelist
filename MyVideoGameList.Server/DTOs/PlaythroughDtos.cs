@@ -52,6 +52,23 @@ public record PlaythroughInputDto(
 }
 
 /// <summary>
+/// A playthrough started on one day and nothing else, as a yes to the question a move to Playing asks
+/// (ADR 0097).
+/// </summary>
+/// <remarks>
+/// The day is the reader's: their calendar's, as the question named it, which only the browser knows.
+/// Nullable so that <c>[Required]</c> can see a missing one, which a <see cref="DateOnly"/> would read as
+/// the first of January in the year 1.
+/// </remarks>
+public record StartPlaythroughDto([Required] DateOnly? StartedOn);
+
+/// <summary>
+/// A finish date put on one unfinished playthrough, as a yes to the question a move to Finished asks
+/// (ADR 0097). The day is the reader's, as <see cref="StartPlaythroughDto"/>'s is.
+/// </summary>
+public record FinishPlaythroughDto([Required] DateOnly? FinishedOn);
+
+/// <summary>
 /// One recorded playthrough, as the client sees it.
 /// </summary>
 /// <remarks>
