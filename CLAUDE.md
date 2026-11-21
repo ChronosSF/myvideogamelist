@@ -226,7 +226,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `docs/decisions/0043-*`.
 - **Nobody is an admin until named, in Development too.** `/admin` and its endpoints sit behind one
   policy that reads account ids from `Admin:AccountIds`, so name your own:
-  `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. An id, never a username — a name
+  `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. Deployed, it is the id in the
+  `/mvgl/<env>/admin-account-id` parameter, set by hand and read by the API's task as it starts, so naming
+  an admin is that value and a restart of the service; the App stack does not deploy where the parameter
+  is missing, and `none` in it names nobody (ADR 0102). An id, never a username — a name
   can be given up and claimed by somebody else. A later admin page goes behind the same policy, on
   the controller's class, and edits reference data only, never a user's — with one exception, the
   moderation card: on a reader's report it hides a review (`Reviews.HiddenAt`, a third gate every

@@ -211,6 +211,31 @@ as `user:password`, which only Deploy dev's smoke test reads; until it is set th
 skipped with a warning. The environment admits deployments from `master` only.
 `scripts/dev-env.mjs park` and `resume` set the gate; nothing else should.
 
+## Who the admin is
+
+The API's task reads one account id from Parameter Store as it starts, `/mvgl/<env>/admin-account-id`,
+as `Admin__AccountIds__0` (ADR 0042, 0102). No stack makes the parameter, so a park does not take it,
+and the `App` stack does not deploy in an account where it is missing: CloudFormation looks for it
+before it changes anything, and `dev-env.mjs resume` before it starts.
+
+**Once per environment, before the first `App` deploy that reads it**, with nobody named. In Git Bash
+put `MSYS_NO_PATHCONV=1` in front, since the name starts with `/`:
+
+```bash
+aws ssm put-parameter --profile mvgl-dev --name /mvgl/dev/admin-account-id --type String --value none
+```
+
+**To name the admin**, sign in as them on the site and read `id` from `/api/auth/me`. Write it, then
+restart the API, which replaces its task by the service's usual rolling deployment:
+
+```bash
+aws ssm put-parameter --profile mvgl-dev --name /mvgl/dev/admin-account-id --type String --overwrite --value "<account id>"
+```
+
+```bash
+aws ecs update-service --profile mvgl-dev --cluster mvgl-dev --service api --force-new-deployment
+```
+
 ## The edge
 
 CloudFront is one origin - the balancer - and decides only what is cached and what is forwarded;
