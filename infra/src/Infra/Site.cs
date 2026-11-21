@@ -65,6 +65,14 @@ public sealed record Site(string Env)
     public string OriginVerifySecretName => $"mvgl/{Env}/origin-verify";
 
     /// <summary>
+    /// Whether the site is behind HTTP basic auth at the edge (ADR 0046). Dev's comes off while it is open
+    /// to its testers (ADR 0101), and this line is the whole of that: deployed with it, the distribution
+    /// asks nobody for the pair; changed back and deployed, it asks again. The App stack says which it was
+    /// deployed with in its <c>BasicAuth</c> output, which is what every check of the site reads.
+    /// </summary>
+    public bool BehindBasicAuth => Env != "dev";
+
+    /// <summary>
     /// The web ACL on the distribution, which is also the name of its metrics, the <c>WebACL</c>
     /// dimension, in <c>us-east-1</c> (ADR 0098).
     /// </summary>

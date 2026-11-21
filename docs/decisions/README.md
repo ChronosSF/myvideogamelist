@@ -118,6 +118,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0097](0097-a-list-move-asks-before-it-touches-a-playthrough.md) | A list move asks before it touches a playthrough, and only the reader's yes writes one: two moves ask, on the reader's day, and the yes is guarded under the entry's lock | Implemented |
 | [0098](0098-one-rate-rule-at-the-edge.md) | One rate rule at the edge: an address past 300 requests in five minutes is answered 429, by a web ACL in a stack of its own that parks with the environment | Implemented on dev; proved only by a resume |
 | [0099](0099-dev-is-deployed-by-hand.md) | Dev is deployed by hand: Deploy dev runs when dispatched and builds master as it starts, so no merge deploys and no run goes backwards | Implemented; proved only by a dispatch |
+| [0101](0101-devs-basic-auth-comes-off-for-the-trial.md) | Dev's basic auth comes off for the trial by one line, `Site.BehindBasicAuth`; the App stack reports which it was deployed as, and the smoke test, `resume` and `dev-check` read that | Implemented; proved only by a deploy |
 | [0102](0102-a-deployed-admin-is-a-hand-set-parameter-the-task-reads.md) | A deployed environment's admin is an account id in a Parameter Store parameter, set by hand and read by the API's task as it starts; the App stack does not deploy where nobody has made it | Implemented; proved only by a deploy |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.

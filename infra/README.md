@@ -192,7 +192,8 @@ one, deploys master's newest and never an older commit; and one whose workflow f
 master's stops before it builds, since it would run old steps against new code. Awake, it deploys `Migrate`, runs the migration task and fails the
 release on a non-zero exit, deploys `App`, waits for both services, invalidates the distribution
 and waits for that too, then checks target health and the site through the distribution: a 401
-without the basic-auth pair, and with it `/readyz` and `/` answering 200. The distribution id is
+without the basic-auth pair, and with it `/readyz` and `/` answering 200; or, where the stack's
+`BasicAuth` output is `off`, all three answering 200 with no pair (ADR 0101). The distribution id is
 read from the `App` stack's outputs, since it changes on every resume. It never deploys `Waf`: `App`
 reads the web ACL's ARN from that stack when it deploys, so a change to the rule reaches dev by hand or
 with the next resume ([The rate rule](#the-rate-rule)).
@@ -259,6 +260,11 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   browser then withholds the `Authorization` header too: a game's reviews, community scores and
   community times (ADR 0044, D-8). The exemption is a regular expression in
   `src/Infra/functions/basic-auth.js`; a new public aggregate fetched the same way joins it there.
+
+- **Whether an environment is behind it at all is one line**, `Site.BehindBasicAuth` (ADR 0101). Dev's
+  is off while the trial runs: no behaviour names the function, which is still made, and the pair stays
+  in the store. Putting the door back is that line, a merge and a run of Deploy dev. `park` takes the
+  site away sooner than that.
 
 - **The balancer answers only our distribution** (ADR 0046). The prefix list proves that a request
   came through *some* distribution; the `X-Origin-Verify` header, whose value is the
@@ -458,10 +464,13 @@ from the repository root with the `mvgl-dev` profile signed in. The `App` stack 
 distribution, so a park and a resume each take several minutes longer than the services alone
 would; a resume creates a new distribution with a new id, and nothing is cached across one.
 `resume` proves the door is on - a 401 without credentials - and, with `MVGL_DEV_BASIC_AUTH` set
-to the pair as `user:password`, that `/healthz` answers through it.
+to the pair as `user:password`, that `/healthz` answers through it. Of a stack deployed open it
+proves `/healthz` answers with no pair, and `status` says which the stack is.
 
 `node scripts/dev-check.mjs` is the acceptance test, the walkthrough's Phase 11 as a program: run
-it after any change to the stacks and after every resume. Without the pair it checks the door,
+it after any change to the stacks and after every resume. It asks the site whether it is behind
+basic auth and, signed in to AWS, holds the answer against the `App` stack's `BasicAuth` output;
+of an open site it runs everything below with no pair. Behind the door, without the pair it checks the door,
 the three exempt paths and the redirect; with it, health, the crawler headers, `SITE_URL`, every
 route's `Cache-Control`, where the cache hits and where it never may, that a 404 is a 404, and
 that the write guard survives the edge. `--alb <dns name>` adds the check that the balancer does
