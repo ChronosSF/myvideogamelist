@@ -112,12 +112,19 @@ interface Baseline {
  * fonts from 149 KiB to 87 and won back about half of it — the home page 82 to 85, browse 79 to 82, the
  * game page 77 to 81, the profile 80 to 83 — and nothing on the lists, at 76. What is left is the
  * redesign's type, accepted as its cost (ADR 0075). A desktop's are as they were, and still met.
+ *
+ * One rose a point with the playthrough question (#222, ADR 0097): accessibility on a phone for the game
+ * page, 0.96 to 0.97. The toast draws its two live regions, a `role="status"` and a `role="alert"`, empty
+ * on every page once it has hydrated, so that a question put in them is announced. The game page on a phone
+ * had no element with a role before, so `aria-roles`, `aria-required-attr` and `aria-deprecated-role` did
+ * not apply; now they do, and pass. Every other page, and the game page on a desktop, already drew a role,
+ * and rounds as it did.
  */
 const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     mobile: {
         home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 651, performance: 0.85 },
         games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 943, performance: 0.82 },
-        game: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2102, performance: 0.81 },
+        game: { accessibility: 0.97, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2102, performance: 0.81 },
         profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 772, performance: 0.83 },
         lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 796, performance: 0.76 },
     },
