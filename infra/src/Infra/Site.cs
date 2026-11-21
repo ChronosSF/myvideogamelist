@@ -65,6 +65,14 @@ public sealed record Site(string Env)
     public string OriginVerifySecretName => $"mvgl/{Env}/origin-verify";
 
     /// <summary>
+    /// Whether the site is behind HTTP basic auth at the edge (ADR 0046). Dev's comes off while it is open
+    /// to its testers (ADR 0101), and this line is the whole of that: deployed with it, the distribution
+    /// asks nobody for the pair; changed back and deployed, it asks again. The App stack says which it was
+    /// deployed with in its <c>BasicAuth</c> output, which is what every check of the site reads.
+    /// </summary>
+    public bool BehindBasicAuth => Env != "dev";
+
+    /// <summary>
     /// The web ACL on the distribution, which is also the name of its metrics, the <c>WebACL</c>
     /// dimension, in <c>us-east-1</c> (ADR 0098).
     /// </summary>
@@ -84,6 +92,17 @@ public sealed record Site(string Env)
     /// the environment's account and read at deploy time: the repository is public (ADR 0080).
     /// </summary>
     public string AlarmEmailParameter => $"/mvgl/{Env}/alarm-email";
+
+    /// <summary>
+    /// The Parameter Store parameter holding the id of the account that is the environment's admin
+    /// (ADR 0042, 0102). Set by hand, since an account has an id only once somebody has signed up for
+    /// it and the repository is public, and read by the API's task as it starts. Until there is such
+    /// an account it holds <see cref="NoAdmin"/>.
+    /// </summary>
+    public string AdminAccountIdParameter => $"/mvgl/{Env}/admin-account-id";
+
+    /// <summary>What the parameter holds while nobody is the admin: a word no account id can be.</summary>
+    public const string NoAdmin = "none";
 
     /// <summary>The namespace of the metrics the API's log feeds.</summary>
     public string MetricNamespace => $"MVGL/{Env}";

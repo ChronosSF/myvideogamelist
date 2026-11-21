@@ -9,6 +9,7 @@ using Amazon.CDK.AWS.Logs;
 using Amazon.CDK.AWS.Route53;
 using Amazon.CDK.AWS.Route53.Targets;
 using Amazon.CDK.AWS.ServiceDiscovery;
+using Amazon.CDK.AWS.SSM;
 using Constructs;
 
 namespace Infra;
@@ -148,6 +149,9 @@ public sealed class AppStack : Stack
         // What the pipeline invalidates after a deploy, read from here rather than copied anywhere.
         _ = new CfnOutput(this, "DistributionId", new CfnOutputProps { Value = edge.Distribution.DistributionId });
         _ = new CfnOutput(this, "DistributionDomainName", new CfnOutputProps { Value = edge.Distribution.DistributionDomainName });
+        // Whether this deployment asks for the basic-auth pair. The pipeline's smoke test, `dev-env.mjs
+        // resume` and `dev-check.mjs` read it here, so none of them assumes which it is (ADR 0101).
+        _ = new CfnOutput(this, "BasicAuth", new CfnOutputProps { Value = site.BehindBasicAuth ? "on" : "off" });
     }
 
     /// <summary>
@@ -207,8 +211,29 @@ public sealed class AppStack : Stack
                 // the page; it lives beside the secret so that one widget's pair is set in one place.
                 ["Turnstile__SiteKey"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.TurnstileSecret, "SiteKey"),
                 ["Turnstile__SecretKey"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.TurnstileSecret, "SecretKey"),
+                // Who the admin is (ADR 0042): an account id, set by hand in Parameter Store and read by the
+                // task as it starts, so that naming somebody is that value and a restart of the service, with
+                // no deploy. It is no secret; it comes this way because the id exists only once its owner has
+                // signed up, and so that it is in no template and nowhere in a public repository. The
+                // parameter is nobody's stack's: a park must not take it, and it has to be there before
+                // this stack deploys (ADR 0102).
+                ["Admin__AccountIds__0"] = Amazon.CDK.AWS.ECS.Secret.FromSsmParameter(
+                    StringParameter.FromStringParameterName(this, "AdminAccountId", site.AdminAccountIdParameter)),
             },
             Logging = Logging(logs, "api"),
+        });
+
+        // Asked for and never used. A stack parameter of this type makes CloudFormation fetch the value
+        // as it builds the change set, so a deploy in an account where nobody has made the parameter
+        // stops there and names it, before anything changes. The task definition above holds only the
+        // parameter's ARN, which CloudFormation does not look up: without this the first sign of a
+        // missing parameter is a task that cannot start, minutes into the deploy, and on a resume the
+        // whole stack rolled back.
+        _ = new Amazon.CDK.CfnParameter(this, "AdminAccountIdIsSet", new Amazon.CDK.CfnParameterProps
+        {
+            Type = "AWS::SSM::Parameter::Value<String>",
+            Default = site.AdminAccountIdParameter,
+            Description = "Checked for at deploy time only. The API's task reads the value itself as it starts.",
         });
 
         // Email goes through the production account's SES, which has production access (ADR 0088),

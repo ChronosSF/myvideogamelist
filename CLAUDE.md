@@ -55,8 +55,8 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
 | `docker compose down` | Stops it, keeping data. **`down -v` destroys the data volume** |
 | `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
-| `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database, destroys the web ACL's stack and gates the pipeline off; `resume` is the reverse at the newest pushed tag, migrating the database at that tag first, since a parked environment skips the pipeline's migrations, and proving the site answers through the door. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044, 0046 |
-| `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door; with the `mvgl-dev` profile signed in, also that the web ACL is on the distribution (ADR 0098) |
+| `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database, destroys the web ACL's stack and gates the pipeline off; `resume` is the reverse at the newest pushed tag, migrating the database at that tag first, since a parked environment skips the pipeline's migrations, and proving the site answers, through the door where it has one. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044, 0046 |
+| `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door, and of a site deployed open (ADR 0101) everything with no pair; with the `mvgl-dev` profile signed in, also that the web ACL is on the distribution (ADR 0098) |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -130,7 +130,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   redeployed as a dependency by something that only meant to deploy a release. The balancer admits
   CloudFront's prefix list and nothing else, and its listener answers only the distribution that
   sends the origin-verify header; the site is behind basic auth at the edge, with three public
-  aggregate endpoints exempt. See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
+  aggregate endpoints exempt, **except where `Site.BehindBasicAuth` is false, which it is for dev while the
+  trial runs**: no behaviour then names the function, the App stack's `BasicAuth` output says which was
+  deployed, and the smoke test, `resume` and `dev-check` read that rather than assume (ADR 0101). See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
   **The distribution's web ACL is `Mvgl-<env>-Waf`, in `us-east-1`, which the pipeline never deploys**:
   `resume` makes it before `App`, which reads its ARN when it deploys and fails without it, and `park`
   destroys it after. A change to its one rate rule is deployed by hand. See `docs/decisions/0098-*`.
@@ -224,7 +226,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `docs/decisions/0043-*`.
 - **Nobody is an admin until named, in Development too.** `/admin` and its endpoints sit behind one
   policy that reads account ids from `Admin:AccountIds`, so name your own:
-  `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. An id, never a username — a name
+  `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. Deployed, it is the id in the
+  `/mvgl/<env>/admin-account-id` parameter, set by hand and read by the API's task as it starts, so naming
+  an admin is that value and a restart of the service; the App stack does not deploy where the parameter
+  is missing, and `none` in it names nobody (ADR 0102). An id, never a username — a name
   can be given up and claimed by somebody else. A later admin page goes behind the same policy, on
   the controller's class, and edits reference data only, never a user's — with one exception, the
   moderation card: on a reader's report it hides a review (`Reviews.HiddenAt`, a third gate every

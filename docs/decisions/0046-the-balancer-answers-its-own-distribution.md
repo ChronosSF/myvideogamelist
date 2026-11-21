@@ -3,7 +3,8 @@
 **Status:** Implemented; verified against the environment on 2026-10-06 by `scripts/dev-check.mjs`, all checks passing
 **Amends:** [0044](0044-what-the-deployment-walkthrough-settled.md), the CloudFront section
 **Amended by:** [0098](0098-one-rate-rule-at-the-edge.md): the distribution now names a web ACL, the WAF that
-"Not here" leaves out, with one rate rule
+"Not here" leaves out, with one rate rule; and [0101](0101-devs-basic-auth-comes-off-for-the-trial.md): dev's
+basic auth is off for the trial, and §4's proof reads which way the stack was deployed
 
 ## Context
 

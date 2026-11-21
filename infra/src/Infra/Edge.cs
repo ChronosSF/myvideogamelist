@@ -38,6 +38,10 @@ public sealed class Edge : Construct
         // Basic auth on every behaviour - the default included, since a behaviour without it is an
         // open door - and on the viewer request, before the cache is consulted, so cached pages are
         // behind it too. The credential is read from the store; it is nowhere in the repository.
+        //
+        // Where the site is open (Site.BehindBasicAuth, ADR 0101) the function is still made and no
+        // behaviour names it. It and its reading of the store are then one line from being the door
+        // again, and the Data stack's output that carries the store goes on being read.
         var basicAuth = new Function(this, "BasicAuth", new FunctionProps
         {
             FunctionName = $"{site.Prefix}-basic-auth",
@@ -49,10 +53,9 @@ public sealed class Edge : Construct
             }),
             Comment = $"HTTP basic authentication for {site.Host}; the expected Authorization value is the store's basic-auth key",
         });
-        FunctionAssociation[] onEveryBehaviour =
-        [
-            new FunctionAssociation { EventType = FunctionEventType.VIEWER_REQUEST, Function = basicAuth },
-        ];
+        FunctionAssociation[] onEveryBehaviour = site.BehindBasicAuth
+            ? [new FunctionAssociation { EventType = FunctionEventType.VIEWER_REQUEST, Function = basicAuth }]
+            : [];
 
         // One cache policy for every cached page. The managed policies do not fit: CachingOptimized
         // has a minimum TTL of one second, and any minimum above zero makes CloudFront cache a
