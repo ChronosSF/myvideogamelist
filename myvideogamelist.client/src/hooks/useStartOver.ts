@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
+import { useCallback, useContext } from 'react';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useLists } from '@/hooks/useLists';
 import { useTags } from '@/hooks/useTags';
 import { useWishlist } from '@/hooks/useWishlist';
+import { PlaythroughPromptContext } from '@/contexts/PlaythroughPromptContext';
 import { startOver, StartOverUncertainError, type StartOverResult } from '@/lib/startOver';
 
 /**
@@ -12,13 +13,15 @@ import { startOver, StartOverUncertainError, type StartOverResult } from '@/lib/
  * session and fetched once per account. A start over keeps the account, so nothing else would tell
  * them the games had gone: the lists page, the marks on every card and the tags' counts would go on
  * showing a library that no longer exists. Read again on success, and when no answer arrived, since
- * the library may be gone then too; a refused start over changed nothing.
+ * the library may be gone then too; a refused start over changed nothing. The playthrough toast is
+ * cleared at the same moments, since what it asks or reports is about a game that may be gone (ADR 0097).
  */
 export function useStartOver(): (password: string) => Promise<StartOverResult> {
     const { reload: reloadLists } = useLists();
     const { reload: reloadWishlist } = useWishlist();
     const { reload: reloadFavourites } = useFavourites();
     const { reload: reloadTags } = useTags();
+    const { clear: clearPrompt } = useContext(PlaythroughPromptContext);
 
     return useCallback(async (password: string) => {
         const readAgain = () => {
@@ -26,6 +29,7 @@ export function useStartOver(): (password: string) => Promise<StartOverResult> {
             reloadWishlist();
             reloadFavourites();
             reloadTags();
+            clearPrompt();
         };
 
         let result: StartOverResult;
@@ -38,5 +42,5 @@ export function useStartOver(): (password: string) => Promise<StartOverResult> {
 
         readAgain();
         return result;
-    }, [reloadLists, reloadWishlist, reloadFavourites, reloadTags]);
+    }, [reloadLists, reloadWishlist, reloadFavourites, reloadTags, clearPrompt]);
 }

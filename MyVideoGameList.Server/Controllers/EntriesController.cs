@@ -167,6 +167,73 @@ public class EntriesController(
         return CreatedAtAction(nameof(GetPlaythroughs), new { gameId }, created);
     }
 
+    /// <summary>
+    /// Starts a playthrough on the reader's day, as their yes to the question a move to Playing asks
+    /// (ADR 0097).
+    /// </summary>
+    /// <remarks>
+    /// A 409 when the game already has an unfinished playthrough: a yes that arrived late, after another
+    /// tab answered or the reader started one by hand, starts nothing. The client words its own sentence
+    /// for it; the detail here is for whoever reads the API.
+    /// </remarks>
+    [HttpPost("{gameId:int}/playthroughs/start")]
+    public async Task<ActionResult<PlaythroughDto>> StartPlaythrough(
+        [Range(1, int.MaxValue)] int gameId,
+        [FromBody] StartPlaythroughDto dto,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        // [Required] has already refused a missing day with a 400.
+        var step = await playthroughService.StartAsync(user.Id, gameId, dto.StartedOn!.Value, cancellationToken);
+        return step.Playthrough is { } started
+            ? CreatedAtAction(nameof(GetPlaythroughs), new { gameId }, started)
+            : Refused(step);
+    }
+
+    /// <summary>
+    /// Finishes one unfinished playthrough on the reader's day, as their yes to the question a move to
+    /// Finished asks (ADR 0097).
+    /// </summary>
+    /// <remarks>
+    /// A 404 for a playthrough that is not this user's for this game, gone included; a 409 for one that
+    /// is finished already, or that starts after the day.
+    /// </remarks>
+    [HttpPost("{gameId:int}/playthroughs/{playthroughId:int}/finish")]
+    public async Task<ActionResult<PlaythroughDto>> FinishPlaythrough(
+        [Range(1, int.MaxValue)] int gameId,
+        [Range(1, int.MaxValue)] int playthroughId,
+        [FromBody] FinishPlaythroughDto dto,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        var step = await playthroughService.FinishAsync(
+            user.Id, gameId, playthroughId, dto.FinishedOn!.Value, cancellationToken);
+        return step.Playthrough is { } finished ? Ok(finished) : Refused(step);
+    }
+
+    /// <summary>
+    /// A start or a finish that changed nothing, as its status and a sentence for whoever reads the API.
+    /// Built by MVC's problem details factory, so it carries the trace id every error does.
+    /// </summary>
+    private ActionResult Refused(PlaythroughStep step) => step.Refusal switch
+    {
+        PlaythroughStepRefusal.NotFound => NotFound(),
+        PlaythroughStepRefusal.AlreadyUnfinished => Problem(
+            detail: "This game already has an unfinished playthrough, so no other was started.",
+            statusCode: StatusCodes.Status409Conflict),
+        PlaythroughStepRefusal.AlreadyFinished => Problem(
+            detail: "That playthrough is finished already, so its finish date was left as it was.",
+            statusCode: StatusCodes.Status409Conflict),
+        PlaythroughStepRefusal.StartsLater => Problem(
+            detail: "That playthrough starts after this day, so it cannot finish on it.",
+            statusCode: StatusCodes.Status409Conflict),
+        _ => throw new InvalidOperationException($"A step with no playthrough has no refusal: {step}."),
+    };
+
     [HttpPut("{gameId:int}/playthroughs/{playthroughId:int}")]
     public async Task<ActionResult<PlaythroughDto>> UpdatePlaythrough(
         [Range(1, int.MaxValue)] int gameId,

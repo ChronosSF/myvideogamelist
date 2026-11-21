@@ -214,7 +214,7 @@ public class HandOrderFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 
     private static async Task PutAsync(HttpClient browser, int gameId, string status) =>
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{gameId}", new SetListEntryDto(status)))
-            .ExpectAsync(HttpStatusCode.NoContent);
+            .ExpectAsync(HttpStatusCode.OK);
 
     private static Task<HttpResponseMessage> PlaceAsync(
         HttpClient browser, string list, params (int GameId, int Position)[] positions) =>

@@ -34,7 +34,7 @@ public class StartOverFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         var account = await browser.RegisterAsync(Browsers.NewUserName("guesser"));
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{Held}",
-            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.NoContent);
+            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.OK);
 
         await (await StartOverAsync(browser, "not-the-password")).ExpectAsync(HttpStatusCode.Unauthorized);
 
@@ -50,7 +50,7 @@ public class StartOverFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         var account = await browser.RegisterAsync(Browsers.NewUserName("locked"));
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{Held}",
-            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.NoContent);
+            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.OK);
 
         for (var guess = 0; guess < 5; guess++)
             await (await StartOverAsync(browser, $"guess-{guess}")).ExpectAsync(HttpStatusCode.Unauthorized);
@@ -69,7 +69,7 @@ public class StartOverFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         await browser.RegisterAsync(Browsers.NewUserName("timer"));
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{Timed}",
-            new SetListEntryDto(ListStatusKeys.Finished))).ExpectAsync(HttpStatusCode.NoContent);
+            new SetListEntryDto(ListStatusKeys.Finished))).ExpectAsync(HttpStatusCode.OK);
         await (await browser.SendAsync(HttpMethod.Post, $"/api/entries/{Timed}/playthroughs",
             new PlaythroughInputDto(PlaythroughTypeKeys.Normally, 6, 600,
                 new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 20), null))).ExpectAsync(HttpStatusCode.Created);
@@ -93,9 +93,9 @@ public class StartOverFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         await browser.RegisterAsync(Browsers.NewUserName("historian"));
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{Held}",
-            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.NoContent);
+            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.OK);
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{Held}",
-            new SetListEntryDto(ListStatusKeys.Finished))).ExpectAsync(HttpStatusCode.NoContent);
+            new SetListEntryDto(ListStatusKeys.Finished))).ExpectAsync(HttpStatusCode.OK);
         Assert.NotEmpty((await browser.GetJsonAsync<HistoryPageDto>("/api/user/history")).Items);
 
         var counts = await (await StartOverAsync(browser)).ReadAsync<StartOverResultDto>(HttpStatusCode.OK);
@@ -111,7 +111,7 @@ public class StartOverFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         var account = await browser.RegisterAsync(Browsers.NewUserName("reimporter"));
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{Held}",
-            new SetListEntryDto(ListStatusKeys.Finished))).ExpectAsync(HttpStatusCode.NoContent);
+            new SetListEntryDto(ListStatusKeys.Finished))).ExpectAsync(HttpStatusCode.OK);
 
         // The upload skips the game already held, and its owner then declines one they do not hold.
         var job = await browser.UploadGrouveeAsync(Held, Fresh, Declined);

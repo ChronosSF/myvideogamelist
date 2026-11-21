@@ -1,0 +1,56 @@
+/* The playthrough question after a list move (ADR 0097): fixed at the bottom of the window, so it is laid
+   out over the page and moves nothing on it. */
+
+@reference "../index.css";
+
+.playthrough-toast-host {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    z-index: 90;
+    width: 440px;
+    max-width: calc(100vw - 32px);
+    transform: translateX(-50%);
+}
+
+/* On a phone, 16px from each edge and from the bottom. */
+@media (max-width: 639px) {
+    .playthrough-toast-host {
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        width: auto;
+        max-width: none;
+        transform: none;
+    }
+}
+
+/* A box, since it floats over the page, opened by the heavy rule a section on the page is (ADR 0075). */
+.playthrough-toast {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px 18px 18px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-line-strong);
+    border-top: 2px solid var(--color-rule);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+    animation: playthrough-toast-in 0.18s ease-out;
+}
+
+.playthrough-toast button:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+@keyframes playthrough-toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .playthrough-toast {
+        animation: none;
+    }
+}

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
 import { renderHook } from '@testing-library/react';
+import { PlaythroughPromptContext } from '@/contexts/PlaythroughPromptContext';
 import { useStartOver } from '@/hooks/useStartOver';
 import { startOver, StartOverUncertainError, type StartOverResult } from '@/lib/startOver';
 
@@ -28,6 +30,20 @@ beforeEach(() => {
 });
 
 describe('useStartOver', () => {
+    it('clears the playthrough toast once the library is empty, since it may ask about a game now gone', async () => {
+        vi.mocked(startOver).mockResolvedValueOnce(counts);
+        const clear = vi.fn();
+        const prompt = { written: { subscribe: () => () => {} }, clear };
+        const wrapper = ({ children }: { children: ReactNode }) => (
+            <PlaythroughPromptContext.Provider value={prompt}>{children}</PlaythroughPromptContext.Provider>
+        );
+        const { result } = renderHook(() => useStartOver(), { wrapper });
+
+        await result.current('hunter2');
+
+        expect(clear).toHaveBeenCalledTimes(1);
+    });
+
     it('has every provider holding part of the library read it again once it is empty', async () => {
         vi.mocked(startOver).mockResolvedValueOnce(counts);
         const { result } = renderHook(() => useStartOver());

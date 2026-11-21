@@ -1,11 +1,14 @@
 /**
- * The client's dependency audits, run by `npm run audit` and `npm run audit:lighthouse` and by CI's
- * Dependency audit job (ADR 0061).
+ * The client's dependency audits, run by `npm run audit`, `npm run audit:lighthouse` and
+ * `npm run audit:infra` and by CI's Dependency audit job (ADR 0061).
  *
  * `npm audit` over everything a lock file installs, devDependencies included, since those run on every
  * developer's machine and in CI. An advisory rated high or critical fails. A lower one is printed and
- * passes; Dependabot's security updates propose the fix for it anyway. Two lock files are audited, each
- * on its own: the client's, by default, and Lighthouse CI's (`lighthouse`, ADR 0068 §9).
+ * passes; Dependabot's security updates propose the fix for it anyway. Three lock files are audited,
+ * each on its own: the client's, by default, Lighthouse CI's (`lighthouse`, ADR 0068 §9), and the CDK
+ * CLI's (`../infra`), which Deploy dev runs with the deploy role (#339). That one names a single package,
+ * which bundles its own dependencies, so an advisory reaches it only when it is published against
+ * aws-cdk itself.
  *
  * npm has no list of advisories to set aside, so this is that list, one for each lock file. An advisory
  * goes in `ACCEPTED` only when nothing fixes it. When a fixed version exists the answer is to take it: in
@@ -25,13 +28,7 @@ import { fileURLToPath } from 'node:url';
 /** @type {Record<string, { advisory: string, reason: string, until: string }[]>} */
 const ACCEPTED = {
     // The client's own lock file.
-    '.': [
-        // {
-        //     advisory: 'https://github.com/advisories/GHSA-xxxx-xxxx-xxxx',
-        //     reason: 'Why it cannot reach anything here, and the issue that removes this entry.',
-        //     until: '2026-12-31',
-        // },
-    ],
+    '.': [],
     // Lighthouse CI's. The audit runs `lhci collect`, `assert` and `upload` to the filesystem, in
     // Playwright's Chromium, launched by its path; nothing else of LHCI's runs, here or in CI.
     lighthouse: [
@@ -69,6 +66,8 @@ const ACCEPTED = {
             until: '2027-01-24',
         },
     ],
+    // The CDK CLI's, beside the CDK app (#339). A fix is taken by moving the pin in infra/package.json.
+    '../infra': [],
 };
 
 const folder = process.argv[2] ?? '.';

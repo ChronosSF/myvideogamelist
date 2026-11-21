@@ -19,8 +19,12 @@ public interface IListService
     /// transition. A move to the status the game already holds is a no-op and records nothing.
     /// Creates the entry if this is the first thing recorded about the game.
     /// </summary>
+    /// <returns>
+    /// Whether the game's list changed, and its unfinished playthrough, which the client asks about
+    /// (ADR 0097). The move reads the runs to say so and writes none (ADR 0025 §4).
+    /// </returns>
     /// <exception cref="ArgumentException">The status key is not one of the seeded statuses.</exception>
-    Task SetListEntryAsync(
+    Task<ListMoveDto> SetListEntryAsync(
         string userId, int gameId, string status, CancellationToken cancellationToken = default);
 
     /// <summary>

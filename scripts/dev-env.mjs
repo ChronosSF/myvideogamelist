@@ -12,12 +12,13 @@
  * billing while every page fails, and destroy the web ACL only once the distribution that holds it
  * has gone with that stack, since AWS WAF refuses to delete an ACL something still uses. Resuming is the reverse
  * plus two lookups done by hand otherwise: the newest image tag in ECR, and whether the database
- * is back yet - and the migrations. A parked environment skips the pipeline's along with its
- * deploys, while every merge still pushes images, so the newest tag can need migrations the
- * database has never had. That is exactly the sequence that goes wrong at the one step skipped
- * from memory, so it lives here, with the pipeline's gate (D-6) toggled alongside: parking sets the
- * DEV_DEPLOY_ENABLED variable to false so that a merge to master cannot silently un-park the
- * environment, and resuming sets it back.
+ * is back yet - and the migrations. Deploy dev, run while parked, pushes images and skips its
+ * migrations along with its deploy, so the newest tag can need migrations the database has never
+ * had. That is exactly the sequence that goes wrong at the one step skipped from memory, so it
+ * lives here, with the pipeline's gate (D-6) toggled alongside: parking sets the DEV_DEPLOY_ENABLED
+ * variable to false so that a run of Deploy dev cannot silently un-park the environment, and
+ * resuming sets it back. Run Deploy dev before resuming, so that the newest tag is master's head
+ * (ADR 0099).
  *
  * ---------------------------------------------------------------------------------------------
  * HOW TO RUN IT
@@ -129,8 +130,15 @@ function aws(args, { allowFailure = false, raw = false } = {}) {
  * The CDK CLI is a Node program behind an npm shim - on Windows a .cmd that only a shell can
  * start. Rather than build a command line for a shell out of arguments, which is a thing nobody
  * should have to trust, find the program the shim points at and run it with this Node directly.
+ *
+ * The one infra/package-lock.json pins, which Deploy dev runs and CI audits, once `npm ci --prefix
+ * infra` has installed it (#339). Until then whatever is on the PATH, said so, so that a park does
+ * not stop halfway, after the gate and before the destroy, for want of that one command.
  */
 function cdkEntry() {
+    const pinned = path.join(INFRA, 'node_modules', 'aws-cdk', 'bin', 'cdk');
+    if (existsSync(pinned)) return pinned;
+    note('The pinned CDK CLI is not installed, so this runs the one on the PATH: npm ci --prefix infra');
     for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
         for (const shim of ['cdk', 'cdk.cmd']) {
             if (!existsSync(path.join(dir, shim))) continue;
@@ -143,7 +151,7 @@ function cdkEntry() {
             }
         }
     }
-    fail('The CDK CLI is not on the PATH: npm install -g aws-cdk');
+    fail('The CDK CLI is not installed: npm ci --prefix infra');
 }
 
 function cdk(args) {
@@ -325,8 +333,8 @@ function status() {
 }
 
 function park() {
-    // The gate first: a merge that lands while the stack is being destroyed must not redeploy
-    // it, and if the gate cannot be set at all, nothing is torn down.
+    // The gate first: a Deploy dev run started while the stack is being destroyed must not
+    // redeploy it, and if the gate cannot be set at all, nothing is torn down.
     gate(false);
 
     const app = stackStatus(NAMES.appStack);
@@ -428,9 +436,9 @@ async function stoppedTask(task, minutes = 30) {
 
 /**
  * The migrations, at the tag about to be deployed, before anything serves it - the same three steps
- * Deploy dev runs before every release. A parked environment skips that job's migrations along with
- * its deploy, while every merge still pushes images, so the newest tag can need migrations the
- * database has never had; and outside Development the application never migrates itself, so an API
+ * Deploy dev runs before every release. A run of that job while parked pushes images and skips its
+ * migrations along with its deploy, so the newest tag can need migrations the database has never
+ * had; and outside Development the application never migrates itself, so an API
  * against the old schema passes /healthz and fails on its first query.
  *
  * The task definition is deployed first, because it names its image by tag. The task runs where the
@@ -503,7 +511,7 @@ async function resume() {
         fail(`Tag ${chosen} is not in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}.`);
     }
     const tag = chosen ?? newestCommonTag();
-    if (!tag) fail(`No tag is present in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}. Build and push a release first (ADR 0044, Phase 7).`);
+    if (!tag) fail(`No tag is present in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}. Run Deploy dev to build and push one first (ADR 0099).`);
 
     // Before the application: the database is available now, and the tag is the one about to serve.
     await migrate(tag);
@@ -525,7 +533,7 @@ async function resume() {
 
     note(`Checking https://${NAMES.host}/healthz through the distribution — a new one can take a few minutes to answer by its alias.`);
     if (!(await healthy())) {
-        // The gate stays off: an environment that cannot be shown to answer is not one a merge
+        // The gate stays off: an environment that cannot be shown to answer is not one Deploy dev
         // should deploy to. This command is safe to repeat once the cause is fixed.
         fail(`https://${NAMES.host}/healthz did not answer as expected, so the gate stays off. A function error rather `
             + 'than a 401 means the basic-auth key is not in the store: set it, then `resume` again.');

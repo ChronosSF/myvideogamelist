@@ -14,6 +14,11 @@ interface PlaythroughFormProps {
     pending: boolean;
     /** What the server said, shown beside the form rather than as a page-level banner. */
     error: string | null;
+    /**
+     * The field a dialog focuses first, marked for it with `data-focus-first`: the hours, when the popup is
+     * opened to add them after a finish (ADR 0097). Without it, the first field is focused.
+     */
+    focusField?: 'hours';
 }
 
 /** Everything the form holds, as strings, which is what the inputs deal in. */
@@ -55,6 +60,7 @@ export function PlaythroughForm({
     onCancel,
     pending,
     error,
+    focusField,
 }: PlaythroughFormProps) {
     const fieldId = useId();
     // Seeded from the run when the form opens already editing one, as it does when a run's Edit opens
@@ -64,10 +70,13 @@ export function PlaythroughForm({
     // Load the playthrough being edited into the fields, and clear them again when the edit is
     // finished or abandoned. Adjusted during render rather than in an effect: from an effect this
     // would show the previous row's values under the new heading for one commit, and it trips
-    // react-hooks/set-state-in-effect.
-    const [lastEditingId, setLastEditingId] = useState<number | null>(editing?.id ?? null);
-    if (lastEditingId !== (editing?.id ?? null)) {
-        setLastEditingId(editing?.id ?? null);
+    // react-hooks/set-state-in-effect. Loaded again when the run itself changes underneath the form —
+    // a finish from the playthrough question (ADR 0097) — so that saving the form does not write its
+    // older copy back over it.
+    const editingKey = editing === null ? null : `${editing.id}:${editing.updatedAt}`;
+    const [lastEditing, setLastEditing] = useState<string | null>(editingKey);
+    if (lastEditing !== editingKey) {
+        setLastEditing(editingKey);
         setDraft(editing === null ? EMPTY : toDraft(editing));
     }
 
@@ -128,6 +137,8 @@ export function PlaythroughForm({
                     <input
                         id={`${fieldId}-hours`}
                         type="number"
+                        inputMode="numeric"
+                        data-focus-first={focusField === 'hours' || undefined}
                         min={0}
                         value={draft.hours}
                         onChange={event => set('hours', event.target.value)}
@@ -139,6 +150,7 @@ export function PlaythroughForm({
                     <input
                         id={`${fieldId}-minutes`}
                         type="number"
+                        inputMode="numeric"
                         min={0}
                         max={59}
                         value={draft.minutes}

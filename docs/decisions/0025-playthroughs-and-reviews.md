@@ -3,7 +3,10 @@
 **Status:** Implemented. §6 holds for the row; the game page's loader also reads the community times
 for its description since [0069](0069-a-crawler-is-told-what-is-ours.md). §2's floor is the server's since
 [0094](0094-the-community-figures-are-withheld-below-their-floors-by-the-api.md): a tier under it carries its
-count and no median.
+count and no median. Since [0097](0097-a-list-move-asks-before-it-touches-a-playthrough.md) a list move reads
+the game's unfinished run, to ask the reader whether to start or finish one, and §4 holds in both directions:
+the move writes no run, and the reader's yes writes no status. The run a move asks about is worked out from
+the dates each time and stored nowhere, so the closing remark on a "current" run stands.
 
 ## Context
 
@@ -207,7 +210,8 @@ mitigation and the reason this is written down.
 **The panel's playthrough writes are not optimistic**, unlike every list mutation. Optimism pays
 for itself on a status toggle, where the change is one field and the gesture has to feel instant. A
 seven-field form has nothing to gain from showing a row that may be about to vanish and everything
-to lose from the user editing it while it does. `ListsProvider` is untouched.
+to lose from the user editing it while it does. No playthrough write goes through `ListsProvider`,
+which since 0097 only tells the prompt that asks about a run which moves it saved.
 
 **There is no test that a deletion actually cascades**, for the reason 0024 gives: the in-memory
 provider cascades only to rows the context happens to be tracking, so such a test would pass or

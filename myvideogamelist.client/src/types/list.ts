@@ -35,6 +35,25 @@ export interface ListEntryDto {
 }
 
 /**
+ * The unfinished playthrough a move reports: which one, and when it started if it says. With several,
+ * the server's choice — the one started most recently, or logged most recently where none is dated.
+ */
+export interface UnfinishedPlaythroughDto {
+    id: number;
+    /** `yyyy-MM-dd`, or null for a run that does not say when it started. */
+    startedOn: string | null;
+}
+
+/**
+ * What a move answers, which the question after it is asked from (ADR 0097): whether it changed the
+ * game's list, as the server saw it, and the game's unfinished playthrough as the move left it.
+ */
+export interface ListMoveDto {
+    moved: boolean;
+    unfinishedPlaythrough: UnfinishedPlaythroughDto | null;
+}
+
+/**
  * The lists that offer an order arranged by hand. The backlog alone: "what I will play next" is a
  * question about the games waiting, and the other four already have an order that means something —
  * when a game was started, finished, put down. The server stores a position for any list, so adding

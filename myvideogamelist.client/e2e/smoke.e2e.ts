@@ -95,7 +95,23 @@ test('a new account adds a game to a list, and it is still there after a reload'
 
         // The status says which part broke: a 401 is a lost cookie, a 403 a lost X-MVGL-Request, and
         // a 404 or a 405 the SSR server answering for the API.
-        expect((await saved).status(), 'what the API answered the write').toBe(204);
+        expect((await saved).status(), 'what the API answered the write').toBe(200);
+    });
+
+    await test.step('say yes to starting a playthrough', async () => {
+        // The move answers whether the game has a run going, and a game new to the account has none, so
+        // a toast asks to start one once the move has saved (ADR 0097). It sits at the bottom of the
+        // window, over nothing the steps after this press.
+        const question = page.getByRole('group', { name: /Playthrough question/ });
+        await expect(question.getByText('Start a playthrough today?')).toBeVisible();
+
+        const started = page.waitForResponse(response =>
+            response.request().method() === 'POST'
+            && new URL(response.url()).pathname === `/api/entries/${gameId}/playthroughs/start`);
+        await question.getByRole('button', { name: 'Start it' }).click();
+        expect((await started).status(), 'what the API answered the start').toBe(201);
+
+        await expect(question.getByText('Playthrough started today.')).toBeVisible();
     });
 
     await test.step('reload, and it is still there', async () => {
@@ -103,6 +119,8 @@ test('a new account adds a game to a list, and it is still there after a reload'
         // cookie: what the page shows now is what the API stored.
         await page.reload();
         await expect(page.getByLabel('Your list')).toHaveValue('playing');
+        // The run the yes started, read back with the entry.
+        await expect(page.getByText(/1 playthrough/)).toBeVisible();
 
         // And on the list itself, which renders the game from the API's own copy of it, made when
         // the reload first asked for it.

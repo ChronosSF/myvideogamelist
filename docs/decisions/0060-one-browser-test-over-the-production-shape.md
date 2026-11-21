@@ -6,7 +6,8 @@ test rather than for a developer: `npm start` still has no proxy. Departs from
 [0057](0057-the-api-is-tested-over-a-real-postgresql.md) in one place, which §4 says and defends: a
 local run keeps a database of its own on the developer's PostgreSQL server. The images it lists as
 not covered are built in CI, and the SSR one started, by [0061](0061-ci-gates-every-pull-request.md),
-whose secret scan allows the local credentials in the four files named here.
+whose secret scan allows the local credentials in the four files named here. What it says of Deploy dev
+waiting on CI is history since [0099](0099-dev-is-deployed-by-hand.md): dev is deployed by hand.
 
 ## Context
 

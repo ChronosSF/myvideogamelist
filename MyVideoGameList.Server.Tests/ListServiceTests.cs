@@ -235,6 +235,157 @@ public class ListServiceTests
         Assert.Equal(1, await db.UserGameEntries.CountAsync());
     }
 
+    // ---------------------------------------------------------------- what a move answers (ADR 0097)
+
+    private static PlaythroughService Runs(ApplicationDbContext db, TimeProvider? clock = null) =>
+        new(db, new Microsoft.Extensions.Caching.Memory.MemoryCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()), clock ?? new FixedClock(Midday));
+
+    private static Task<PlaythroughDto> LogRun(
+        ApplicationDbContext db, DateOnly? startedOn, DateOnly? finishedOn, TimeProvider? clock = null,
+        string userId = UserId, int gameId = 10) =>
+        Runs(db, clock).AddAsync(userId, gameId, new PlaythroughInputDto(null, null, null, startedOn, finishedOn, null));
+
+    [Fact]
+    public async Task SetListEntryAsync_GameAddedStraightToPlaying_AnswersMovedWithNothingUnfinished()
+    {
+        using var db = NewDb();
+
+        var answer = await NewService(db).SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+
+        Assert.Equal(new ListMoveDto(true, null), answer);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_ToTheListAlreadyHeld_AnswersNotMoved()
+    {
+        // What keeps a double-click, or a stale tab, from asking anything: no event, no question.
+        using var db = NewDb();
+        var service = NewService(db);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+
+        var answer = await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+
+        Assert.False(answer.Moved);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_GameWithAnUnfinishedRun_AnswersThatRunAndWritesNoRun()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        var run = await LogRun(db, new DateOnly(2026, 8, 2), null);
+
+        var answer = await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+
+        Assert.Equal(new ListMoveDto(true, new UnfinishedPlaythroughDto(run.Id, new DateOnly(2026, 8, 2))), answer);
+
+        // A move asks and never answers for the reader: the run is still unfinished (ADR 0025 §4).
+        Assert.Null(db.UserGamePlaythroughs.Single().FinishedOn);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_EveryMoveThatAsksNothing_StillWritesNoRun()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+
+        foreach (var status in new[]
+                 { ListStatusKeys.Playing, ListStatusKeys.OnHold, ListStatusKeys.Dropped, ListStatusKeys.Backlog, ListStatusKeys.Finished })
+        {
+            await service.SetListEntryAsync(UserId, 10, status);
+        }
+
+        Assert.Empty(db.UserGamePlaythroughs);
+    }
+
+    [Theory]
+    [InlineData(ListStatusKeys.OnHold)]
+    [InlineData(ListStatusKeys.Dropped)]
+    [InlineData(ListStatusKeys.Backlog)]
+    public async Task SetListEntryAsync_AMoveThatCannotAsk_AnswersWithNoRunEvenWithOneUnfinished(string status)
+    {
+        // Only a move to Playing or Finished asks anything, so no other pays the read (ADR 0097 §2).
+        using var db = NewDb();
+        var service = NewService(db);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        await LogRun(db, new DateOnly(2026, 8, 2), null);
+
+        var answer = await service.SetListEntryAsync(UserId, 10, status);
+
+        Assert.Equal(new ListMoveDto(true, null), answer);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_ToTheListAlreadyHeld_AnswersWithNoRunEvenWithOneUnfinished()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+        await LogRun(db, new DateOnly(2026, 8, 2), null);
+
+        var answer = await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+
+        Assert.Equal(new ListMoveDto(false, null), answer);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_OnlyFinishedRuns_AnswersNothingUnfinished()
+    {
+        // A replay: back to Playing with every run finished is asked to start another.
+        using var db = NewDb();
+        await LogRun(db, new DateOnly(2025, 1, 2), new DateOnly(2025, 3, 4));
+
+        var answer = await NewService(db).SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+
+        Assert.Equal(new ListMoveDto(true, null), answer);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_SeveralUnfinishedRuns_AnswersTheOneStartedMostRecently()
+    {
+        // Logged in an order that is not their start order, and the undated one last, so that neither
+        // when a run was logged nor a missing date can be what picks it.
+        using var db = NewDb();
+        var clock = new FixedClock(Midday);
+        var latest = await LogRun(db, new DateOnly(2026, 8, 2), null, clock);
+        clock.Advance(TimeSpan.FromHours(1));
+        await LogRun(db, new DateOnly(2026, 1, 5), null, clock);
+        clock.Advance(TimeSpan.FromHours(1));
+        await LogRun(db, null, null, clock);
+
+        var answer = await NewService(db).SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+
+        Assert.Equal(latest.Id, answer.UnfinishedPlaythrough?.Id);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_UnfinishedRunsNoneDated_AnswersTheOneLoggedMostRecently()
+    {
+        using var db = NewDb();
+        var clock = new FixedClock(Midday);
+        await LogRun(db, null, null, clock);
+        clock.Advance(TimeSpan.FromHours(1));
+        var newest = await LogRun(db, null, null, clock);
+
+        var answer = await NewService(db).SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+
+        Assert.Equal(new UnfinishedPlaythroughDto(newest.Id, null), answer.UnfinishedPlaythrough);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_AnotherUsersOrAnotherGamesUnfinishedRun_IsNotReported()
+    {
+        using var db = NewDb();
+        await LogRun(db, new DateOnly(2026, 8, 2), null, userId: "user-2");
+        await LogRun(db, new DateOnly(2026, 8, 2), null, gameId: 11);
+
+        var answer = await NewService(db).SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+
+        Assert.Null(answer.UnfinishedPlaythrough);
+    }
+
     [Fact]
     public async Task RemoveListEntryAsync_RecordsADepartureToNothing()
     {

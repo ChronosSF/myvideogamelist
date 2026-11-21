@@ -28,6 +28,37 @@ public record SetListEntryDto(
         ListStatusKeys.Dropped)]
     string Status);
 
+/// <summary>
+/// What a move answers: whether it changed the game's list, and the game's unfinished playthrough as
+/// the move leaves it.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The client asks whether to start or finish a playthrough from this, after the move has saved
+/// (ADR 0097), and the lists page holds nobody's runs, so the one round trip carries what the question
+/// needs. The move writes no run and reads one only to answer (ADR 0025 §4).
+/// </para>
+/// <para>
+/// <see cref="Moved"/> is the server's word, not the client's: a tab that thought the game was in the
+/// Backlog when another had already moved it to Playing sends a move that changes nothing, records no
+/// event (ADR 0018), and is asked nothing.
+/// </para>
+/// </remarks>
+/// <param name="Moved">False when the game was already in that list, which records nothing.</param>
+/// <param name="UnfinishedPlaythrough">
+/// The game's playthrough with no finish date, or null when it has none. With several, the one started
+/// most recently, or the one logged most recently where none says when it started
+/// (<c>UnfinishedPlaythroughs</c>). Read only for a move that can ask, one that changed the list to
+/// Playing or to Finished, and null for every other.
+/// </param>
+public record ListMoveDto(bool Moved, UnfinishedPlaythroughDto? UnfinishedPlaythrough);
+
+/// <summary>
+/// The unfinished playthrough a move reports, as much of it as a question about it needs: which one,
+/// and when it started, if it says.
+/// </summary>
+public record UnfinishedPlaythroughDto(int Id, DateOnly? StartedOn);
+
 /// <summary>Sets or clears the user's score. A null score clears it.</summary>
 public record SetScoreDto([Range(1, 10)] short? Score);
 

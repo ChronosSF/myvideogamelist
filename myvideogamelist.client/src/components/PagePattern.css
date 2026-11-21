@@ -124,7 +124,7 @@
  * edges, so at those zooms every pixel comes out the same size wherever it falls. At the bright corner the
  * panel's pixels are under two fifths of the ink; a lit one is a pixel bigger on every side and far
  * brighter, about three fifths there, since a lit pixel has to be bright to be seen as lit at all. It
- * breathes in five steps rather than a smooth ease, as an eight-bit console faded.
+ * breathes through five levels rather than a smooth ease, as an eight-bit console faded.
  *
  * It is the default (ADR 0085), so it is also what a page with no pattern named on `<html>` draws.
  */
@@ -139,6 +139,23 @@
     --page-pattern-lit: 40%;
     --page-pattern-lit-glow: 31%;
     --page-pattern-breathe: steps(5, jump-none);
+}
+
+/*
+ * The same five levels, with a short ramp from each to the next where the steps above jump. Of the six
+ * seconds one way, each level is held for 16%, about a second, and the next is reached over 5%, about a
+ * third of one. A jump moved every lit pixel a quarter of the way at once, which read as a stutter. Four
+ * short ramps also leave the layer still for four fifths of the time, where a smooth ease never rests.
+ *
+ * `linear()` is the easing that can hold a level, by giving one stop two positions. A browser without it
+ * keeps the steps: an easing it cannot read would not fall back to them but drop the animation whole,
+ * since a variable's bad value empties the property that reads it.
+ */
+@supports (animation-timing-function: linear(0, 1)) {
+    :root:not([data-pattern]) .page-pattern,
+    :root[data-pattern='pixels'] .page-pattern {
+        --page-pattern-breathe: linear(0 0% 16%, 0.25 21% 37%, 0.5 42% 58%, 0.75 63% 79%, 1 84% 100%);
+    }
 }
 
 /*

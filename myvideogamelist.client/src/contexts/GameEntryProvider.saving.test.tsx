@@ -54,7 +54,7 @@ function renderPanel(routes: ApiRoutes = {}, lists: Partial<Record<ListId, ListE
     render(
         <MemoryRouter>
             <AppProviders>
-                <GameEntryProvider game={CELESTE} profileVisibility="private" onCommunityChange={onCommunityChange}>
+                <GameEntryProvider game={CELESTE} account="user-1" profileVisibility="private" onCommunityChange={onCommunityChange}>
                     <GameTrackingRow game={CELESTE} authLoading={false} linkToYours={false} />
                     <GameYours authLoading={false} />
                 </GameEntryProvider>
