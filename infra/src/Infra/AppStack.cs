@@ -148,6 +148,9 @@ public sealed class AppStack : Stack
         // What the pipeline invalidates after a deploy, read from here rather than copied anywhere.
         _ = new CfnOutput(this, "DistributionId", new CfnOutputProps { Value = edge.Distribution.DistributionId });
         _ = new CfnOutput(this, "DistributionDomainName", new CfnOutputProps { Value = edge.Distribution.DistributionDomainName });
+        // Whether this deployment asks for the basic-auth pair. The pipeline's smoke test, `dev-env.mjs
+        // resume` and `dev-check.mjs` read it here, so none of them assumes which it is (ADR 0101).
+        _ = new CfnOutput(this, "BasicAuth", new CfnOutputProps { Value = site.BehindBasicAuth ? "on" : "off" });
     }
 
     /// <summary>

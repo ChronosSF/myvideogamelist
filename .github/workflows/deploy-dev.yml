@@ -270,11 +270,12 @@ jobs:
 
       # Target health first: a group can hold more than one target for a while - the old task
       # draining beside the new one - so that test is "at least one healthy and nothing unhealthy".
-      # Then the whole chain, through the distribution. Without the basic-auth pair every path is
-      # a 401, which proves the function is on the door; with it, /readyz is the API answering
+      # Then the whole chain, through the distribution. Behind basic auth, every path without the pair
+      # is a 401, which proves the function is on the door; with it, /readyz is the API answering
       # through CloudFront, the balancer and its origin-verify rule, and / is the SSR server doing
       # the same. The pair is the one secret the workflow holds (ADR 0046), and the checks that need
-      # it are skipped with a warning until it is set on the environment.
+      # it are skipped with a warning until it is set on the environment. Deployed open (ADR 0101),
+      # the same three paths answer 200 to nobody in particular, and the pair is not sent.
       - name: Smoke test
         if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
         env:
@@ -292,18 +293,34 @@ jobs:
             esac
           done
           SITE=https://dev.myvideogamelist.net
+          # Whether the site asks for the pair is the stack's to say, in an output, since it was deployed
+          # one way or the other a moment ago (ADR 0101). The check is that the site agrees with it.
+          DOOR=$(aws cloudformation describe-stacks --stack-name Mvgl-dev-App --query "Stacks[0].Outputs[?OutputKey=='BasicAuth'].OutputValue" --output text)
           STATUS=$(curl -sS -o /dev/null -w "%{http_code}" "$SITE/healthz")
-          echo "$SITE/healthz without credentials: $STATUS"
-          if [ "$STATUS" != "401" ]; then
-            echo "::error::Expected a 401 without credentials and got $STATUS: the door is not on."
-            exit 1
-          fi
-          if [ -z "$BASIC_AUTH" ]; then
-            echo "::warning::DEV_BASIC_AUTH is not set on the dev environment, so the authenticated checks were skipped."
-            exit 0
-          fi
+          echo "Basic auth is $DOOR by the stack; $SITE/healthz without credentials: $STATUS"
+          CREDENTIALS=()
+          case "$DOOR" in
+            on)
+              if [ "$STATUS" != "401" ]; then
+                echo "::error::Expected a 401 without credentials and got $STATUS: the door is not on."
+                exit 1
+              fi
+              if [ -z "$BASIC_AUTH" ]; then
+                echo "::warning::DEV_BASIC_AUTH is not set on the dev environment, so the authenticated checks were skipped."
+                exit 0
+              fi
+              CREDENTIALS=(-u "$BASIC_AUTH") ;;
+            off)
+              if [ "$STATUS" != "200" ]; then
+                echo "::error::The site is deployed open and /healthz without credentials answered $STATUS."
+                exit 1
+              fi ;;
+            *)
+              echo "::error::Mvgl-dev-App does not say whether basic auth is on: its BasicAuth output is '$DOOR'."
+              exit 1 ;;
+          esac
           for path in /readyz /; do
-            STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -u "$BASIC_AUTH" "$SITE$path")
+            STATUS=$(curl -sS -o /dev/null -w "%{http_code}" ${CREDENTIALS[@]+"${CREDENTIALS[@]}"} "$SITE$path")
             echo "$SITE$path: $STATUS"
             if [ "$STATUS" != "200" ]; then
               echo "::error::$path answered $STATUS through the distribution."
