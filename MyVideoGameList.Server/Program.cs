@@ -55,10 +55,16 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("Igdb").AddIgdbCallLog().AddIgdbResilience();
 
 // Steam's news API is public and needs no key, but it is a third party on the home page's
-// critical path, so it gets a short timeout of its own rather than the 100s default.
+// critical path, so it gets a short timeout of its own rather than the 100s default. It gzips a
+// feed when asked, to about a third: SteamNewsService asks for the posts' whole bodies, keeps only
+// their excerpts, and what the bodies cost is the bytes on the wire.
 builder.Services.AddHttpClient("Steam", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(8);
+})
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AutomaticDecompression = System.Net.DecompressionMethods.GZip,
 });
 
 builder.Services.AddSingleton<IIgdbService, IgdbService>();
