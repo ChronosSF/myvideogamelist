@@ -514,6 +514,11 @@ jobs:
           AWS_EC2_METADATA_DISABLED: 'true'
         run: node_modules/.bin/cdk synth --no-lookups --quiet -c env=dev -c imageTag=000000000000
 
+      # scripts/site.mjs restates three members of Site.cs for the acceptance test, dev-check.mjs. This
+      # holds it to what was just synthesised, which is Site.cs at work.
+      - name: The scripts agree with dev's synthesis
+        run: node scripts/check-site.mjs dev
+
       # Production's, the same way, in its own account (ADR 0103). A stack that asks either account
       # something new fails here until a synthesis with that account's credentials has cached the
       # answer and cdk.context.json is committed with it.
@@ -524,6 +529,9 @@ jobs:
           AWS_REGION: eu-central-1
           AWS_EC2_METADATA_DISABLED: 'true'
         run: node_modules/.bin/cdk synth --no-lookups --quiet -c env=prod -c imageTag=000000000000
+
+      - name: The scripts agree with production's synthesis
+        run: node scripts/check-site.mjs prod
 
   codeql:
     name: CodeQL (${{ matrix.language }})

@@ -72,6 +72,11 @@ In this order, and any time before the day:
    npx cdk deploy Mvgl-prod-EdgeCert Mvgl-prod-Data --exclusively --profile mvgl-prod -c env=prod
    ```
 
+   `EdgeCert`'s certificate covers the names the holding page's does, in the same account, so it is
+   validated by records that are already in the zone. Nothing AWS documents says CloudFormation
+   accepts that; if it did not, this is where it would fail, with the holding page untouched
+   (ADR 0103 §3).
+
 2. What is set by hand, each as dev's was: IGDB's pair in `mvgl/prod/igdb`, a widget's pair in
    `mvgl/prod/turnstile` ([Turnstile, for sign-up](#turnstile-for-sign-up)), the basic-auth pair in the
    `mvgl-prod-basic-auth` store ([The edge](#the-edge)), and `/mvgl/prod/admin-account-id` holding
@@ -89,15 +94,29 @@ Made by hand, because it takes the domain from the holding page, and the pipelin
 an application stack that exists.
 
 ```bash
+node scripts/dev-env.mjs resume --env prod
 npx cdk destroy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
 node scripts/dev-env.mjs resume --env prod
 node scripts/dev-check.mjs --env prod
 ```
 
-The domain answers nothing from the first command until the second has finished. `resume` refuses
-while the holding page's stack exists; then it migrates the database at the newest pushed tag, deploys
-`Waf` and `App`, proves the door is on and sets `PROD_DEPLOY_ENABLED`. Run the check with
-`MVGL_PROD_BASIC_AUTH` set to the pair. After that, a release is a run of `Deploy prod`.
+The first `resume` runs while the holding page still answers. It migrates the database at the newest
+pushed tag, deploys `Waf`, and stops before `App`, naming the holding page's stack: neither step uses
+the holding page's names, so whatever goes wrong in production's first migration or its first web ACL
+costs the domain nothing. The domain answers nothing from the destroy until the second `resume` has
+finished. That one finds the migration and `Waf` done, deploys `App`, proves the door is on and sets
+`PROD_DEPLOY_ENABLED`. Run the check with `MVGL_PROD_BASIC_AUTH` set to the pair and the profile
+signed in. After that, a release is a run of `Deploy prod`.
+
+**The check also asks for the certificate's validation records**, which the holding page's
+certificate shared and ACM's renewal needs in public DNS (ADR 0103 §3). If it finds one gone, the
+destroy took it: put it back in the zone as ACM gives it, a CNAME, in the Route 53 console or with
+`aws route53 change-resource-record-sets`. The ARN is `Mvgl-prod-EdgeCert`'s `CertificateArn` output.
+
+```bash
+aws acm describe-certificate --profile mvgl-prod --region us-east-1 --certificate-arn <arn> --query "Certificate.DomainValidationOptions[].ResourceRecord"
+```
+
 `dev-env.mjs park --env prod` refuses: production is not parked.
 
 ### The holding page, until production takes the domain

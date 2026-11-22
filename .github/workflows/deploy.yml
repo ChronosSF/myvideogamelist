@@ -297,9 +297,11 @@ jobs:
           # The pair is the environment's own secret, <ENV>_BASIC_AUTH, and each is written out here.
           # A name worked out from an input, `secrets[...]`, cannot be known before the job runs, so
           # the runner would be handed every secret the job can read to pick one from. The caller
-          # passes it with `secrets: inherit`: one it does not pass is empty here, as the other
-          # environment's always is.
-          BASIC_AUTH: ${{ inputs.environment == 'prod' && secrets.PROD_BASIC_AUTH || secrets.DEV_BASIC_AUTH }}
+          # passes it with `secrets: inherit`: one it does not pass is empty here. Each is read only
+          # in its own environment's run, and neither as the other's fallback: `a && b || c` is c
+          # whenever b is empty, which would hand production dev's pair if a secret of that name were
+          # ever the repository's. An environment not named here has no pair.
+          BASIC_AUTH: ${{ inputs.environment == 'prod' && secrets.PROD_BASIC_AUTH || inputs.environment == 'dev' && secrets.DEV_BASIC_AUTH || '' }}
         run: |
           set -euo pipefail
           STACK="Mvgl-$ENV_NAME-App"

@@ -85,6 +85,28 @@ by one name, so no behaviour of dev's names it and its distribution is unchanged
 would be a second certificate, a second set of records and a second thing to keep answering, for a
 redirect.
 
+**The certificate is validated by the records the holding page's is, and the check asks for them.**
+Both cover the apex and `www`, in one account, and ACM's documentation has a validation record made
+for a domain and an account
+(<https://docs.aws.amazon.com/acm/latest/userguide/dns-validation.html>). `EdgeCert` is deployed while
+the holding page stands, and the holding page's certificate is deleted with its stack. ACM renews a
+certificate only while its records are in public DNS, and looks 45 days before it expires
+(<https://docs.aws.amazon.com/acm/latest/userguide/dns-renewal-validation.html>), so records that went
+with the old certificate would cost nothing for a year and then the site its certificate.
+
+What CloudFormation does with them is not in its documentation or ACM's, read on 2026-11-22: neither
+whether a certificate's deletion removes the records, nor whether one asked for where they already
+exist is refused. An open report on CloudFormation's roadmap says a deletion leaves them
+(<https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/1603>), which is a
+report and not a promise. So neither is assumed:
+
+- **A refusal would show first, and cost nothing**: at `EdgeCert`'s deploy, ahead of the day, with the
+  holding page untouched.
+- **A removal is looked for.** `dev-check.mjs`, with the profile signed in, asks ACM which records the
+  certificate is validated by and public DNS for each, where ACM looks. It does so on the day, after
+  the holding page's destroy, and on every run after, for dev too. One found gone is put back by
+  hand, as `infra/README.md` says.
+
 ### 4. `/healthz` and `/readyz` stay routed, in production too
 
 0044's D-5 left this for production to decide, because each `/readyz` is an IGDB call open to anybody.
@@ -134,7 +156,9 @@ The smoke test reads where the site answers from a new output of `App`, `SiteUrl
 the door is on.
 
 **The pair's secret is written out in `deploy.yml`, once for each environment**: `DEV_BASIC_AUTH` and
-`PROD_BASIC_AUTH`, chosen by the environment's name. The first draft had each caller pass the secret's
+`PROD_BASIC_AUTH`, each read only in its own environment's run and neither as the other's fallback, so
+that a secret of dev's name that was one day the repository's could not reach production. The first
+draft had each caller pass the secret's
 name and read it as `secrets[...]`, and code scanning raised it on the pull request
 (`actions/excessive-secrets-exposure`): by that rule's account, a name that is only known once the job
 runs leaves GitHub handing the runner every secret the job can read. Today that is the one secret
@@ -181,12 +205,16 @@ Ahead of the day, in any order that the list allows:
 
 On the day:
 
-6. `cdk destroy Mvgl-prod-Holding`. The domain answers nothing from here.
-7. `node scripts/dev-env.mjs resume --env prod`. It refuses while the holding page's stack exists, then
-   migrates the database at the newest tag, deploys `Waf` and `App`, proves the door is on, and sets
-   the gate.
-8. `node scripts/dev-check.mjs --env prod`, with the pair.
-9. The pull request that opens the door, and a run of `Deploy prod`.
+6. `node scripts/dev-env.mjs resume --env prod`, with the holding page still answering. It migrates the
+   database at the newest tag, deploys `Waf`, and stops before `App`, naming the holding page's stack.
+   Neither step uses the holding page's names, so production's first migration and its first web ACL
+   are made where whatever goes wrong in them costs the domain nothing.
+7. `cdk destroy Mvgl-prod-Holding`. The domain answers nothing from here.
+8. `resume` again. It finds the migration and `Waf` done, deploys `App`, proves the door is on, and
+   sets the gate.
+9. `node scripts/dev-check.mjs --env prod`, with the pair and the profile signed in, which is also
+   what says the certificate's validation records outlived the holding page (§3).
+10. The pull request that opens the door, and a run of `Deploy prod`.
 
 `dev-env.mjs park --env prod` refuses. Production is not parked, and nothing in that script would put
 the holding page back.
@@ -216,7 +244,11 @@ does not deploy, where it would otherwise have made five alarms that reach nobod
 - **The holding page's stack stays in the synthesis** until it is destroyed and then removed from
   `Program.cs`, with `holding/`.
 - **`scripts/site.mjs` restates three lines of `Site.cs`** for the two scripts: the host, the names
-  that redirect and whether the site is indexable. A change to one is a change to both.
+  that redirect and whether the site is indexable. A change to one is a change to both, and
+  `scripts/check-site.mjs` is what says so: CI runs it after each synthesis, against the names on the
+  distribution and the certificate, the `SiteUrl` output and whether the SSR server is told it is
+  indexable. Not stack outputs the scripts read, as they read `BasicAuth`: the acceptance test has to
+  run with no profile signed in.
 - **Not here:** private subnets and a Multi-AZ database (#415, #416), the move of dev's data (#465),
   HSTS on documents ([#436](https://github.com/ChronosSF/myvideogamelist/issues/436)), the managed
   rule lists ([#438](https://github.com/ChronosSF/myvideogamelist/issues/438)) and a second task (#101).

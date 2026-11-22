@@ -35,7 +35,9 @@
  * Options on every command: --env <name> (default dev), --profile <aws profile> (default
  * mvgl-<env>). With --env prod, `status` and `resume` work as they do for dev and `park` refuses:
  * `resume` is how production's application stack is first made, since the pipeline only ever updates
- * one, and it stops while the holding page's stack still holds the domain's names (ADR 0066 §8). Everything goes through `aws --profile`, `cdk --profile` and `gh`, so it does
+ * one, and it stops before that stack while the holding page's still holds the domain's names, with
+ * the migration and the web ACL done (ADR 0066 §8, 0103). Everything goes through `aws --profile`,
+ * `cdk --profile` and `gh`, so it does
  * nothing unless the SSO session behind that profile is signed in: `aws sso login --profile
  * mvgl-dev` first. Unlike the other tools in this directory, which only print SQL, this one acts
  * on AWS — every command it runs is printed before it runs.
@@ -550,22 +552,32 @@ function requireAdminParameter() {
 /**
  * Production's application stack answers by the names the holding page's stack holds, and CloudFront
  * gives a name to one distribution at a time: deployed over it, the stack fails on its distribution,
- * minutes in, and rolls back (ADR 0066 §8). So a resume stops here while that stack exists, before it
- * has migrated anything. Destroying it is the moment the domain stops answering, which is the owner's
- * to choose, and so is never done here.
+ * minutes in, and rolls back (ADR 0066 §8). So a resume stops here while that stack exists, just
+ * before the application stack and after everything that has no use for those names: the migration
+ * and the web ACL are made while the holding page still answers, where whatever goes wrong in either
+ * costs the domain nothing. Destroying it is the moment the domain stops answering, which is the
+ * owner's to choose, and so is never done here.
  */
 function requireNoHoldingPage() {
-    const holding = stackStatus(NAMES.holdingStack, NAMES.edgeRegion);
-    if (holding === null || holding === 'DELETE_COMPLETE') return;
-    fail(`${NAMES.holdingStack} is ${holding} in ${NAMES.edgeRegion}, and it holds the names ${NAMES.appStack} answers by. `
-        + `Destroy it first, when the domain may stop answering for the minutes that follow (ADR 0066 §8, 0103):
-`
+    const holding = holdingPage();
+    if (!holding) return;
+    fail(`Everything before ${NAMES.appStack} is done. ${NAMES.holdingStack} is ${holding} in ${NAMES.edgeRegion}, and it holds the names ${NAMES.appStack} answers by. `
+        + 'Destroy it, when the domain may stop answering for the minutes that follow (ADR 0066 §8, 0103), and run this again:\n'
         + `  cdk destroy ${NAMES.holdingStack} --profile ${PROFILE} -c env=${ENV}`);
+}
+
+/** The holding page's stack's status while it stands; null once it is gone, or where there never was one. */
+function holdingPage() {
+    const holding = stackStatus(NAMES.holdingStack, NAMES.edgeRegion);
+    return holding === null || holding === 'DELETE_COMPLETE' ? null : holding;
 }
 
 async function resume() {
     requireAdminParameter();
-    requireNoHoldingPage();
+    const holding = holdingPage();
+    if (holding) {
+        note(`${NAMES.holdingStack} is ${holding}, so this run stops before ${NAMES.appStack}: it migrates the database and deploys ${NAMES.wafStack}, which the holding page has no part in.`);
+    }
     const db = databaseStatus();
     if (db === null) fail(`Database ${NAMES.database} does not exist. Deploy ${NAMES.dataStack} first.`);
     if (db === 'stopped') {
@@ -596,6 +608,9 @@ async function resume() {
     note(`Deploying ${NAMES.wafStack} in ${NAMES.edgeRegion}: the edge's web ACL and its rate rule.`);
     cdk(['deploy', NAMES.wafStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never']);
 
+    // Here, and not at the top: only the application stack takes the holding page's names.
+    requireNoHoldingPage();
+
     note(`Deploying ${NAMES.appStack} at image tag ${tag}.`);
 
     // --exclusively: the Data stack is not redeployed as a dependency. The stack includes the
@@ -612,7 +627,7 @@ async function resume() {
         // should deploy to. This command is safe to repeat once the cause is fixed.
         fail(`https://${NAMES.host}/healthz did not answer as expected, so the gate stays off. `
             + (door === 'off'
-                ? `${NAMES.appStack} was deployed open, so a 401 means a behaviour still names the basic-auth function.`
+                ? `${NAMES.appStack} was deployed open, so a 401 means the viewer-request function still asks for the pair.`
                 : 'A function error rather than a 401 means the basic-auth key is not in the store: set it, then `resume` again.'));
     }
     note(door === 'off'

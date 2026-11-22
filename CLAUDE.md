@@ -56,7 +56,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `docker compose down` | Stops it, keeping data. **`down -v` destroys the data volume** |
 | `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
 | `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database, destroys the web ACL's stack and gates the pipeline off; `resume` is the reverse at the newest pushed tag, migrating the database at that tag first, since a parked environment skips the pipeline's migrations, and proving the site answers, through the door where it has one. Every deploy is `--exclusively`, so the Data stack is never touched by accident. With `--env prod`, `resume` is how production's application stack is first made, and `park` refuses. See ADR 0044, 0046, 0103 |
-| `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door, and of a site deployed open (ADR 0101) everything with no pair; with the `mvgl-dev` profile signed in, also that the web ACL is on the distribution (ADR 0098). `--env prod` is production's, which expects an indexable site and `www` redirected (ADR 0103) |
+| `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door, and of a site deployed open (ADR 0101) everything with no pair; with the `mvgl-dev` profile signed in, also that the web ACL is on the distribution (ADR 0098) and that the edge certificate's validation records are in public DNS, which its renewal needs (ADR 0103). `--env prod` is production's, which expects an indexable site and `www` redirected (ADR 0103) |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -149,8 +149,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   caller passes it, and one that was not passed is empty there, with no error. A secret is named
   outright in `deploy.yml`, never as `secrets[…]`, which hands the runner every secret the job can
   read. Production's application stack is first made by hand, with `dev-env.mjs resume --env prod`,
-  once the holding page's stack is destroyed, since the two answer by the same names. Nothing of it is
-  deployed yet. See `docs/decisions/0103-*` and `infra/README.md`.
+  once the holding page's stack is destroyed, since the two answer by the same names. `scripts/site.mjs`
+  restates `Site.cs` for the two scripts, and CI holds it to each synthesis with
+  `scripts/check-site.mjs`. Nothing of it is deployed yet. See `docs/decisions/0103-*` and
+  `infra/README.md`.
 
 - **The SSR server holds an idle connection 5 seconds longer than the balancer, which the stack tells it,
   and it does not start without being told.** The server has to be the side that holds on longer. When Node
