@@ -7,6 +7,9 @@ awake environment deploys": no merge builds or deploys anything now. What
 [0057](0057-the-api-is-tested-over-a-real-postgresql.md),
 [0060](0060-one-browser-test-over-the-production-shape.md) and
 [0061](0061-ci-gates-every-pull-request.md) say of Deploy dev waiting on CI no longer holds.
+Amended by [0103](0103-production-is-the-same-stacks-behind-an-approval.md): the steps a run executes
+are `deploy.yml`, which `Deploy dev` calls and `Deploy prod` calls too, so the check that a run's
+workflow is still master's compares both files.
 
 ## Context
 

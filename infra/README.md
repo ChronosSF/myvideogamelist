@@ -33,12 +33,76 @@ The long-lived stacks are deployed from a developer machine; the pipeline deploy
 origin-facing prefix list and nothing else, so there is no way to reach the environment except
 through the distribution, and no parameter that would open one.
 
-## Production, until #98: the holding page
+## Production
 
-`-c env=prod` synthesises three stacks in the production account: `Mvgl-prod-Alerts` and
-`Mvgl-prod-Email`, in the next section, and `Mvgl-prod-Holding`, whole in `us-east-1`. The holding
-stack serves `holding/site` at `myvideogamelist.net` from a private bucket through a distribution,
-and sends `www` to the apex (ADR 0066).
+`-c env=prod` synthesises the same stacks in the production account, less `Dns`, and beside them
+`Mvgl-prod-Holding`, below, and `Mvgl-prod-Email`, in the next section. Of the application's own,
+none is deployed yet (ADR 0103). What differs from dev is three members of `Site`:
+
+- **`www` only redirects to the apex.** The edge certificate covers it, `App` points it at the
+  distribution, and the viewer-request function answers it, and any other name, with a 301 to the same
+  address on the host.
+- **The site is indexable.** The SSR server is given `SITE_INDEXABLE=true` (ADR 0036).
+- **It is behind basic auth until a pull request opens it**, which is the launch: `Site.BehindBasicAuth`.
+
+Three things to know before deploying any of it:
+
+- **It looks the domain's zone up, and never creates one.** `EdgeCert` asks, from `us-east-1`, where
+  the holding page's stack already cached the answer, and hands the zone to the other stacks.
+- **Two lookups are still to be made**, the Region's availability zones and CloudFront's prefix list.
+  The first synthesis with the profile signed in writes them into `cdk.context.json`; commit it, as
+  dev's are. Until then a synthesis with `--no-lookups`, which is CI's, fails for production.
+
+  ```bash
+  npx cdk synth --profile mvgl-prod -c env=prod -c imageTag=000000000000 --quiet
+  ```
+
+- **The profile's Region has to be the one SES is in**, `Site.EmailRegion`. Production's alarms send to
+  the topic `Mvgl-prod-Alerts` makes there, and an alarm can only tell a topic in its own Region, so
+  `App` carries an error when it is synthesised for another.
+
+### Before the first deploy
+
+In this order, and any time before the day:
+
+1. `EdgeCert` and `Data`, by name. `Alerts` is there already, for SES.
+
+   ```bash
+   npx cdk deploy Mvgl-prod-EdgeCert Mvgl-prod-Data --exclusively --profile mvgl-prod -c env=prod
+   ```
+
+2. What is set by hand, each as dev's was: IGDB's pair in `mvgl/prod/igdb`, a widget's pair in
+   `mvgl/prod/turnstile` ([Turnstile, for sign-up](#turnstile-for-sign-up)), the basic-auth pair in the
+   `mvgl-prod-basic-auth` store ([The edge](#the-edge)), and `/mvgl/prod/admin-account-id` holding
+   `none` ([Who the admin is](#who-the-admin-is)).
+3. The `prod` GitHub environment: required reviewers, deployments from `master` only, the variables
+   `AWS_ROLE_ARN` (`Data`'s `DeployRoleArn` output), `AWS_REGION`, `AWS_ACCOUNT_ID` and
+   `PROD_DEPLOY_ENABLED` set to `false`, and the secret `PROD_BASIC_AUTH`, the pair as
+   `user:password`.
+4. A run of `Deploy prod`, approved. With the gate off it builds master's two images, pushes them to
+   production's repositories and stops.
+
+### The first deploy
+
+Made by hand, because it takes the domain from the holding page, and the pipeline only ever updates
+an application stack that exists.
+
+```bash
+npx cdk destroy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
+node scripts/dev-env.mjs resume --env prod
+node scripts/dev-check.mjs --env prod
+```
+
+The domain answers nothing from the first command until the second has finished. `resume` refuses
+while the holding page's stack exists; then it migrates the database at the newest pushed tag, deploys
+`Waf` and `App`, proves the door is on and sets `PROD_DEPLOY_ENABLED`. Run the check with
+`MVGL_PROD_BASIC_AUTH` set to the pair. After that, a release is a run of `Deploy prod`.
+`dev-env.mjs park --env prod` refuses: production is not parked.
+
+### The holding page, until production takes the domain
+
+`Mvgl-prod-Holding`, whole in `us-east-1`, serves `holding/site` at `myvideogamelist.net` from a
+private bucket through a distribution, and sends `www` to the apex (ADR 0066).
 
 ```bash
 cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
@@ -52,16 +116,16 @@ cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
   cdk bootstrap "aws://$(aws sts get-caller-identity --profile mvgl-prod --query Account --output text)/us-east-1" --profile mvgl-prod
   ```
 
-- **It looks the domain's zone up, and never creates one.** The zone was made by hand in that
-  account and holds the mail records and dev's delegation. The first synthesis with the profile
-  signed in writes the answer into `cdk.context.json`; commit it, as dev's lookups are.
+- **It looks the domain's zone up too.** The zone was made by hand in that account and holds the mail
+  records and dev's delegation. Its lookup is the one already in `cdk.context.json`.
 - **A change to the page is a change to `holding/site` and the same command.** The deployment
   replaces the bucket's contents, then invalidates the distribution and waits for it.
 - **The Search Console record is in the zone by hand, never in the stack.** The stack is destroyed
   when production takes the domain, and the record has to outlive it.
 - **Production's App stack cannot deploy with the domain while this stack holds it.** CloudFront
   gives an alternate domain name to one distribution at a time, and the records would collide too:
-  destroy this stack first. The destroy empties the bucket itself.
+  destroy this stack first. The destroy empties the bucket itself. `dev-env.mjs resume --env prod`
+  refuses to deploy `App` while this stack exists.
 
 ## Production's SES, for dev's email
 
@@ -182,8 +246,11 @@ there is the placeholder still in the secret, or a task started before the pair 
 
 ## The pipeline
 
-`.github/workflows/deploy-dev.yml` runs by hand and only by hand, from the Actions tab or with
-`gh workflow run deploy-dev.yml` (ADR 0099): a merge reaches dev when the owner chooses. The job
+`Deploy dev`, `.github/workflows/deploy-dev.yml`, runs by hand and only by hand, from the Actions tab or
+with `gh workflow run deploy-dev.yml` (ADR 0099): a merge reaches dev when the owner chooses. What a
+run does is `deploy.yml`, which that file calls for dev and `Deploy prod` calls for production, where
+the `prod` GitHub environment asks its reviewers before the job starts (ADR 0103). What follows is
+dev's, and production's is the same with its own names. The job
 assumes the deploy role through OIDC - no AWS key is stored in GitHub - checks out master's head as it
 starts, builds both images and pushes them tagged with that commit, and then stops unless
 `DEV_DEPLOY_ENABLED` is `true` on the `dev` GitHub environment. Because it takes master's head
@@ -209,7 +276,10 @@ The `dev` environment holds four variables, none secret: `AWS_ROLE_ARN`, `AWS_RE
 `AWS_ACCOUNT_ID` and `DEV_DEPLOY_ENABLED`, and one secret, `DEV_BASIC_AUTH`, the basic-auth pair
 as `user:password`, which only Deploy dev's smoke test reads; until it is set the authenticated checks are
 skipped with a warning. The environment admits deployments from `master` only.
-`scripts/dev-env.mjs park` and `resume` set the gate; nothing else should.
+`scripts/dev-env.mjs park` and `resume` set the gate; nothing else should. The `prod` environment
+holds the same three AWS variables, `PROD_DEPLOY_ENABLED` and `PROD_BASIC_AUTH`. Each caller passes
+its secrets with `secrets: inherit`, because a called workflow's job gets its environment's secret
+only when the caller passes it, and one that was not passed is empty there with no error.
 
 ## Who the admin is
 

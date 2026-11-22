@@ -163,6 +163,9 @@ public sealed class AppStack : Stack
         // Whether this deployment asks for the basic-auth pair. The pipeline's smoke test, `dev-env.mjs
         // resume` and `dev-check.mjs` read it here, so none of them assumes which it is (ADR 0101).
         _ = new CfnOutput(this, "BasicAuth", new CfnOutputProps { Value = site.BehindBasicAuth ? "on" : "off" });
+        // Where the site answers, which the pipeline's smoke test asks: one workflow deploys every
+        // environment, and reads the address here rather than working it out again (ADR 0103).
+        _ = new CfnOutput(this, "SiteUrl", new CfnOutputProps { Value = $"https://{site.Host}" });
     }
 
     /// <summary>

@@ -1,16 +1,19 @@
 /*
- * dev-check.mjs — the acceptance test for the dev environment, through the distribution.
+ * dev-check.mjs — the acceptance test for a deployed environment, through the distribution. Dev's
+ * by default; production's with --env prod (ADR 0103).
  *
  * The walkthrough's Phase 11 list as a program, to run after any change to the stacks and after
- * every resume (ADR 0044, 0046). Everything is asked of https://<env>.myvideogamelist.net the way a
- * browser would ask it, so a pass means the whole chain answered: CloudFront, the basic-auth
- * function, the balancer's prefix-list rule and origin-verify rule, and the two processes.
+ * every resume (ADR 0044, 0046). Everything is asked of the site the way a browser would ask it -
+ * https://<env>.myvideogamelist.net, or the domain itself for production - so a pass means the whole
+ * chain answered: CloudFront, the viewer-request function, the balancer's prefix-list rule and
+ * origin-verify rule, and the two processes.
  *
  *   node scripts/dev-check.mjs [--env dev] [--game <igdb id>] [--alb <balancer dns name>] [--limiter]
  *                              [--profile mvgl-dev]
  *
- * Without MVGL_DEV_BASIC_AUTH it checks only what needs no credential: that the door is on, that
- * the three exempt paths answer, that plain HTTP redirects, and - with --alb - that the balancer
+ * Without MVGL_<ENV>_BASIC_AUTH (MVGL_DEV_BASIC_AUTH for dev) it checks only what needs no
+ * credential: that the door is on, that the three exempt paths answer, that plain HTTP redirects,
+ * that a name which only redirects does, and - with --alb - that the balancer
  * does not answer directly. With the pair as `user:password` it checks the rest: health, the
  * crawler headers, SITE_URL, every route's Cache-Control, that the cache hits where it should and
  * never where it must not, that a 404 is a 404, and that the write guard survives the edge; with
@@ -30,10 +33,12 @@
  * script sends through the distribution is counted, and when the rule's limit is known the last check
  * is that the run stayed under half of it, which leaves the rest for whoever runs it to browse with
  * from the same address. Behind basic auth a run sends 43 such requests with the pair, 54 with
- * --limiter, and 9 without; of an open site, 42, or 53 with --limiter.
+ * --limiter, and 9 without; of an open site, 42, or 53 with --limiter. Production's is one more each
+ * way, for www.
  */
 
 import { runAws } from './aws-cli.mjs';
+import { site } from './site.mjs';
 
 const ARGS = process.argv.slice(2);
 function option(name, fallback) {
@@ -43,11 +48,13 @@ function option(name, fallback) {
 
 const ENV = option('--env', 'dev');
 const PROFILE = option('--profile', `mvgl-${ENV}`);
-const HOST = `${ENV}.myvideogamelist.net`;
+// Where the environment answers, the names that only redirect there, and whether it is indexable.
+const WHERE = site(ENV);
+const HOST = WHERE.host;
 const SITE = `https://${HOST}`;
 const GAME = option('--game', '1942');
 const ALB = option('--alb', null);
-const PAIR = process.env.MVGL_DEV_BASIC_AUTH;
+const PAIR = process.env[WHERE.basicAuthVariable];
 // The pair as a header, where there is one. Set aside by `theDoorIs` on finding the site open, so that
 // a credential nothing asks for is never sent to it.
 let AUTH = PAIR ? { authorization: `Basic ${Buffer.from(PAIR).toString('base64')}` } : null;
@@ -71,7 +78,9 @@ function skip(what, why) {
 let throughTheEdge = 0;
 
 async function get(path, { auth = false, method = 'GET', headers = {}, payload = undefined, redirect = 'follow', base = SITE } = {}) {
-    if ((base === SITE || base === `http://${HOST}`) && !path.startsWith('/__manifest')) throughTheEdge++;
+    // By any of the distribution's names, over either scheme: the rule counts an address, not a name.
+    const throughTheDistribution = [HOST, ...WHERE.redirectedHosts].includes(new URL(base).host);
+    if (throughTheDistribution && !path.startsWith('/__manifest')) throughTheEdge++;
     const response = await fetch(`${base}${path}`, {
         method,
         redirect,
@@ -199,6 +208,16 @@ async function theDoor(door) {
     report(http.status === 301 && (http.headers.get('location') ?? '').startsWith(SITE),
         'plain HTTP is redirected to HTTPS', `${http.status} -> ${http.headers.get('location')}`);
 
+    // A name that only redirects, production's www (ADR 0066 §2, 0103): the same path and query on the
+    // host, by a 301, and before the door, so it needs no pair. A term of its own, so that the answer
+    // is the function's and not one the edge kept.
+    for (const name of WHERE.redirectedHosts) {
+        const path = `/games?search=${stamp()}`;
+        const r = await get(path, { base: `https://${name}`, redirect: 'manual' });
+        report(r.status === 301 && r.headers.get('location') === `${SITE}${path}`,
+            `${name} is redirected to the same address on ${HOST}`, `${r.status} -> ${r.headers.get('location')}`);
+    }
+
     if (ALB) {
         // Only a timeout or a refused connection means the security group did its job. Any other
         // error - a certificate name mismatch, say, since the balancer's certificate is for the
@@ -227,13 +246,23 @@ async function health() {
 }
 
 async function crawlers() {
+    // What a crawler is told is the environment's to decide (ADR 0036): production is indexable, so it
+    // names its sitemap and sends no X-Robots-Tag of its own; anything else names none and says noindex,
+    // nofollow on every response. Neither ever disallows a path.
     const robots = await get('/robots.txt', { auth: true });
     const disallowsSomething = /^Disallow:\s*\S/m.test(robots.body);
-    const namesSitemap = /^Sitemap:/m.test(robots.body);
-    report(robots.status === 200 && !disallowsSomething && !namesSitemap,
-        '/robots.txt is 200, disallows nothing and names no sitemap', `${robots.status}${disallowsSomething ? ', disallows a path' : ''}${namesSitemap ? ', has a Sitemap line' : ''}`);
-    report(robots.headers.get('x-robots-tag') === 'noindex, nofollow',
-        'documents carry X-Robots-Tag: noindex, nofollow', robots.headers.get('x-robots-tag') ?? '(none)');
+    const sitemapLine = /^Sitemap:\s*(\S+)/m.exec(robots.body)?.[1] ?? null;
+    const robotsDetail = `${robots.status}${disallowsSomething ? ', disallows a path' : ''}, ${sitemapLine ? `Sitemap: ${sitemapLine}` : 'no Sitemap line'}`;
+    const tag = robots.headers.get('x-robots-tag');
+    if (WHERE.indexable) {
+        report(robots.status === 200 && !disallowsSomething && sitemapLine === `${SITE}/sitemap.xml`,
+            `/robots.txt is 200, disallows nothing and names ${SITE}/sitemap.xml`, robotsDetail);
+        report(tag === null, 'SITE_INDEXABLE arrived: documents carry no X-Robots-Tag', tag ?? '(none)');
+    } else {
+        report(robots.status === 200 && !disallowsSomething && sitemapLine === null,
+            '/robots.txt is 200, disallows nothing and names no sitemap', robotsDetail);
+        report(tag === 'noindex, nofollow', 'documents carry X-Robots-Tag: noindex, nofollow', tag ?? '(none)');
+    }
     const api = await get('/api/home', { auth: true });
     report(/noindex/.test(api.headers.get('x-robots-tag') ?? ''), 'API responses carry X-Robots-Tag: noindex', api.headers.get('x-robots-tag') ?? '(none)');
     const sitemap = await get('/sitemaps/pages.xml', { auth: true });
@@ -370,7 +399,7 @@ try {
 }
 try {
     const door = await theDoorIs(who.ok);
-    if (door === 'on' && !AUTH) console.log('  (behind basic auth, and no MVGL_DEV_BASIC_AUTH: credential-free checks only)');
+    if (door === 'on' && !AUTH) console.log(`  (behind basic auth, and no ${WHERE.basicAuthVariable}: credential-free checks only)`);
     await theDoor(door);
     if (door === 'off' || AUTH) {
         await health();

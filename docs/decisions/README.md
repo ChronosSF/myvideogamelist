@@ -121,6 +121,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0100](0100-the-holding-page-points-at-the-test-run.md) | The holding page points at the test run while it lasts, in the site's own look and type: one promise, the site's fonts as its own files and `font-src 'self'` in its policy, and the call to action off when the test ends | Accepted; deployed by hand once dev is open |
 | [0101](0101-devs-basic-auth-comes-off-for-the-trial.md) | Dev's basic auth comes off for the trial by one line, `Site.BehindBasicAuth`; the App stack reports which it was deployed as, and the smoke test, `resume` and `dev-check` read that | Implemented; proved only by a deploy |
 | [0102](0102-a-deployed-admin-is-a-hand-set-parameter-the-task-reads.md) | A deployed environment's admin is an account id in a Parameter Store parameter, set by hand and read by the API's task as it starts; the App stack does not deploy where nobody has made it | Implemented; proved only by a deploy |
+| [0103](0103-production-is-the-same-stacks-behind-an-approval.md) | Production is the same stacks from the same code, less the zone, which it looks up; `www` only redirects; one workflow deploys dev and production, and production's waits for an approval; its first deploy is made by hand, behind basic auth | Accepted; built, not deployed |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

@@ -221,7 +221,11 @@ public sealed class Edge : Construct
     /// </summary>
     private static string ViewerRequestFunction(Site site)
     {
-        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "functions", "viewer-request.js"));
+        // With one kind of line ending, whatever the checkout has: the pipeline deploys from Linux and a
+        // resume from the owner's machine, and a function whose text differed between them would be
+        // published again by each in turn.
+        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "functions", "viewer-request.js"))
+            .ReplaceLineEndings("\n");
         var values = new Dictionary<string, string>
         {
             ["__CANONICAL_HOST__"] = site.Host,

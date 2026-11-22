@@ -7,7 +7,9 @@ missing page is a 404 with the same headers. Destroyed when production takes the
 `www`, and with it D7, the cookie's domain. Builds on [0036](0036-what-a-crawler-is-told.md) and
 [0044](0044-what-the-deployment-walkthrough-settled.md). §1, §5, §6 and what is not on the page are
 amended by [0100](0100-the-holding-page-points-at-the-test-run.md): the page points at dev's test run
-while it lasts, in the site's own look and fonts, which the content policy now admits.
+while it lasts, in the site's own look and fonts, which the content policy now admits. What §8's two
+steps are run with, and what comes before them, is
+[0103](0103-production-is-the-same-stacks-behind-an-approval.md) §7.
 
 ## Context
 
