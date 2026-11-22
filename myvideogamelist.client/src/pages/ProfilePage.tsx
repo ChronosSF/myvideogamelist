@@ -106,10 +106,13 @@ export function meta({ loaderData, error }: Route.MetaArgs) {
         + 'on MyVideoGameList.';
 
     // Published, with nothing on it yet. A page of zeroes is not worth a place in an index, and it
-    // leaves by itself the moment its owner records anything. **`SitemapService.ListedProfiles` is
-    // the same test on the server**, and the two have to agree: a sitemap that lists a page marked
-    // `noindex` is reported as an error for every such page.
-    if (profile.library.recorded === 0 && profile.favourites === 0) {
+    // leaves by itself the moment its owner records anything public. **The API decides, not this
+    // page**: `listed` is the answer of the query the sitemap runs, so the two cannot disagree, and a
+    // sitemap that lists a page marked `noindex` is reported as an error for every such page. Nothing
+    // here restates the test over the figures (issue 346). Only an explicit `false` marks the page,
+    // because an API a release behind sends no `listed`, and a page the edge keeps for an hour must
+    // not be marked `noindex` while that release's sitemap may still list it.
+    if (profile.listed === false) {
         return [{ title }, { name: 'description', content: description }, NOINDEX];
     }
 
@@ -237,9 +240,10 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
 
     // Published, with nothing on it at all: nothing recorded, wished for or chosen as a favourite, and
     // no month with anything in it. A page of dashes and empty bars would be noise where one sentence
-    // is the whole answer, as the owner's own profile judges the same case. Narrower than `meta`'s test,
+    // is the whole answer, as the owner's own profile judges the same case. Narrower than `listed`,
     // which is about a search index: a wishlist alone is not worth indexing, but it is something to
-    // show — its size, under the bars — so a profile with one keeps its sections.
+    // show — its size, under the bars — so a profile with one keeps its sections. `recorded` here is
+    // the public count, which leaves out a game holding only something private (issue 346).
     const nothingAtAll = library.recorded === 0
         && library.wishlisted === 0
         && profile.favourites === 0

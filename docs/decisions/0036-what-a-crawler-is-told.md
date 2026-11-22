@@ -96,6 +96,13 @@ the deployment. A resource route returns its own `Response` and never passes thr
   publication, and that would answer the question a private profile's 404 exists to refuse. An empty
   profile is left out because the profile page marks it `noindex`; the two tests
   (`SitemapService.ListedProfiles` and `ProfilePage`'s `meta`) have to agree.
+
+  > **Later note.** Since #346 they are one test. `PublicProfileContent.ListedProfiles` is the
+  > sitemap's query, and the public profile carries its answer as `listed`, from which the page marks
+  > itself `noindex` and nothing else; only an explicit `false` does, since an API a release behind
+  > sends none. Not empty means an entry holding something the page shows — a status, a score, a
+  > playthrough or a published review — or a favourite: an entry with nothing but notes, an ownership,
+  > tags or a private review lists nobody, as it moves no public figure.
 - The two static pages that are the same for everybody: `/` and `/games`.
 
 It makes **no IGDB call**, for the reason the statistics ([0023](0023-profile-statistics-derived-at-read-time.md))
