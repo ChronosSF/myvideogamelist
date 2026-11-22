@@ -111,9 +111,9 @@ door can be ready before it starts.
 ### 6. One workflow deploys both, and production's asks for an approval
 
 `deploy.yml` holds the steps, parameterised by the environment, and is run only by being called.
-`Deploy dev` and `Deploy prod` are each a dispatch and a call, naming the environment, the variable
-that gates it and the secret that holds its pair. So production is released by the steps dev has been
-released by: every run of `Deploy dev` from now on is a run of production's pipeline.
+`Deploy dev` and `Deploy prod` are each a dispatch and a call, naming the environment and the variable
+that gates it. So production is released by the steps dev has been released by: every run of
+`Deploy dev` from now on is a run of production's pipeline.
 
 **Not a copy of the file with the names changed.** Two files that have to be kept in step by hand are
 in step until the day one is fixed in a hurry, and production's would be the one never run.
@@ -131,6 +131,14 @@ between the accounts that nothing else needs.
 
 The smoke test reads where the site answers from a new output of `App`, `SiteUrl`, as it reads whether
 the door is on.
+
+**The pair's secret is written out in `deploy.yml`, once for each environment**: `DEV_BASIC_AUTH` and
+`PROD_BASIC_AUTH`, chosen by the environment's name. The first draft had each caller pass the secret's
+name and read it as `secrets[...]`, and code scanning raised it on the pull request
+(`actions/excessive-secrets-exposure`): by that rule's account, a name that is only known once the job
+runs leaves GitHub handing the runner every secret the job can read. Today that is the one secret
+either way, since the repository holds none; written out, it stays the one. Each is its own
+environment's secret, so the other's is empty in a run. A third environment is a third name there.
 
 What GitHub's documentation says about a called workflow, read on 2026-11-22, and what it does not:
 

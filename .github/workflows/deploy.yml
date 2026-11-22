@@ -41,12 +41,6 @@ on:
         description: The variable on that GitHub environment that says it is awake.
         required: true
         type: string
-      basic-auth-secret:
-        description: >-
-          The secret on that GitHub environment that holds the basic-auth pair, as user:password. The
-          caller passes it with `secrets: inherit`: one it does not pass is empty here.
-        required: true
-        type: string
 
 # The caller grants these two, and a called workflow can ask for no more than it was granted.
 permissions:
@@ -300,8 +294,12 @@ jobs:
       - name: Smoke test
         if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
         env:
-          BASIC_AUTH: ${{ secrets[inputs.basic-auth-secret] }}
-          BASIC_AUTH_SECRET: ${{ inputs.basic-auth-secret }}
+          # The pair is the environment's own secret, <ENV>_BASIC_AUTH, and each is written out here.
+          # A name worked out from an input, `secrets[...]`, cannot be known before the job runs, so
+          # the runner would be handed every secret the job can read to pick one from. The caller
+          # passes it with `secrets: inherit`: one it does not pass is empty here, as the other
+          # environment's always is.
+          BASIC_AUTH: ${{ inputs.environment == 'prod' && secrets.PROD_BASIC_AUTH || secrets.DEV_BASIC_AUTH }}
         run: |
           set -euo pipefail
           STACK="Mvgl-$ENV_NAME-App"
@@ -334,7 +332,7 @@ jobs:
                 exit 1
               fi
               if [ -z "$BASIC_AUTH" ]; then
-                echo "::warning::$BASIC_AUTH_SECRET is not set on the $ENV_NAME environment, so the authenticated checks were skipped."
+                echo "::warning::${ENV_NAME^^}_BASIC_AUTH is not set on the $ENV_NAME environment, so the authenticated checks were skipped."
                 exit 0
               fi
               CREDENTIALS=(-u "$BASIC_AUTH") ;;

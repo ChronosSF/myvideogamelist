@@ -2,7 +2,7 @@ name: Deploy dev
 
 # Run by hand, from the Actions tab or with `gh workflow run deploy-dev.yml`: nothing deploys dev on
 # its own (ADR 0099). What a run does is deploy.yml, which Deploy prod calls too; this file only says
-# which environment, and which of its variables and secrets are the gate and the basic-auth pair.
+# which environment, and which of its variables is the gate.
 # DEV_DEPLOY_ENABLED on the `dev` GitHub environment is set by `node scripts/dev-env.mjs park` and
 # `resume`, and by nothing else.
 
@@ -28,9 +28,9 @@ jobs:
     with:
       environment: dev
       gate: DEV_DEPLOY_ENABLED
-      basic-auth-secret: DEV_BASIC_AUTH
     # A called workflow's job gets its environment's secret only when the caller passes it, and an
     # environment's secret that was not passed is an empty string there, with no error. This workflow
     # has no secret of its own, and the repository none, so what is inherited is nothing; what it does
-    # is let the job that declares the environment read that one secret by its name.
+    # is let the job that declares the environment read that one secret, DEV_BASIC_AUTH, which
+    # deploy.yml names.
     secrets: inherit

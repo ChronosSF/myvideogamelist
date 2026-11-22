@@ -146,10 +146,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `Deploy dev` and `Deploy prod` both call `deploy.yml`: a change to the steps is a change to both,
   and production's run waits for the `prod` environment's reviewers. **Each caller says
   `secrets: inherit`**, because a called workflow's job gets its environment's secret only when the
-  caller passes it, and one that was not passed is empty there, with no error. Production's application
-  stack is first made by hand, with `dev-env.mjs resume --env prod`, once the holding page's stack is
-  destroyed, since the two answer by the same names. Nothing of it is deployed yet. See
-  `docs/decisions/0103-*` and `infra/README.md`.
+  caller passes it, and one that was not passed is empty there, with no error. A secret is named
+  outright in `deploy.yml`, never as `secrets[…]`, which hands the runner every secret the job can
+  read. Production's application stack is first made by hand, with `dev-env.mjs resume --env prod`,
+  once the holding page's stack is destroyed, since the two answer by the same names. Nothing of it is
+  deployed yet. See `docs/decisions/0103-*` and `infra/README.md`.
 
 - **The SSR server holds an idle connection 5 seconds longer than the balancer, which the stack tells it,
   and it does not start without being told.** The server has to be the side that holds on longer. When Node

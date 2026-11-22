@@ -279,7 +279,9 @@ skipped with a warning. The environment admits deployments from `master` only.
 `scripts/dev-env.mjs park` and `resume` set the gate; nothing else should. The `prod` environment
 holds the same three AWS variables, `PROD_DEPLOY_ENABLED` and `PROD_BASIC_AUTH`. Each caller passes
 its secrets with `secrets: inherit`, because a called workflow's job gets its environment's secret
-only when the caller passes it, and one that was not passed is empty there with no error.
+only when the caller passes it, and one that was not passed is empty there with no error. `deploy.yml`
+names both secrets outright and takes the one for its environment: read by a name the caller passed,
+as `secrets[...]`, it would have the runner handed every secret the job can read (ADR 0103 §6).
 
 ## Who the admin is
 

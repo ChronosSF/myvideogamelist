@@ -3,8 +3,8 @@ name: Deploy prod
 # Run by hand, from the Actions tab or with `gh workflow run deploy-prod.yml`, and then approved: the
 # `prod` GitHub environment asks its reviewers before the job starts, so a release to production is
 # two decisions, to dispatch it and to let it through (ADR 0103). What a run does is deploy.yml, the
-# steps Deploy dev runs; this file only says which environment, and which of its variables and
-# secrets are the gate and the basic-auth pair.
+# steps Deploy dev runs; this file only says which environment, and which of its variables is the
+# gate.
 #
 # Like dev's, a run builds master's head, pushes both images to production's own repositories, and
 # deploys only when PROD_DEPLOY_ENABLED is true on the `prod` environment and the application stack
@@ -32,9 +32,9 @@ jobs:
     with:
       environment: prod
       gate: PROD_DEPLOY_ENABLED
-      basic-auth-secret: PROD_BASIC_AUTH
     # A called workflow's job gets its environment's secret only when the caller passes it, and an
     # environment's secret that was not passed is an empty string there, with no error. This workflow
     # has no secret of its own, and the repository none, so what is inherited is nothing; what it does
-    # is let the job that declares the environment read that one secret by its name.
+    # is let the job that declares the environment read that one secret, PROD_BASIC_AUTH, which
+    # deploy.yml names.
     secrets: inherit
