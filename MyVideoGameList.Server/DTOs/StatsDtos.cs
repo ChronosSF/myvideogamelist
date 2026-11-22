@@ -31,7 +31,9 @@ public record UserStatsDto(
 /// <param name="Recorded">
 /// Every entry, including those in no list at all. The difference between this and
 /// <paramref name="Tracked"/> is games the user has scored and then taken off their lists, which
-/// keep their entry by design (ADR 0019).
+/// keep their entry by design (ADR 0019). The owner's figure: a public profile counts only the entries
+/// holding something it shows, which leaves out one with only notes, an ownership, tags or a private
+/// review (<see cref="PublicProfileDto"/>).
 /// </param>
 /// <param name="ByStatus">Count per status key. Always all five keys, including the empty ones.</param>
 /// <param name="CompletionRate">

@@ -60,9 +60,19 @@ public class SitemapServiceTests
         db.SaveChanges();
     }
 
+    /// <summary>
+    /// A game in the backlog: something the profile shows. An entry holding only something private
+    /// lists nobody, which <c>PublicProfileContentTests</c> covers case by case (#346).
+    /// </summary>
     private static void AddEntry(ApplicationDbContext db, string userId, int gameId)
     {
-        db.UserGameEntries.Add(new UserGameEntry { UserId = userId, GameId = gameId, AddedAt = Now });
+        db.UserGameEntries.Add(new UserGameEntry
+        {
+            UserId = userId,
+            GameId = gameId,
+            StatusId = db.ListStatuses.Single(s => s.Key == ListStatusKeys.Backlog).Id,
+            AddedAt = Now
+        });
         db.SaveChanges();
     }
 
