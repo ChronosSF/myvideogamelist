@@ -102,7 +102,9 @@ public sealed class AppStack : Stack
             TargetGroups = [apiTargets],
         });
         // Not under /api/, so without this rule they would reach the SSR server and 404. Exposed in
-        // dev; production decides again, because each /readyz is an IGDB call open to anyone (D-5).
+        // production as in dev (D-5, ADR 0103): each /readyz is an IGDB call open to anyone, which is
+        // a third of what a game page nobody has looked at costs, and the web ACL's rate rule counts
+        // both alike (ADR 0098). It is also what a deploy's smoke test asks through the distribution.
         https.AddTargetGroups("Health", new AddApplicationTargetGroupsProps
         {
             Priority = 20,
@@ -138,6 +140,15 @@ public sealed class AppStack : Stack
         var target = RecordTarget.FromAlias(new CloudFrontTarget(edge.Distribution));
         _ = new ARecord(this, "Alias", new ARecordProps { Zone = zone, Target = target });
         _ = new AaaaRecord(this, "AliasV6", new AaaaRecordProps { Zone = zone, Target = target });
+        // And the names that only redirect, production's www: the same two records each, so that the
+        // request reaches the distribution, whose function answers it with the redirect (ADR 0103).
+        foreach (var host in site.RedirectedHosts)
+        {
+            var label = host[..host.IndexOf('.', StringComparison.Ordinal)];
+            var name = char.ToUpperInvariant(label[0]) + label[1..];
+            _ = new ARecord(this, $"{name}Alias", new ARecordProps { Zone = zone, RecordName = host, Target = target });
+            _ = new AaaaRecord(this, $"{name}AliasV6", new AaaaRecordProps { Zone = zone, RecordName = host, Target = target });
+        }
 
         // Here rather than in a stack of their own, because what they watch is named by this stack's
         // balancer and log group, which a resume makes anew (ADR 0080).
@@ -267,7 +278,7 @@ public sealed class AppStack : Stack
     {
         var task = Task(site, "ssr");
 
-        task.AddContainer("ssr", new ContainerDefinitionOptions
+        var container = task.AddContainer("ssr", new ContainerDefinitionOptions
         {
             Image = ContainerImage.FromEcrRepository(data.SsrRepository, imageTag),
             PortMappings = [new PortMapping { ContainerPort = 3000 }],
@@ -278,11 +289,17 @@ public sealed class AppStack : Stack
                 ["SITE_URL"] = $"https://{site.Host}",
                 ["PORT"] = "3000",
                 ["BALANCER_IDLE_TIMEOUT_SECONDS"] = BalancerIdleTimeoutSeconds.ToString(CultureInfo.InvariantCulture),
-                // SITE_INDEXABLE stays unset: every response then says noindex (ADR 0036). HOST
-                // stays unset so the server listens on every interface, which the balancer needs.
+                // HOST stays unset so the server listens on every interface, which the balancer needs.
             },
             Logging = Logging(LogGroup(site, "ssr"), "ssr"),
         });
+        // Production alone is indexable. Anywhere else the variable stays unset, and every response
+        // then says noindex, nofollow: forgetting costs production its indexing, never another
+        // environment its privacy (ADR 0036). The server takes exactly "true".
+        if (site.Indexable)
+        {
+            container.AddEnvironment("SITE_INDEXABLE", "true");
+        }
 
         return task;
     }

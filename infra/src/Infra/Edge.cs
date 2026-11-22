@@ -35,26 +35,29 @@ public sealed class Edge : Construct
             CustomHeaders = new Dictionary<string, string> { [site.OriginVerifyHeader] = originVerifyValue },
         });
 
-        // Basic auth on every behaviour - the default included, since a behaviour without it is an
-        // open door - and on the viewer request, before the cache is consulted, so cached pages are
+        // One function on the viewer request of every behaviour, the default included, before the cache
+        // is consulted, with two jobs (functions/viewer-request.js). It sends a request that arrived by
+        // any name but the host's to the same address on the host, which is how production's www only
+        // redirects (ADR 0066 §2). And where the site is behind it, it is the basic-auth door: on every
+        // behaviour, since one without it is an open door, and before the cache, so cached pages are
         // behind it too. The credential is read from the store; it is nowhere in the repository.
         //
-        // Where the site is open (Site.BehindBasicAuth, ADR 0101) the function is still made and no
-        // behaviour names it. It and its reading of the store are then one line from being the door
-        // again, and the Data stack's output that carries the store goes on being read.
-        var basicAuth = new Function(this, "BasicAuth", new FunctionProps
+        // Where it has neither job - a site that is open (Site.BehindBasicAuth, ADR 0101) and answers
+        // by one name - the function is still made and no behaviour names it. It and its reading of
+        // the store are then one line from being the door again, and the Data stack's output that
+        // carries the store goes on being read.
+        var redirected = site.RedirectedHosts;
+        var viewerRequest = new Function(this, "ViewerRequest", new FunctionProps
         {
-            FunctionName = $"{site.Prefix}-basic-auth",
+            FunctionName = $"{site.Prefix}-viewer-request",
             Runtime = FunctionRuntime.JS_2_0,
             KeyValueStore = basicAuthStore,
-            Code = FunctionCode.FromFile(new FileCodeOptions
-            {
-                FilePath = Path.Combine(AppContext.BaseDirectory, "functions", "basic-auth.js"),
-            }),
-            Comment = $"HTTP basic authentication for {site.Host}; the expected Authorization value is the store's basic-auth key",
+            Code = FunctionCode.FromInline(ViewerRequestFunction(site)),
+            Comment = $"Sends every other host to {site.Host}"
+                + (site.BehindBasicAuth ? ", then HTTP basic authentication against the store's basic-auth key" : ""),
         });
-        FunctionAssociation[] onEveryBehaviour = site.BehindBasicAuth
-            ? [new FunctionAssociation { EventType = FunctionEventType.VIEWER_REQUEST, Function = basicAuth }]
+        FunctionAssociation[] onEveryBehaviour = site.BehindBasicAuth || redirected.Length > 0
+            ? [new FunctionAssociation { EventType = FunctionEventType.VIEWER_REQUEST, Function = viewerRequest }]
             : [];
 
         // One cache policy for every cached page. The managed policies do not fit: CachingOptimized
@@ -183,7 +186,8 @@ public sealed class Edge : Construct
         Distribution = new Distribution(this, "Distribution", new DistributionProps
         {
             Comment = site.Host,
-            DomainNames = [site.Host],
+            // The host, and the names that only redirect to it, which the certificate covers too.
+            DomainNames = [site.Host, .. redirected],
             Certificate = certificate,
             MinimumProtocolVersion = SecurityPolicyProtocol.TLS_V1_2_2021,
             HttpVersion = HttpVersion.HTTP2_AND_3,
@@ -206,5 +210,37 @@ public sealed class Edge : Construct
                 .Select(status => new ErrorResponse { HttpStatus = status, Ttl = Duration.Seconds(0) })
                 .ToArray(),
         });
+    }
+
+    /// <summary>
+    /// The viewer-request function's source, read from beside the built assembly, with what it has to
+    /// know about the environment put in place of its tokens: the host it redirects every other name
+    /// to, which is the one the certificate and the records are made for; whether it is the basic-auth
+    /// door as well; and the environment's name, for the door's realm. Each is written once, in
+    /// <c>Site</c>.
+    /// </summary>
+    private static string ViewerRequestFunction(Site site)
+    {
+        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "functions", "viewer-request.js"));
+        var values = new Dictionary<string, string>
+        {
+            ["__CANONICAL_HOST__"] = site.Host,
+            ["__BASIC_AUTH__"] = site.BehindBasicAuth ? "on" : "off",
+            ["__ENV__"] = site.Env,
+        };
+
+        foreach (var (token, value) in values)
+        {
+            // A token that is gone is a function that redirects to nothing, or a door that cannot be
+            // told to shut: refuse to synthesise it.
+            if (!source.Contains(token, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"viewer-request.js no longer carries {token}.");
+            }
+
+            source = source.Replace(token, value, StringComparison.Ordinal);
+        }
+
+        return source;
     }
 }

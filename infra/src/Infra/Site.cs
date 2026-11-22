@@ -2,8 +2,8 @@ namespace Infra;
 
 /// <summary>
 /// Every name the stacks agree on, derived from the one context value that distinguishes an
-/// environment. <c>prod</c> is later a second value and a second account, not a second code base
-/// (ADR 0044).
+/// environment. <c>prod</c> is a second value and a second account, not a second code base (ADR 0044,
+/// 0103).
 /// </summary>
 public sealed record Site(string Env)
 {
@@ -27,6 +27,21 @@ public sealed record Site(string Env)
     /// the canonical host and <c>www</c> only redirects to it (ADR 0066).
     /// </summary>
     public string Host => IsProduction ? Domain : $"{Env}.{Domain}";
+
+    /// <summary>
+    /// The other names the distribution answers by, each of which only redirects to <see cref="Host"/>:
+    /// <c>www</c> for production, and none for any other environment (ADR 0066 §2, 0103). The edge's
+    /// certificate covers them, the zone points them at the distribution, and the viewer-request
+    /// function sends a request for one to the same path on the host.
+    /// </summary>
+    public string[] RedirectedHosts => IsProduction ? [$"www.{Domain}"] : [];
+
+    /// <summary>
+    /// Whether a crawler may index the site: production's alone (ADR 0036). The SSR server is given
+    /// <c>SITE_INDEXABLE=true</c> for it, and every other environment says <c>noindex, nofollow</c> on
+    /// every response.
+    /// </summary>
+    public bool Indexable => IsProduction;
 
     /// <summary>The Cloud Map private namespace the SSR server finds the API through.</summary>
     public string InternalDomain => $"{Prefix}.internal";
@@ -69,6 +84,7 @@ public sealed record Site(string Env)
     /// to its testers (ADR 0101), and this line is the whole of that: deployed with it, the distribution
     /// asks nobody for the pair; changed back and deployed, it asks again. The App stack says which it was
     /// deployed with in its <c>BasicAuth</c> output, which is what every check of the site reads.
+    /// Production is behind it from its first deploy, and opening it is the launch (ADR 0103).
     /// </summary>
     public bool BehindBasicAuth => Env != "dev";
 

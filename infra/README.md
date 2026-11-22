@@ -259,7 +259,7 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   Three paths are exempt, because the client fetches them with `credentials: 'omit'` and the
   browser then withholds the `Authorization` header too: a game's reviews, community scores and
   community times (ADR 0044, D-8). The exemption is a regular expression in
-  `src/Infra/functions/basic-auth.js`; a new public aggregate fetched the same way joins it there.
+  `src/Infra/functions/viewer-request.js`; a new public aggregate fetched the same way joins it there.
 
 - **Whether an environment is behind it at all is one line**, `Site.BehindBasicAuth` (ADR 0101). Dev's
   is off while the trial runs: no behaviour names the function, which is still made, and the pair stays
