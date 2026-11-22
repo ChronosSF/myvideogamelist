@@ -49,9 +49,10 @@ Three things to know before deploying any of it:
 
 - **It looks the domain's zone up, and never creates one.** `EdgeCert` asks, from `us-east-1`, where
   the holding page's stack already cached the answer, and hands the zone to the other stacks.
-- **Two lookups are still to be made**, the Region's availability zones and CloudFront's prefix list.
-  The first synthesis with the profile signed in writes them into `cdk.context.json`; commit it, as
-  dev's are. Until then a synthesis with `--no-lookups`, which is CI's, fails for production.
+- **Its lookups are cached and committed**, as dev's are: the Region's availability zones and
+  CloudFront's prefix list, beside the zone. CI synthesises production with `--no-lookups`, so a stack
+  that asks a new one fails there until a synthesis with the profile signed in has written the answer
+  into `cdk.context.json` and it is committed:
 
   ```bash
   npx cdk synth --profile mvgl-prod -c env=prod -c imageTag=000000000000 --quiet

@@ -42,9 +42,10 @@ lookup returns is the zone's id as a plain string, so the stacks in the other Re
 reference between them.
 
 Two more lookups are production's own, the Region's availability zones and CloudFront's managed prefix
-list, and neither is cached yet. The first synthesis with production's credentials makes them and writes
-them into `cdk.context.json`, which is committed, as 0066 did for the zone. Until then CI synthesises dev
-only.
+list. A synthesis with production's credentials made them on 2026-11-22 and wrote them into
+`cdk.context.json`, which is committed, as 0066 did for the zone. So CI synthesises production beside
+dev, with no lookups and no credentials, and a stack that asks either account something new fails there
+until its answer is committed.
 
 ### 2. What differs is in `Site`, and is three things
 
@@ -169,7 +170,7 @@ something a person runs. 0066 §8 gave the order; this is what each step is run 
 
 Ahead of the day, in any order that the list allows:
 
-1. The lookups of §1, committed.
+1. The lookups of §1, committed. Done, with this change.
 2. `EdgeCert`, `Data` and, if it is not there, `Alerts`, deployed by name.
 3. What is set by hand: IGDB's pair and a Turnstile widget's in their secrets, the basic-auth pair in
    its store, and `/mvgl/prod/admin-account-id` holding `none`
