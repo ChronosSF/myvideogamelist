@@ -93,7 +93,7 @@ public class HomeServiceTests
     private static IJustOutService JustOutReturning(params JustOutDto[] games)
     {
         var justOut = Substitute.For<IJustOutService>();
-        justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<IReadOnlySet<int>>(), Arg.Any<CancellationToken>())
+        justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
             .Returns(games);
         return justOut;
     }
@@ -310,15 +310,16 @@ public class HomeServiceTests
         Assert.Empty(home.JustOut);
         Assert.True(home.Degraded);
         await comingSoon.DidNotReceiveWithAnyArgs().ComposeAsync(default, NoPicks, default);
-        await justOut.DidNotReceiveWithAnyArgs().ComposeAsync(default, new HashSet<int>(), default);
+        await justOut.DidNotReceiveWithAnyArgs().ComposeAsync(default, NoPicks, default);
     }
 
     [Fact]
-    public async Task GetHomeAsync_JustOutComposes_ForUtcTodayWithoutTheHiddenGames()
+    public async Task GetHomeAsync_JustOutComposes_ForUtcTodayWithTheAdminsPinsAndHides()
     {
-        var hidden = new HashSet<int> { 7 };
+        // The picks Coming soon reads, both kinds: a pinned game is on Just out once it is out (ADR 0104).
+        var picks = new ComingSoonPicks(new HashSet<int> { 52189 }, new HashSet<int> { 7 });
         var comingSoon = Substitute.For<IComingSoonService>();
-        comingSoon.GetPicksAsync(Arg.Any<CancellationToken>()).Returns(new ComingSoonPicks(new HashSet<int>(), hidden));
+        comingSoon.GetPicksAsync(Arg.Any<CancellationToken>()).Returns(picks);
         comingSoon.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
             .Returns([GtaVi]);
         var justOut = JustOutReturning(Enshrouded);
@@ -329,7 +330,7 @@ public class HomeServiceTests
 
         Assert.Equal([Enshrouded], home.JustOut);
         Assert.False(home.Degraded);
-        await justOut.Received(1).ComposeAsync(new DateOnly(2026, 10, 17), hidden, Arg.Any<CancellationToken>());
+        await justOut.Received(1).ComposeAsync(new DateOnly(2026, 10, 17), picks, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -347,7 +348,7 @@ public class HomeServiceTests
     public async Task GetHomeAsync_IgdbFailsForJustOut_CostsThePanelAndNothingElse()
     {
         var justOut = Substitute.For<IJustOutService>();
-        justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<IReadOnlySet<int>>(), Arg.Any<CancellationToken>())
+        justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("IGDB is down."));
         var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), justOut: justOut);
 

@@ -4,7 +4,9 @@
 
 > **Later note.** Trending, which §5 puts the panel before, is gone: [0073](0073-the-home-page-a-welcome-coming-soon-just-out-and-the-news.md)
 > put Just out after the panel in its place, the new games of the last ninety days most watched on Twitch.
-> The admin's hides keep a game off both panels.
+> The admin's hides keep a game off both panels, and since
+> [0104](0104-just-out-takes-the-followed-beside-the-watched-and-the-admins-pin.md) a pin holds on both: on
+> this panel until the game is out, and on Just out for the ninety days after.
 
 ## Context
 

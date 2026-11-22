@@ -267,6 +267,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   be absent. That is why the ESRB filter drops games in `GetGamesAsync`; see
   `docs/decisions/0067-*`.
 
+- **IGDB's Twitch figure does not count the largest games, so Just out never ranks by it alone.**
+  `popularity_primitives` type 34 was next to nothing for Grand Theft Auto VI three days after its release,
+  and zero for GTA V, League of Legends and Fortnite (read 2026-11-22), with no error and nothing to say
+  why. The panel takes the games people followed ahead of their release (`hypes`, Coming soon's count and
+  its floor) and the most watched, turn about, and a Coming soon pin holds on Just out once its game is
+  out. A count that comes back empty is logged once a day and the panel is the other. See
+  `docs/decisions/0104-*`.
+
 - **An IGDB release date is not always a day.** `release_dates.date_format` says how much of it is
   known — 0 the day, 1 the month, 2 the year, 3 to 6 a quarter, 7 nothing — and for anything but a
   day the stored `date` is a stand-in: the month's first day, the quarter's or the year's last. Read

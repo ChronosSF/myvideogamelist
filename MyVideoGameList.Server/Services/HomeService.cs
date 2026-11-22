@@ -220,11 +220,11 @@ public class HomeService(
     }
 
     /// <summary>
-    /// The Just out panel (ADR 0073), and whether it is missing: when the admin's hides could not be read, or
-    /// IGDB could not be asked.
+    /// The Just out panel (ADR 0073, 0104), and whether it is missing: when the admin's picks could not be
+    /// read, or IGDB could not be asked.
     /// </summary>
     /// <remarks>
-    /// Without the hides it is missing rather than composed, as Coming soon is, since a game is hidden because
+    /// Without the picks it is missing rather than composed, as Coming soon is, since a game is hidden because
     /// it should not be on the front page. Degrades rather than fails, like every part of this page.
     /// </remarks>
     private async Task<(IReadOnlyList<JustOutDto> Games, bool Missing)> GetJustOutAsync(
@@ -234,7 +234,7 @@ public class HomeService(
 
         try
         {
-            return (await justOut.ComposeAsync(today, picks.Hidden, cancellationToken), false);
+            return (await justOut.ComposeAsync(today, picks, cancellationToken), false);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
