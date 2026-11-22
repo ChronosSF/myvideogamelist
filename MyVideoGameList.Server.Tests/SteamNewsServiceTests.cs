@@ -240,6 +240,56 @@ public class ToExcerptTests
         Assert.Equal("Watch the trailer above.", result);
     }
 
+    // The next three tests' samples are cut from what Steam answered, in November 2026, for the item
+    // named: its blurb for a maxlength, which has no tags left in it but keeps the address an [img] held.
+
+    [Theory]
+    // Team Fortress 2, "Jump Fortress Jump4Charity" (gid 1849827110436900), as the home page led with it.
+    [InlineData(
+        "{STEAM_CLAN_LOC_IMAGE}/554111/818ccba597a4ec4630b160a280b4ea5137172268.jpg For the past few years, "
+        + "the Jump Fortress crew have hosted rocket and sticky jumping tournaments, and they're proud to "
+        + "announce their very own charity event in support of Doctors Without Borders! Jump4Charity will "
+        + "take place over two days, November 28th (",
+        "For the past few years, the Jump Fortress crew have hosted rocket and sticky jumping tournaments, "
+        + "and they're proud to announce their very own charity event in support of Doctors…")]
+    // PUBG: Battlegrounds, "PUBG: BATTLEGROUNDS Weekly Bans Notice (11/9~11/15)" (1849827110423012), whole.
+    [InlineData(
+        "{STEAM_CLAN_IMAGE}/27971017/6665b8db8893f3f61b8adffd82c7fa3705dd09be.png Read the full announcement here!",
+        "Read the full announcement here!")]
+    // War Thunder, "Screenshot Competition – Rocket Science!" (1849827110434745).
+    [InlineData(
+        "{STEAM_CLAN_IMAGE}/4649813/d66fbf64694823ff8108572f51a5f97fb097c0db.png Welcome to the 251st War "
+        + "Thunder Steam Screenshot Competition!",
+        "Welcome to the 251st War Thunder Steam Screenshot Competition!")]
+    public void DropsTheImagePlaceholderSteamsBlurbKeeps(string contents, string expected)
+        => Assert.Equal(expected, SteamNewsService.ToExcerpt(contents));
+
+    [Fact]
+    public void DropsAPlaceholderTheBlurbCutsShort()
+    {
+        // R.E.P.O., "Did someone say "R.E.P.O. MERCH"???" (1825727806710964): the blurb ends at its
+        // length, inside the address, and Steam marks the cut.
+        var result = SteamNewsService.ToExcerpt(
+            "Merch Video! Pin Set! Robe Vinyl Figurine! "
+            + "{STEAM_CLAN_IMAGE}/45481982/b003d4fcb83a453eb29ec11c818d8967ade37b63.pn...");
+
+        Assert.Equal("Merch Video! Pin Set! Robe Vinyl Figurine!", result);
+    }
+
+    [Fact]
+    public void DropsAnImagesFullAddressButKeepsALink()
+    {
+        // Stardew Valley, "Stardew Valley x Fangamer Merch Holiday Sale" (1783238125358744): an [img]
+        // around an address on Steam's image host, after two links that are part of the news.
+        var result = SteamNewsService.ToExcerpt(
+            "US: https://fanga.me/r/stardew-valley-holidays-2024-us EU: https://fanga.me/r/stardew-valley-holidays-2024-eu "
+            + "https://clan.fastly.steamstatic.com/images/11170746/b330e52f09019fa1242b6bb9b97b810e523ddca9.png ");
+
+        Assert.Equal(
+            "US: https://fanga.me/r/stardew-valley-holidays-2024-us EU: https://fanga.me/r/stardew-valley-holidays-2024-eu",
+            result);
+    }
+
     [Fact]
     public void WhenLong_TruncatesOnAWordBoundaryAndAppendsEllipsis()
     {

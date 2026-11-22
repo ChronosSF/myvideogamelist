@@ -50,6 +50,11 @@ public partial class SteamNewsService(
     private const string AnnouncementsFeed = "steam_community_announcements";
 
     /// <summary>How many characters of article body Steam should return.</summary>
+    /// <remarks>
+    /// Asked for a length, Steam answers with a blurb rather than the body: its markup already removed,
+    /// a tag at a time with nothing in its place, except that an <c>[img]</c> written around an address
+    /// leaves the address behind. <see cref="ToExcerpt"/> says what that means for the excerpt.
+    /// </remarks>
     private const int SteamMaxLength = 600;
 
     /// <summary>Length of the plain-text excerpt kept after stripping markup.</summary>
@@ -406,20 +411,32 @@ public partial class SteamNewsService(
     /// Flattens Steam's mix of BBCode and HTML into a short plain-text excerpt.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Sanitizing here rather than on the client is deliberate: the DTO is documented as plain
     /// text, so no consumer has a reason to render it as markup.
+    /// </para>
+    /// <para>
+    /// What Steam sends is not the body but its blurb (<see cref="SteamMaxLength"/>), which has no
+    /// tags left in it. Of the markup, only an image's address survives, wherever the body wrapped one
+    /// in <c>[img]…[/img]</c>, and many announcements open with one. An image Steam hosts is written
+    /// with a placeholder for Steam's own host, <c>{STEAM_CLAN_IMAGE}</c> or
+    /// <c>{STEAM_CLAN_LOC_IMAGE}</c>, which the blurb keeps as it stands. So the address is removed
+    /// here, after the tags. The tags and the media blocks are still removed first, as they were
+    /// written to be, should the body itself ever be asked for.
+    /// </para>
     /// </remarks>
     internal static string? ToExcerpt(string? contents)
     {
         if (string.IsNullOrWhiteSpace(contents)) return null;
 
         // Remove media blocks whole, content included. Stripping only the tags would leave the
-        // bare asset URL behind as prose, and Steam announcements routinely open with one — the
-        // excerpt would start "https://clan.cloudflare.steamstatic.com/..." instead of the news.
+        // bare asset URL behind as prose — which is what Steam's blurb does, and why the image
+        // addresses are removed again below.
         var text = MediaBlocks().Replace(contents, " ");
         text = BbCodeTags().Replace(text, " ");
         text = HtmlTags().Replace(text, " ");
         text = WebUtility.HtmlDecode(text);
+        text = ImageAddresses().Replace(text, " ");
         text = Whitespace().Replace(text, " ").Trim();
 
         if (text.Length == 0) return null;
@@ -445,6 +462,22 @@ public partial class SteamNewsService(
 
     [GeneratedRegex(@"<[^>]{0,200}>", RegexOptions.None, matchTimeoutMilliseconds: 200)]
     private static partial Regex HtmlTags();
+
+    /// <summary>
+    /// An image's address, as Steam's blurb leaves it where an <c>[img]</c> stood: Steam's placeholder
+    /// and the path after it, as far as the next space, or an address ending in an image's extension.
+    /// </summary>
+    /// <remarks>
+    /// Only the forms seen in Steam's answers. The placeholder runs to the next space because the blurb
+    /// is cut at its length wherever that falls, inside an address too, and in every answer read a
+    /// space or the end came after one. A link that is not to an image is prose ("Read more here:
+    /// https://…") and stays.
+    /// </remarks>
+    [GeneratedRegex(
+        @"\{STEAM_CLAN(?:_LOC)?_IMAGE\}\S{0,300}|https?://\S{1,300}?\.(?:png|jpg|gif)(?!\S)",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 200)]
+    private static partial Regex ImageAddresses();
 
     [GeneratedRegex(@"\s+", RegexOptions.None, matchTimeoutMilliseconds: 200)]
     private static partial Regex Whitespace();
