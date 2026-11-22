@@ -342,6 +342,11 @@ function status() {
     console.log(`  ${NAMES.appStack}:  ${app ?? 'absent'}`);
     if (app !== null) console.log(`  basic auth at the edge: ${basicAuth()}`);
     console.log(`  ${NAMES.wafStack}:  ${waf ?? 'absent'} (${NAMES.edgeRegion})`);
+    // Production's holding page answers by the names its application stack takes, so which of the two
+    // is there is the first thing to know about it (ADR 0066 §8, 0103).
+    if (WHERE.production) {
+        console.log(`  ${NAMES.holdingStack}: ${stackStatus(NAMES.holdingStack, NAMES.edgeRegion) ?? 'absent'} (${NAMES.edgeRegion})`);
+    }
     console.log(`  database ${NAMES.database}: ${db ?? 'absent'}`);
     console.log(`  services: ${running.length === 0 ? 'none' : running.map((s) => `${s.name} ${s.running}/${s.desired}`).join(', ')}`);
     console.log(`  newest tag in both repositories: ${tag ?? 'none pushed yet'}`);
