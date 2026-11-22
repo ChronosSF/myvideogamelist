@@ -343,11 +343,7 @@ public class IgdbService(
     {
         var cacheKey = $"igdb_game|{id}";
         if (cache.TryGetValue(cacheKey, out GameDetail? cached))
-        {
-            return cached is null
-                ? null
-                : WithRelated(cached, await GetRelatedGamesAsync(id, cached.EditionOf, cached.SeriesIds, cancellationToken));
-        }
+            return cached is null ? null : await WithPartsAsync(cached, cancellationToken);
 
         var query = new StringBuilder()
             .AppendLine(GameDetailFields)
@@ -365,23 +361,19 @@ public class IgdbService(
             return null;
         }
 
-        // The completion times and the related games each need only what the detail query answered, so
-        // they go out together: a page nobody has asked for lately waits on one more request, not two.
-        // Neither throws for IGDB's failure, each answering null for its part of the page.
         var editionOf = RelatedGames.EditionOf(igdbGame.GameType, igdbGame.VersionParent?.Id);
         var seriesIds = (igdbGame.Collections ?? []).Select(c => c.Id)
             .Concat(editionOf is null ? [] : igdbGame.VersionParent?.Collections ?? [])
             .ToList();
-        var timeToBeat = FetchTimeToBeatAsync(id, cancellationToken);
-        var related = GetRelatedGamesAsync(id, editionOf, seriesIds, cancellationToken);
-        await Task.WhenAll(timeToBeat, related);
-
-        var details = MapToDetailsDto(igdbGame, await timeToBeat);
+        var details = MapToDetailsDto(igdbGame);
         var detail = new GameDetail(MapToGameDto(igdbGame) with { Details = details }, details, editionOf, seriesIds);
-        cache.Set(cacheKey, detail, TimeSpan.FromMinutes(30));
+        cache.Set(cacheKey, detail, GameLifetime);
 
-        return WithRelated(detail, await related);
+        return await WithPartsAsync(detail, cancellationToken);
     }
+
+    /// <summary>How long a game is kept as the detail query answered it, and its completion times.</summary>
+    private static readonly TimeSpan GameLifetime = TimeSpan.FromMinutes(30);
 
     /// <summary>
     /// A game as the detail query reads it, with what its related games are asked by: the game it is an edition
@@ -389,17 +381,72 @@ public class IgdbService(
     /// </summary>
     private sealed record GameDetail(GameDto Game, GameDetailsDto Details, int? EditionOf, IReadOnlyList<int> SeriesIds);
 
-    private static GameDto WithRelated(GameDetail detail, RelatedGamesDto? related) =>
-        detail.Game with { Details = detail.Details with { Related = related } };
+    /// <summary>
+    /// The game with the two parts of its page that are kept apart from it: its completion times and its related
+    /// games. Each needs only what the detail query answered, so they go out together, and a page nobody has asked
+    /// for lately waits on one more request, not two. Neither throws for IGDB's failure: each answers null for its
+    /// part of the page, which the page reads as a render to keep off the edge.
+    /// </summary>
+    private async Task<GameDto> WithPartsAsync(GameDetail detail, CancellationToken cancellationToken)
+    {
+        var id = detail.Game.Id;
+        var timeToBeat = GetTimeToBeatAsync(id, cancellationToken);
+        var related = GetRelatedGamesAsync(id, detail.EditionOf, detail.SeriesIds, cancellationToken);
+        await Task.WhenAll(timeToBeat, related);
+
+        return detail.Game with
+        {
+            Details = detail.Details with { TimeToBeat = await timeToBeat, Related = await related },
+        };
+    }
 
     /// <summary>How long a game's related games are kept. A series and a game's children change seldom.</summary>
     private static readonly TimeSpan RelatedGamesLifetime = TimeSpan.FromHours(6);
 
     /// <summary>
-    /// How long a failed read of them is kept: long enough that a page nobody may cache, read over and over,
-    /// does not ask IGDB again on every render, and short enough that the rail is soon back.
+    /// How long a failed read of a part of the game page, its completion times or its related games, is kept:
+    /// long enough that a page nobody may cache, read over and over, does not ask IGDB again on every render, and
+    /// short enough that the part is soon back.
     /// </summary>
-    private static readonly TimeSpan RelatedGamesFailureLifetime = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan PartFailureLifetime = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// A game's community completion times (ADR 0017). Supplementary to the page, so a failure degrades to null
+    /// rather than taking the game down with it, and is deliberately caught here: the page renders without them,
+    /// and reads the null as a render to keep off the edge. A game IGDB has no times for is
+    /// <see cref="TimeToBeatDto.None"/>, an answer like any other, kept as long as one with times.
+    /// </summary>
+    /// <remarks>
+    /// Kept apart from the game's own entry, and a failure for a minute only. Until #352 they were kept with the
+    /// game and a failure answered as a game with no times does, so one failed request left the page without
+    /// them for the game's half hour, and shared at the edge as whole for up to a day.
+    /// </remarks>
+    private async Task<TimeToBeatDto?> GetTimeToBeatAsync(int gameId, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"igdb_time_to_beat|{gameId}";
+        if (cache.TryGetValue(cacheKey, out TimeToBeatDto? cached))
+            return cached;
+
+        var query = new StringBuilder()
+            .AppendLine("fields game_id,hastily,normally,completely,count;")
+            .AppendLine($"where game_id = {gameId};")
+            .AppendLine("limit 1;")
+            .ToString();
+
+        try
+        {
+            var rows = await QueryAsync<IgdbGameTimeToBeat>(TimeToBeatEndpoint, query, cancellationToken);
+            var timeToBeat = MapTimeToBeat(rows.FirstOrDefault());
+            cache.Set(cacheKey, timeToBeat, GameLifetime);
+            return timeToBeat;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Completion times unavailable for game {GameId}.", gameId);
+            cache.Set<TimeToBeatDto?>(cacheKey, null, PartFailureLifetime);
+            return null;
+        }
+    }
 
     /// <summary>
     /// The rest of a game's series, and its remakes, remasters and editions (#450, ADR 0084). Supplementary to
@@ -408,8 +455,8 @@ public class IgdbService(
     /// </summary>
     /// <remarks>
     /// Kept apart from the game's own entry, and a failure for a minute only: the game is kept for half an hour,
-    /// and a failure kept with it would degrade every render of the page for that long — the completion times'
-    /// way, which #352 records.
+    /// and a failure kept with it would degrade every render of the page for that long, as the completion times'
+    /// did until #352.
     /// </remarks>
     private async Task<RelatedGamesDto?> GetRelatedGamesAsync(
         int id, int? editionOf, IReadOnlyCollection<int> seriesIds, CancellationToken cancellationToken)
@@ -438,7 +485,7 @@ public class IgdbService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Related games unavailable for game {GameId}.", id);
-            cache.Set<RelatedGamesDto?>(cacheKey, null, RelatedGamesFailureLifetime);
+            cache.Set<RelatedGamesDto?>(cacheKey, null, PartFailureLifetime);
             return null;
         }
     }
@@ -1341,31 +1388,6 @@ public class IgdbService(
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Community completion times for one game. Supplementary to the page, so a failure here
-    /// degrades to no completion-time section rather than taking the whole game down with it.
-    /// </summary>
-    private async Task<IgdbGameTimeToBeat?> FetchTimeToBeatAsync(
-        int gameId, CancellationToken cancellationToken)
-    {
-        var query = new StringBuilder()
-            .AppendLine("fields game_id,hastily,normally,completely,count;")
-            .AppendLine($"where game_id = {gameId};")
-            .AppendLine("limit 1;")
-            .ToString();
-
-        try
-        {
-            var rows = await QueryAsync<IgdbGameTimeToBeat>(TimeToBeatEndpoint, query, cancellationToken);
-            return rows.FirstOrDefault();
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "Completion times unavailable for game {GameId}.", gameId);
-            return null;
-        }
-    }
-
     private static GameDto MapToGameDto(IgdbGame g)
     {
         var coverUrl = g.Cover?.ImageId is { } coverId
@@ -1450,7 +1472,11 @@ public class IgdbService(
     /// Builds the detail-only half of a game. Named entities are flattened to their names - the
     /// page renders them as chips and the ids are not linkable anywhere yet.
     /// </summary>
-    internal static GameDetailsDto MapToDetailsDto(IgdbGame g, IgdbGameTimeToBeat? timeToBeat)
+    /// <remarks>
+    /// The completion times and the related games are not the detail query's, and are left null here for
+    /// <see cref="WithPartsAsync"/> to fill in.
+    /// </remarks>
+    internal static GameDetailsDto MapToDetailsDto(IgdbGame g)
     {
         var screenshots = g.Screenshots?
                 .Where(sc => sc.ImageId is not null)
@@ -1459,7 +1485,7 @@ public class IgdbService(
             ?? [];
 
         return new GameDetailsDto(
-            MapTimeToBeat(timeToBeat),
+            TimeToBeat: null,
             screenshots,
             MapRelatedGames(g.SimilarGames),
             MapRelatedGames(g.Dlcs),
@@ -1480,15 +1506,16 @@ public class IgdbService(
         entities?.Select(e => e.Name).OfType<string>().ToList() ?? [];
 
     /// <summary>
-    /// Drops rows with no submissions behind them: a zero-count average is not an average.
+    /// IGDB's row for a game, or <see cref="TimeToBeatDto.None"/> for none, and for a row with no submissions
+    /// behind it or no times in it: a zero-count average is not an average.
     /// </summary>
-    internal static TimeToBeatDto? MapTimeToBeat(IgdbGameTimeToBeat? t)
+    internal static TimeToBeatDto MapTimeToBeat(IgdbGameTimeToBeat? t)
     {
-        if (t is null) return null;
+        if (t is null) return TimeToBeatDto.None;
 
         var count = t.Count ?? 0;
-        if (count <= 0) return null;
-        if (t.Hastily is null && t.Normally is null && t.Completely is null) return null;
+        if (count <= 0) return TimeToBeatDto.None;
+        if (t.Hastily is null && t.Normally is null && t.Completely is null) return TimeToBeatDto.None;
 
         return new TimeToBeatDto(t.Hastily, t.Normally, t.Completely, count);
     }

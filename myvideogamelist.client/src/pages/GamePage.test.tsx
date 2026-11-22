@@ -902,9 +902,16 @@ describe('GamePage caching', () => {
     } as Route.HeadersArgs)['Cache-Control'];
 
     it("puts the game's own policy on the page it answered with", async () => {
-        // With the members' figures beside the game and the related games in it, without either of
-        // which the page is not shared (ADR 0069, ADR 0084).
-        const whole = game({ id: 1, title: 'Celeste', details: gameDetails({ related: { anchorId: 1, games: [], editions: [] } }) });
+        // With the members' figures beside the game and the related games and IGDB's completion times in
+        // it, without any of which the page is not shared (ADR 0069, ADR 0084, issue 352).
+        const whole = game({
+            id: 1,
+            title: 'Celeste',
+            details: gameDetails({
+                related: { anchorId: 1, games: [], editions: [] },
+                timeToBeat: { hastily: null, normally: null, completely: null, count: 0 },
+            }),
+        });
         vi.stubGlobal('fetch', vi.fn(async (url: string) =>
             figuresFor(url) ?? new Response(JSON.stringify(whole), { status: 200 })));
 
