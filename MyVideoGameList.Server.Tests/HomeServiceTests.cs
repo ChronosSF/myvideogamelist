@@ -89,12 +89,15 @@ public class HomeServiceTests
     private static readonly JustOutDto Enshrouded =
         new(248643, "Enshrouded", null, new DateOnly(2026, 10, 15), []);
 
-    /// <summary>A Just out panel composing to the games given, whatever it is told is hidden.</summary>
-    private static IJustOutService JustOutReturning(params JustOutDto[] games)
+    /// <summary>A whole Just out panel composing to the games given, whatever it is told is hidden.</summary>
+    private static IJustOutService JustOutReturning(params JustOutDto[] games) =>
+        JustOutReturning(new JustOutPanel(games, Partial: false));
+
+    private static IJustOutService JustOutReturning(JustOutPanel panel)
     {
         var justOut = Substitute.For<IJustOutService>();
         justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
-            .Returns(games);
+            .Returns(panel);
         return justOut;
     }
 
@@ -342,6 +345,21 @@ public class HomeServiceTests
 
         Assert.Empty(home.JustOut);
         Assert.False(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_JustOutHasOnlyOneOfItsLists_IsDrawnFromIt_AndDegraded()
+    {
+        // IGDB could be asked for one list and not the other (ADR 0104): the panel is the one that answered,
+        // and the page is degraded so that nobody keeps it with half a panel.
+        var justOut = JustOutReturning(new JustOutPanel([Enshrouded], Partial: true));
+        var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), justOut: justOut);
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Equal([Enshrouded], home.JustOut);
+        Assert.Equal([GtaVi], home.ComingSoon);
+        Assert.True(home.Degraded);
     }
 
     [Fact]

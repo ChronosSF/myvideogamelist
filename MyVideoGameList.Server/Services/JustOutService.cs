@@ -9,13 +9,15 @@ namespace MyVideoGameList.Server.Services;
 /// </remarks>
 public class JustOutService(IIgdbService igdb) : IJustOutService
 {
-    public async Task<IReadOnlyList<JustOutDto>> ComposeAsync(
+    public async Task<JustOutPanel> ComposeAsync(
         DateOnly today, ComingSoonPicks picks, CancellationToken cancellationToken = default)
     {
         var candidates = await igdb.GetJustOutCandidatesAsync(today, [.. picks.Pinned], cancellationToken);
 
-        return JustOut.Compose(candidates, picks.Pinned, picks.Hidden, today)
+        var games = JustOut.Compose(candidates.Games, picks.Pinned, picks.Hidden, today)
             .Select(r => new JustOutDto(r.Game.Id, r.Game.Name, r.Game.CoverImageUrl, r.Released, r.Platforms))
             .ToList();
+
+        return new JustOutPanel(games, candidates.Partial);
     }
 }

@@ -272,8 +272,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   and zero for GTA V, League of Legends and Fortnite (read 2026-11-22), with no error and nothing to say
   why. The panel takes the games people followed ahead of their release (`hypes`, Coming soon's count and
   its floor) and the most watched, turn about, and a Coming soon pin holds on Just out once its game is
-  out. A count that comes back empty is logged once a day and the panel is the other. See
-  `docs/decisions/0104-*`.
+  out. The two lists are fetched, kept and lost apart, and the panel is whichever is left: one that comes
+  back empty is logged once a day, judged without the pinned games, which come back by their id whatever
+  became of the follows; one that cannot be asked for is logged and makes the panel partial, which
+  `/api/home` reports as degraded. See `docs/decisions/0104-*`.
 
 - **An IGDB release date is not always a day.** `release_dates.date_format` says how much of it is
   known — 0 the day, 1 the month, 2 the year, 3 to 6 a quarter, 7 nothing — and for anything but a

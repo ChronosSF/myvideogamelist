@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Services;
@@ -554,6 +555,12 @@ public class JustOutJsonTests
 
         public List<string> Queries { get; } = [];
 
+        /// <summary>While set, IGDB cannot be asked for the most watched: neither their figures nor their games.</summary>
+        public bool WatchedFail { get; set; }
+
+        /// <summary>While set, IGDB cannot be asked for the games people followed.</summary>
+        public bool FollowedFail { get; set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -564,8 +571,11 @@ public class JustOutJsonTests
             Endpoints.Add(endpoint);
             Queries.Add(query);
 
+            var asksForTheFollowed = endpoint == "games" && query.Contains("hypes >=");
+            if (asksForTheFollowed ? FollowedFail : WatchedFail) throw new HttpRequestException("IGDB is down.");
+
             if (endpoint == "popularity_primitives") return Json(popularity);
-            return Json(query.Contains("hypes >=") ? followed : watched);
+            return Json(asksForTheFollowed ? followed : watched);
         }
 
         private static HttpResponseMessage Json(string body) =>
@@ -573,7 +583,10 @@ public class JustOutJsonTests
     }
 
     private static (IgdbService Service, StubHandler Igdb) NewService(
-        string popularity = PopularityPayload, string watched = GamesPayload, string followed = "[]")
+        string popularity = PopularityPayload,
+        string watched = GamesPayload,
+        string followed = "[]",
+        ILogger<IgdbService>? logger = null)
     {
         var handler = new StubHandler(popularity, watched, followed);
 
@@ -584,7 +597,7 @@ public class JustOutJsonTests
         configuration["Igdb:ClientId"].Returns("client-id");
         configuration["Igdb:ClientSecret"].Returns("client-secret");
 
-        return (new IgdbService(factory, configuration, new MemoryCache(new MemoryCacheOptions()), NullLogger<IgdbService>.Instance), handler);
+        return (new IgdbService(factory, configuration, new MemoryCache(new MemoryCacheOptions()), logger ?? NullLogger<IgdbService>.Instance), handler);
     }
 
     [Fact]
@@ -594,7 +607,8 @@ public class JustOutJsonTests
 
         var candidates = await service.GetJustOutCandidatesAsync(new DateOnly(2026, 10, 25), []);
 
-        var enshrouded = Assert.Single(candidates);
+        Assert.False(candidates.Partial);
+        var enshrouded = Assert.Single(candidates.Games);
         Assert.Equal((248643, "Enshrouded", 0.03883792), (enshrouded.Game.Id, enshrouded.Game.Name, enshrouded.Watched));
         Assert.Equal(0, enshrouded.Hypes);
         // The row with no date is not one the rules can place, so it is not a row here.
@@ -625,7 +639,9 @@ public class JustOutJsonTests
 
         var candidates = await service.GetJustOutCandidatesAsync(new DateOnly(2026, 11, 22), []);
 
-        var gta = Assert.Single(candidates);
+        // An empty answer is an answer: the list was asked for, and the panel is whole.
+        Assert.False(candidates.Partial);
+        var gta = Assert.Single(candidates.Games);
         Assert.Equal((52189, "Grand Theft Auto VI", 0d, 1584), (gta.Game.Id, gta.Game.Name, gta.Watched, gta.Hypes));
         Assert.Equal([831835, 831834], gta.Rows.Select(r => r.Id));
         Assert.Equal(["popularity_primitives", "games"], igdb.Endpoints);
@@ -644,11 +660,11 @@ public class JustOutJsonTests
 
         Assert.Equal(
             [(225582, 0.001701216261955, 242), (52189, 0d, 1584)],
-            candidates.Select(c => (c.Game.Id, c.Watched, c.Hypes)));
+            candidates.Games.Select(c => (c.Game.Id, c.Watched, c.Hypes)));
     }
 
     [Fact]
-    public async Task GetJustOutCandidatesAsync_APin_IsAskedForByItsId_AndChangesTheQuestion()
+    public async Task GetJustOutCandidatesAsync_APin_IsAskedForByItsId_AndChangesOnlyTheFollowedQuestion()
     {
         var (service, igdb) = NewService();
 
@@ -656,9 +672,108 @@ public class JustOutJsonTests
         await service.GetJustOutCandidatesAsync(new DateOnly(2026, 11, 22), [403310, 52189, 52189]);
         await service.GetJustOutCandidatesAsync(new DateOnly(2026, 11, 22), [52189, 403310]);
 
-        // Asked twice, not three times: the same pins in another order are the same question.
-        Assert.Equal(6, igdb.Endpoints.Count);
+        // The followed are asked for twice, not three times: the same pins in another order are the same
+        // question. The most watched are asked for once: a pin is nothing to them.
+        Assert.Equal(["popularity_primitives", "games", "games", "games"], igdb.Endpoints);
         Assert.DoesNotContain("| id =", igdb.Queries[2]);
-        Assert.Contains(") | id = (52189,403310);", igdb.Queries[5]);
+        Assert.Contains(") | id = (52189,403310);", igdb.Queries[3]);
+    }
+
+    [Fact]
+    public async Task GetJustOutCandidatesAsync_TheFollowedCannotBeAskedFor_IsTheWatchedAndPartial_AndAsksForThemAloneNext()
+    {
+        var (service, igdb) = NewService(
+            popularity: ControlResonantPopularityPayload,
+            watched: $"[{ControlResonant}]",
+            followed: $"[{GrandTheftAutoVi},{ControlResonant}]");
+        igdb.FollowedFail = true;
+
+        var partial = await service.GetJustOutCandidatesAsync(new DateOnly(2026, 11, 22), []);
+
+        Assert.True(partial.Partial);
+        Assert.Equal([225582], partial.Games.Select(c => c.Game.Id));
+
+        // IGDB answers again. The most watched were kept, so only the followed are asked for, and the answer
+        // is whole.
+        igdb.FollowedFail = false;
+        var whole = await service.GetJustOutCandidatesAsync(new DateOnly(2026, 11, 22), []);
+
+        Assert.False(whole.Partial);
+        Assert.Equal([225582, 52189], whole.Games.Select(c => c.Game.Id));
+        Assert.Equal(["popularity_primitives", "games", "games", "games"], igdb.Endpoints);
+    }
+
+    [Fact]
+    public async Task GetJustOutCandidatesAsync_TheWatchedCannotBeAskedFor_IsTheFollowedAndPartial()
+    {
+        var (service, igdb) = NewService(followed: $"[{GrandTheftAutoVi}]");
+        igdb.WatchedFail = true;
+
+        var candidates = await service.GetJustOutCandidatesAsync(new DateOnly(2026, 11, 22), []);
+
+        Assert.True(candidates.Partial);
+        var gta = Assert.Single(candidates.Games);
+        Assert.Equal((52189, 0d, 1584), (gta.Game.Id, gta.Watched, gta.Hypes));
+    }
+
+    [Fact]
+    public async Task GetJustOutCandidatesAsync_NeitherCanBeAskedFor_Throws_AndKeepsNothing()
+    {
+        var (service, igdb) = NewService();
+        igdb.WatchedFail = igdb.FollowedFail = true;
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => service.GetJustOutCandidatesAsync(new DateOnly(2026, 10, 25), []));
+
+        igdb.WatchedFail = igdb.FollowedFail = false;
+        var candidates = await service.GetJustOutCandidatesAsync(new DateOnly(2026, 10, 25), []);
+
+        Assert.False(candidates.Partial);
+        Assert.Single(candidates.Games);
+    }
+
+    [Fact]
+    public async Task GetJustOutCandidatesAsync_OnlyThePinnedComeBack_SaysTheFollowedAreMissing()
+    {
+        // What IGDB dropping its follows looks like while a game is pinned: the pinned game comes back by its
+        // id, and nothing else does.
+        var logger = new ListLogger<IgdbService>();
+        var (service, _) = NewService(followed: $"[{GrandTheftAutoVi}]", logger: logger);
+
+        await service.GetJustOutCandidatesAsync(new DateOnly(2026, 11, 22), [52189]);
+
+        Assert.Contains(logger.At(LogLevel.Warning), e => e.Message.Contains("without its most followed"));
+    }
+
+    [Fact]
+    public async Task GetJustOutCandidatesAsync_BothListsHoldAGame_SaysNothing()
+    {
+        // Grand Theft Auto VI is pinned and Control Resonant is not, so the followed have a game of their own.
+        var logger = new ListLogger<IgdbService>();
+        var (service, _) = NewService(
+            popularity: ControlResonantPopularityPayload,
+            watched: $"[{ControlResonant}]",
+            followed: $"[{GrandTheftAutoVi},{ControlResonant}]",
+            logger: logger);
+
+        await service.GetJustOutCandidatesAsync(new DateOnly(2026, 11, 22), [52189]);
+
+        Assert.Empty(logger.Entries);
+    }
+
+    [Fact]
+    public async Task GetJustOutCandidatesAsync_NeitherListHoldsAGame_SaysSoOfEach_AndOnceADay()
+    {
+        var logger = new ListLogger<IgdbService>();
+        var (service, _) = NewService(popularity: "[]", logger: logger);
+
+        await service.GetJustOutCandidatesAsync(new DateOnly(2026, 11, 22), []);
+        await service.GetJustOutCandidatesAsync(new DateOnly(2026, 11, 22), []);
+
+        // Each line is about its own list, so the two do not contradict each other.
+        var said = logger.At(LogLevel.Warning).Select(e => e.Message).ToList();
+        Assert.Equal(2, said.Count);
+        Assert.Contains(said, m => m.Contains("without its most watched"));
+        Assert.Contains(said, m => m.Contains("without its most followed"));
     }
 }

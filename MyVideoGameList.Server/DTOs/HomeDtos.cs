@@ -27,9 +27,10 @@ namespace MyVideoGameList.Server.DTOs;
 /// admin's picks, sets <paramref name="Degraded"/>.
 /// </param>
 /// <param name="JustOut">
-/// The new games of the last ninety days most watched on Twitch, the newest first (ADR 0073). Empty when none
-/// passes the rules, which is an answer; a failure to ask IGDB, or to read the admin's hides, sets
-/// <paramref name="Degraded"/>.
+/// The new games of the last ninety days most followed on IGDB ahead of their release and most watched on
+/// Twitch, the newest first (ADR 0073, 0104). Empty when none passes the rules, which is an answer; a failure
+/// to ask IGDB for either of its two lists, or to read the admin's picks, sets <paramref name="Degraded"/>.
+/// With one list it is still drawn, from the other.
 /// </param>
 /// <param name="Degraded">
 /// True when an upstream failed and this answer is missing what it would have supplied. It is

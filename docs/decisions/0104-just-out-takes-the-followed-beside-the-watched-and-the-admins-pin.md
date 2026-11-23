@@ -102,16 +102,30 @@ page already allowed, since it only ever asked that IGDB has the game.
 The pin is for what neither count finds: a large game that arrived unannounced, or one both counts rank
 low. That day Call of Duty: Modern Warfare 4 was such a game, eighteenth of the followed with 61.
 
-### 3. Three requests a day, and either count can go
+### 3. Three requests a day, and either list can go
 
 IGDB is asked three things: the five hundred most watched, which of them have a release row in the window,
 and the games in the window with twenty follows or more, most followed first, with the pinned games by
-their id. The third is Coming soon's query facing backwards. They are kept for the UTC day and, since a
-pin changes the question, for the set of pins.
+their id. The third is Coming soon's query facing backwards.
 
-A popularity type IGDB withdraws is no rows and no error, and so is a field it removes. Each list coming
-back empty is logged once a day, and the panel is then the other list. 0073 had the panel not drawn when
-type 34 went; now it would take both going.
+The two lists are kept apart, each for the UTC day: the most watched by the day alone, and the followed by
+the day and the set of pins, since a pin changes that question and no other. A change of pin asks for the
+followed again and for nothing else.
+
+**A list can go in two ways, and the panel is then the other list.**
+
+- **It comes back empty.** A popularity type IGDB withdraws is no rows and no error, and so is a field it
+  removes. Each list coming back with no game is logged once a day, in a line about that list alone. The
+  followed are judged without the pinned games, which are asked for by their id and come back whatever
+  became of the follows: counted with them, one pin would keep the line from ever being written. Coming
+  soon's own check counted them, and is judged the same way now.
+- **It cannot be asked for.** A request that fails costs its list and not the panel. The failure is
+  logged, the other list is the panel, and the failed list is not kept, so the next composition asks for
+  it alone. The panel is then partial, and the home page degraded as it is for any missing part: kept for
+  a minute and not cached, so a half panel is on nobody's cached page and is whole within a minute of IGDB
+  answering. The pins come by the followed's query, so with that list gone they are gone too.
+
+With both lists gone there is no panel. 0073 had it not drawn when type 34 went; now it takes both.
 
 ### 4. The heading says both
 
@@ -124,7 +138,7 @@ Coming soon's "most followed on IGDB, out in the next three months".
   people followed them. Grand Theft Auto VI leads it on the day this was written.
 - **Five of the nine can stand for weeks.** The most followed game of a season stays the most followed for
   its ninety days. 0073 accepted the same of a game that stays the most watched.
-- **Four fewer of the watched.** What the panel loses is the fifth to ninth most watched, which that day
+- **Five fewer of the watched.** What the panel loses is the fifth to ninth most watched, which that day
   were NBA 2K27, Moon Sweepers, Football Manager 27, Potato Please and Playrooms.
 - **A pin left on is a place taken.** Nothing takes a pin off when its game comes out.
 - **What IGDB's Twitch figure is remains unknown.** If it comes to count the largest games, the two lists

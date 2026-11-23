@@ -190,6 +190,12 @@ public sealed record ComingSoonRelease(
 /// </param>
 public sealed record JustOutCandidate(CalendarGame Game, double Watched, IReadOnlyList<ReleaseRow> Rows, int Hypes = 0);
 
+/// <summary>
+/// What IGDB answered for the Just out panel: the candidates, and whether one of the panel's two lists could
+/// not be asked for, so that they are the other's alone (ADR 0104).
+/// </summary>
+public sealed record JustOutCandidates(IReadOnlyList<JustOutCandidate> Games, bool Partial);
+
 /// <summary>One game on the Just out panel: the day of its first full release, and what it is out on now.</summary>
 public sealed record JustOutRelease(CalendarGame Game, DateOnly Released, IReadOnlyList<PlatformDto> Platforms);
 

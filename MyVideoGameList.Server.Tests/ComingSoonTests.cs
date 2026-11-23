@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Services;
@@ -353,7 +354,7 @@ public class ComingSoonJsonTests
             new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
     }
 
-    private static (IgdbService Service, StubHandler Igdb) NewService()
+    private static (IgdbService Service, StubHandler Igdb) NewService(ILogger<IgdbService>? logger = null)
     {
         var handler = new StubHandler();
 
@@ -364,7 +365,23 @@ public class ComingSoonJsonTests
         configuration["Igdb:ClientId"].Returns("client-id");
         configuration["Igdb:ClientSecret"].Returns("client-secret");
 
-        return (new IgdbService(factory, configuration, new MemoryCache(new MemoryCacheOptions()), NullLogger<IgdbService>.Instance), handler);
+        return (new IgdbService(factory, configuration, new MemoryCache(new MemoryCacheOptions()), logger ?? NullLogger<IgdbService>.Instance), handler);
+    }
+
+    [Fact]
+    public async Task GetComingSoonCandidatesAsync_OnlyThePinnedComeBack_SaysTheFollowedAreMissing()
+    {
+        // What IGDB dropping its follows looks like while a game is pinned: the pinned game comes back by its
+        // id, and nothing else does. The same answer with no pin is a followed game, and says nothing.
+        var logger = new ListLogger<IgdbService>();
+        var (service, _) = NewService(logger);
+
+        await service.GetComingSoonCandidatesAsync(new DateOnly(2026, 10, 25), []);
+        Assert.Empty(logger.Entries);
+
+        await service.GetComingSoonCandidatesAsync(new DateOnly(2026, 10, 25), [52189]);
+        var said = Assert.Single(logger.At(LogLevel.Warning));
+        Assert.Contains("has only what is pinned", said.Message);
     }
 
     [Fact]
