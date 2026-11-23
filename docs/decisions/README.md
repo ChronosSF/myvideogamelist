@@ -124,6 +124,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0103](0103-production-is-the-same-stacks-behind-an-approval.md) | Production is the same stacks from the same code, less the zone, which it looks up; `www` only redirects; one workflow deploys dev and production, and production's waits for an approval; its first deploy is made by hand, behind basic auth | Accepted; built, not deployed |
 | [0104](0104-just-out-takes-the-followed-beside-the-watched-and-the-admins-pin.md) | Just out is the new games people followed ahead of release beside the most watched on Twitch, turn about, because IGDB's Twitch figure does not count the largest games; and a Coming soon pin holds on Just out once its game is out | Implemented |
 | [0107](0107-production-keeps-fourteen-days-of-backups-and-a-restore-has-been-rehearsed.md) | Production's database keeps fourteen days of automated backups where dev's keeps seven, and a backup has been restored once, on dev, and found whole; putting a restored copy in service has not been tried | Implemented |
+| [0108](0108-production-launches-without-a-nat-gateway-and-in-one-zone-until-the-site-earns-them.md) | Production launches as dev is built, with no NAT gateway and its database in one zone: both were built, and shelved until the site earns what they cost. What guards a task is its security groups, and what guards the data is the backups | Accepted |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

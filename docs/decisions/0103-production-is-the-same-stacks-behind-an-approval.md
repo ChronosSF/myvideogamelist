@@ -9,7 +9,9 @@ means for production, and decides 0044's D-5 for it.
 
 > **Later note.** §2's three members of `Site` are four since
 > [0107](0107-production-keeps-fourteen-days-of-backups-and-a-restore-has-been-rehearsed.md): production's
-> database keeps fourteen days of backups where dev's keeps seven.
+> database keeps fourteen days of backups where dev's keeps seven. And two of the sizes §2 leaves "to be
+> decided" are: #415 and #416, the NAT gateway and the standby, are not for launch
+> ([0108](0108-production-launches-without-a-nat-gateway-and-in-one-zone-until-the-site-earns-them.md)).
 
 ## Context
 

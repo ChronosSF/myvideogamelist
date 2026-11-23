@@ -70,8 +70,9 @@ done and what it showed.
 - **A copy outside the account and the Region.** The backups are where the database is. Whether that is
   enough for production is the other line on #440.
 - **A standby.** Backups put back what was damaged or deleted; they do not keep the database answering
-  when its hardware fails. That is [#416](https://github.com/ChronosSF/myvideogamelist/issues/416)'s
-  question, and a separate one.
+  when its hardware fails. That is [#416](https://github.com/ChronosSF/myvideogamelist/issues/416)'s,
+  which [0108](0108-production-launches-without-a-nat-gateway-and-in-one-zone-until-the-site-earns-them.md)
+  leaves until the site earns it.
 
 ## Consequences
 
