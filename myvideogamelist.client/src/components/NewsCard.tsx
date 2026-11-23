@@ -84,13 +84,20 @@ export function NewsCard({ item, showGame = true, variant = 'row' }: NewsCardPro
         </a>
     );
 
+    /*
+     * An excerpt can hold a word longer than its column, a link above all, which Steam's text keeps.
+     * With nowhere to break it runs past the column, and the clamp's hidden overflow cuts it off at
+     * the edge, so `wrap-anywhere` lets it break inside the word.
+     */
     if (variant === 'lead') {
         return (
             <article className="border-t border-line pt-5">
                 {source}
                 {headline('mt-3 type-display text-3xl sm:text-4xl text-balance')}
                 {item.excerpt && (
-                    <p className="mt-4 max-w-prose text-lg leading-relaxed text-fg-soft line-clamp-4">{item.excerpt}</p>
+                    <p className="mt-4 max-w-prose text-lg leading-relaxed text-fg-soft line-clamp-4 wrap-anywhere">
+                        {item.excerpt}
+                    </p>
                 )}
             </article>
         );
@@ -127,7 +134,7 @@ export function NewsCard({ item, showGame = true, variant = 'row' }: NewsCardPro
                 {source}
                 {headline('mt-1.5 type-title text-lg leading-snug')}
                 {item.excerpt && (
-                    <p className="mt-1.5 text-sm text-fg-muted leading-relaxed line-clamp-2">
+                    <p className="mt-1.5 text-sm text-fg-muted leading-relaxed line-clamp-2 wrap-anywhere">
                         {item.excerpt}
                     </p>
                 )}
