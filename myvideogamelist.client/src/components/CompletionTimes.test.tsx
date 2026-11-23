@@ -193,15 +193,24 @@ describe('CompletionTimes sample-size floor', () => {
     });
 });
 
+/**
+ * IGDB's figures missing both ways the API says so: none for a game IGDB has no times for, and null for a
+ * read that failed (issue 352). The page draws them alike; only the loader's caching tells them apart.
+ */
+const WITHOUT_IGDB: [string, TimeToBeatDto | null][] = [
+    ['IGDB has none', { hastily: null, normally: null, completely: null, count: 0 }],
+    ['IGDB could not be asked', null],
+];
+
 describe('CompletionTimes without IGDB figures', () => {
-    it('still shows the section when members have logged enough', async () => {
+    it.each(WITHOUT_IGDB)('still shows the section when members have logged enough (%s)', async (_, timeToBeat) => {
         // Plenty of games IGDB reports no completion times for have been played by members.
         stubCommunityFetch(communityTimes(
             bucket('rushed', 0, null),
             bucket('normally', 6, 90 * 60),
             bucket('completionist', 0, null),
         ));
-        render(<CompletionTimes timeToBeat={null} gameId={1} />);
+        render(<CompletionTimes timeToBeat={timeToBeat} gameId={1} />);
 
         await waitFor(() => expect(screen.getByRole('heading', { name: 'MyVideoGameList members' })).toBeInTheDocument());
         expect(screen.getByRole('heading', { name: 'How long to beat' })).toBeInTheDocument();
@@ -209,9 +218,9 @@ describe('CompletionTimes without IGDB figures', () => {
         expect(screen.getByText('90h')).toBeInTheDocument();
     });
 
-    it('renders nothing at all when neither source has anything', async () => {
+    it.each(WITHOUT_IGDB)('renders nothing at all when neither source has anything (%s)', async (_, timeToBeat) => {
         stubCommunityFetch(communityTimes());
-        const { container } = render(<CompletionTimes timeToBeat={null} gameId={1} />);
+        const { container } = render(<CompletionTimes timeToBeat={timeToBeat} gameId={1} />);
         await settled();
 
         expect(container).toBeEmptyDOMElement();

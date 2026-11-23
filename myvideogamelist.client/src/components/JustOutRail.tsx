@@ -9,9 +9,10 @@ interface JustOutRailProps {
 }
 
 /**
- * The new games of the last three months most watched on Twitch, the newest first (ADR 0073), as a grid of
- * covers with when and on what under each, the newest leading at twice the size (ADR 0075). Each says the
- * day it came out as Coming soon writes a day, so the two panels read alike.
+ * The new games of the last three months that the most people followed on IGDB ahead of their release and
+ * the ones most watched on Twitch, the newest first (ADR 0073, 0104), as a grid of covers with when and on
+ * what under each, the newest leading at twice the size (ADR 0075). Each says the day it came out as Coming
+ * soon writes a day, so the two panels read alike.
  *
  * Two columns on a phone, three from `sm`, four from `lg` and six from `xl`, never five, and dense, so that
  * the cards after the lead fill the rows beside it. The lead takes four cells and the other eight one each,

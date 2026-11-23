@@ -177,14 +177,24 @@ public sealed record ComingSoonRelease(
     IReadOnlyList<PlatformDto> Platforms);
 
 /// <summary>
-/// A game the home page's Just out panel may show (ADR 0073): as IGDB described it, with how much it was
-/// watched on Twitch over IGDB's last day, and every one of its release rows.
+/// A game the home page's Just out panel may show (ADR 0073, 0104): as IGDB described it, with how much it
+/// was watched on Twitch over IGDB's last day, how many followed it ahead of its release, and every one of
+/// its release rows.
 /// </summary>
 /// <param name="Watched">
-/// IGDB's popularity value of type 34, Twitch's hours watched over twenty-four hours. Only its order means
-/// anything: more is more watched.
+/// IGDB's popularity value of type 34, Twitch's hours watched over twenty-four hours, or zero for a game
+/// that is not among the five hundred most watched. Only its order means anything: more is more watched.
 /// </param>
-public sealed record JustOutCandidate(CalendarGame Game, double Watched, IReadOnlyList<ReleaseRow> Rows);
+/// <param name="Hypes">
+/// IGDB's count of follows ahead of release, as Coming soon reads it; zero where IGDB counts none.
+/// </param>
+public sealed record JustOutCandidate(CalendarGame Game, double Watched, IReadOnlyList<ReleaseRow> Rows, int Hypes = 0);
+
+/// <summary>
+/// What IGDB answered for the Just out panel: the candidates, and whether one of the panel's two lists could
+/// not be asked for, so that they are the other's alone (ADR 0104).
+/// </summary>
+public sealed record JustOutCandidates(IReadOnlyList<JustOutCandidate> Games, bool Partial);
 
 /// <summary>One game on the Just out panel: the day of its first full release, and what it is out on now.</summary>
 public sealed record JustOutRelease(CalendarGame Game, DateOnly Released, IReadOnlyList<PlatformDto> Platforms);

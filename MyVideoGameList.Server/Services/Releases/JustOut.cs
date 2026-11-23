@@ -1,9 +1,10 @@
 namespace MyVideoGameList.Server.Services.Releases;
 
 /// <summary>
-/// The rules of the home page's Just out panel (ADR 0073): the new games of the last ninety days that are
-/// watched the most on Twitch, by IGDB's own count, with the admin's hides as the only correction. Coming
-/// soon's mirror: that panel ends where this one starts, on today.
+/// The rules of the home page's Just out panel (ADR 0073, 0104): the new games of the last ninety days that
+/// people followed the most ahead of their release and the ones watched the most on Twitch, both by IGDB's
+/// own count and turn about, with the admin's pins and hides as the only corrections. Coming soon's mirror:
+/// that panel ends where this one starts, on today.
 /// </summary>
 /// <remarks>
 /// Pure, like <see cref="ComingSoon"/> — candidates in, the panel out — so every rule is tested against rows
@@ -22,43 +23,111 @@ internal static class JustOut
     /// </summary>
     public const int MaxShown = 9;
 
-    /// <param name="candidates">What IGDB answered: the most watched games with a release row in the window.</param>
+    /// <param name="candidates">
+    /// What IGDB answered: the most watched and the most followed games with a release row in the window, and
+    /// the pinned ones.
+    /// </param>
+    /// <param name="pinned">The games the admin puts on the home page's panels whatever their counts.</param>
     /// <param name="hidden">The games the admin keeps off the home page's panels.</param>
     /// <param name="today">The UTC day the panel is composed on.</param>
-    /// <returns>At most <see cref="MaxShown"/> of the most watched games, the newest first.</returns>
+    /// <returns>
+    /// At most <see cref="MaxShown"/> games, the newest first: the pinned ones that pass the rules, then the
+    /// most followed and the most watched of the rest, turn about.
+    /// </returns>
     /// <remarks>
-    /// No floor beside the cap, unlike Coming soon's follows: on 2026-10-25 seventy games passed the rules,
-    /// and IGDB's counts of follows and ratings are small for a game this new — Madden NFL 27, eighth most
-    /// watched, had two follows and one rating — so a floor on either would cut games people are playing.
-    /// A game that should not be there is the admin's to hide.
+    /// <para>
+    /// Two counts, because each misses what the other sees (ADR 0104). Twitch's hours are the games being
+    /// played now, and IGDB's figure for the largest of them is next to nothing: on 2026-11-22 it had Grand
+    /// Theft Auto VI, three days out, far below its five hundred most watched, and Call of Duty and Phantom
+    /// Blade Zero beside it. The follows a game had ahead of its release are the games people were waiting
+    /// for, and say nothing of one nobody saw coming. That day the nine most watched and the thirty-eight
+    /// followed shared no game.
+    /// </para>
+    /// <para>
+    /// Turn about, the followed first, and not one list after the other: either alone fills the panel in a
+    /// busy season, and the other would never be seen. A game on both lists is taken once, where it comes
+    /// first, and the list it would have come from again moves on to its next.
+    /// </para>
+    /// <para>
+    /// The floor of follows is Coming soon's, so a game that panel could have shown is one this panel can.
+    /// No floor on the watched, as before: IGDB's counts of follows and ratings are small for a game this
+    /// new — Madden NFL 27, eighth most watched on 2026-10-25, had two follows and one rating — so a floor on
+    /// either would cut games people are playing. A game that should not be there is the admin's to hide,
+    /// and one that should is the admin's to pin: a pin carries a game past both counts and ahead of the
+    /// rest, but never past the dates.
+    /// </para>
     /// </remarks>
     public static IReadOnlyList<JustOutRelease> Compose(
-        IEnumerable<JustOutCandidate> candidates, IReadOnlySet<int> hidden, DateOnly today)
+        IEnumerable<JustOutCandidate> candidates, IReadOnlySet<int> pinned, IReadOnlySet<int> hidden, DateOnly today)
     {
         var windowStarts = today.AddDays(-WindowDays);
-        var eligible = new List<(JustOutRelease Release, double Watched)>();
+        var eligible = new List<(JustOutRelease Release, double Watched, int Hypes, bool Pinned)>();
 
         foreach (var candidate in candidates.DistinctBy(c => c.Game.Id))
         {
             var game = candidate.Game;
             if (hidden.Contains(game.Id)) continue;
 
-            // Stated again although the query asks the same, as Coming soon states its own.
+            // Stated again although the queries ask the same, as Coming soon states its own: a pinned game is
+            // asked for by its id, so the queries' filters have not seen it.
             if (!ComingSoon.GameTypes.Contains(game.GameType ?? IgdbGameTypes.MainGame) || game.VersionParentId is not null) continue;
 
             if (FirstRelease(game, candidate.Rows, today, windowStarts) is { } release)
-                eligible.Add((release, candidate.Watched));
+                eligible.Add((release, candidate.Watched, candidate.Hypes, pinned.Contains(game.Id)));
         }
 
-        return eligible
+        var pins = eligible
+            .Where(e => e.Pinned)
+            .OrderByDescending(e => e.Hypes)
+            .ThenByDescending(e => e.Watched)
+            .ThenBy(e => e.Release.Game.Id)
+            .Select(e => e.Release);
+        var followed = eligible
+            .Where(e => !e.Pinned && e.Hypes >= ComingSoon.MinHypes)
+            .OrderByDescending(e => e.Hypes)
+            .ThenBy(e => e.Release.Game.Id)
+            .Select(e => e.Release);
+        var watched = eligible
+            .Where(e => !e.Pinned && e.Watched > 0)
             .OrderByDescending(e => e.Watched)
             .ThenBy(e => e.Release.Game.Id)
+            .Select(e => e.Release);
+
+        return pins
+            .Concat(TurnAbout(followed, watched))
             .Take(MaxShown)
-            .Select(e => e.Release)
             // The newest first, so that the panel reads back from today as Coming soon reads forward.
             .OrderByDescending(r => r.Released)
             .ThenBy(r => r.Game.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// One game from the first list and then one from the second, and so on, each giving its next game that
+    /// the other has not given already, and running on alone once the other is spent.
+    /// </summary>
+    private static IEnumerable<JustOutRelease> TurnAbout(IEnumerable<JustOutRelease> first, IEnumerable<JustOutRelease> second)
+    {
+        var taken = new HashSet<int>();
+        using var a = first.GetEnumerator();
+        using var b = second.GetEnumerator();
+
+        var (moreA, moreB) = (true, true);
+        while (moreA || moreB)
+        {
+            if (moreA && (moreA = Next(a))) yield return a.Current;
+            if (moreB && (moreB = Next(b))) yield return b.Current;
+        }
+
+        bool Next(IEnumerator<JustOutRelease> list)
+        {
+            while (list.MoveNext())
+            {
+                if (taken.Add(list.Current.Game.Id)) return true;
+            }
+
+            return false;
+        }
     }
 
     /// <summary>

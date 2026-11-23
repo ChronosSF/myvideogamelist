@@ -108,7 +108,15 @@ public record RelatedGameDto(int Id, string Name, string? CoverImageUrl, int? Re
 /// and is frequently in single digits — show it, or the numbers read as more authoritative
 /// than they are.
 /// </summary>
-public record TimeToBeatDto(int? Hastily, int? Normally, int? Completely, int Count);
+/// <remarks>
+/// Null on <see cref="GameDetailsDto.TimeToBeat"/> when IGDB could not be asked, which the page reads
+/// as a render to keep off the edge; <see cref="None"/> when it was asked and has no times (#352).
+/// </remarks>
+public record TimeToBeatDto(int? Hastily, int? Normally, int? Completely, int Count)
+{
+    /// <summary>A game IGDB has no completion times for: no submissions and no averages.</summary>
+    public static readonly TimeToBeatDto None = new(null, null, null, 0);
+}
 
 /// <summary>
 /// Multiplayer capability folded across every platform the game reports: a flag is true if any

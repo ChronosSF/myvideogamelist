@@ -343,11 +343,7 @@ public class IgdbService(
     {
         var cacheKey = $"igdb_game|{id}";
         if (cache.TryGetValue(cacheKey, out GameDetail? cached))
-        {
-            return cached is null
-                ? null
-                : WithRelated(cached, await GetRelatedGamesAsync(id, cached.EditionOf, cached.SeriesIds, cancellationToken));
-        }
+            return cached is null ? null : await WithPartsAsync(cached, cancellationToken);
 
         var query = new StringBuilder()
             .AppendLine(GameDetailFields)
@@ -365,23 +361,19 @@ public class IgdbService(
             return null;
         }
 
-        // The completion times and the related games each need only what the detail query answered, so
-        // they go out together: a page nobody has asked for lately waits on one more request, not two.
-        // Neither throws for IGDB's failure, each answering null for its part of the page.
         var editionOf = RelatedGames.EditionOf(igdbGame.GameType, igdbGame.VersionParent?.Id);
         var seriesIds = (igdbGame.Collections ?? []).Select(c => c.Id)
             .Concat(editionOf is null ? [] : igdbGame.VersionParent?.Collections ?? [])
             .ToList();
-        var timeToBeat = FetchTimeToBeatAsync(id, cancellationToken);
-        var related = GetRelatedGamesAsync(id, editionOf, seriesIds, cancellationToken);
-        await Task.WhenAll(timeToBeat, related);
-
-        var details = MapToDetailsDto(igdbGame, await timeToBeat);
+        var details = MapToDetailsDto(igdbGame);
         var detail = new GameDetail(MapToGameDto(igdbGame) with { Details = details }, details, editionOf, seriesIds);
-        cache.Set(cacheKey, detail, TimeSpan.FromMinutes(30));
+        cache.Set(cacheKey, detail, GameLifetime);
 
-        return WithRelated(detail, await related);
+        return await WithPartsAsync(detail, cancellationToken);
     }
+
+    /// <summary>How long a game is kept as the detail query answered it, and its completion times.</summary>
+    private static readonly TimeSpan GameLifetime = TimeSpan.FromMinutes(30);
 
     /// <summary>
     /// A game as the detail query reads it, with what its related games are asked by: the game it is an edition
@@ -389,17 +381,72 @@ public class IgdbService(
     /// </summary>
     private sealed record GameDetail(GameDto Game, GameDetailsDto Details, int? EditionOf, IReadOnlyList<int> SeriesIds);
 
-    private static GameDto WithRelated(GameDetail detail, RelatedGamesDto? related) =>
-        detail.Game with { Details = detail.Details with { Related = related } };
+    /// <summary>
+    /// The game with the two parts of its page that are kept apart from it: its completion times and its related
+    /// games. Each needs only what the detail query answered, so they go out together, and a page nobody has asked
+    /// for lately waits on one more request, not two. Neither throws for IGDB's failure: each answers null for its
+    /// part of the page, which the page reads as a render to keep off the edge.
+    /// </summary>
+    private async Task<GameDto> WithPartsAsync(GameDetail detail, CancellationToken cancellationToken)
+    {
+        var id = detail.Game.Id;
+        var timeToBeat = GetTimeToBeatAsync(id, cancellationToken);
+        var related = GetRelatedGamesAsync(id, detail.EditionOf, detail.SeriesIds, cancellationToken);
+        await Task.WhenAll(timeToBeat, related);
+
+        return detail.Game with
+        {
+            Details = detail.Details with { TimeToBeat = await timeToBeat, Related = await related },
+        };
+    }
 
     /// <summary>How long a game's related games are kept. A series and a game's children change seldom.</summary>
     private static readonly TimeSpan RelatedGamesLifetime = TimeSpan.FromHours(6);
 
     /// <summary>
-    /// How long a failed read of them is kept: long enough that a page nobody may cache, read over and over,
-    /// does not ask IGDB again on every render, and short enough that the rail is soon back.
+    /// How long a failed read of a part of the game page, its completion times or its related games, is kept:
+    /// long enough that a page nobody may cache, read over and over, does not ask IGDB again on every render, and
+    /// short enough that the part is soon back.
     /// </summary>
-    private static readonly TimeSpan RelatedGamesFailureLifetime = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan PartFailureLifetime = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// A game's community completion times (ADR 0017). Supplementary to the page, so a failure degrades to null
+    /// rather than taking the game down with it, and is deliberately caught here: the page renders without them,
+    /// and reads the null as a render to keep off the edge. A game IGDB has no times for is
+    /// <see cref="TimeToBeatDto.None"/>, an answer like any other, kept as long as one with times.
+    /// </summary>
+    /// <remarks>
+    /// Kept apart from the game's own entry, and a failure for a minute only. Until #352 they were kept with the
+    /// game and a failure answered as a game with no times does, so one failed request left the page without
+    /// them for the game's half hour, and shared at the edge as whole for up to a day.
+    /// </remarks>
+    private async Task<TimeToBeatDto?> GetTimeToBeatAsync(int gameId, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"igdb_time_to_beat|{gameId}";
+        if (cache.TryGetValue(cacheKey, out TimeToBeatDto? cached))
+            return cached;
+
+        var query = new StringBuilder()
+            .AppendLine("fields game_id,hastily,normally,completely,count;")
+            .AppendLine($"where game_id = {gameId};")
+            .AppendLine("limit 1;")
+            .ToString();
+
+        try
+        {
+            var rows = await QueryAsync<IgdbGameTimeToBeat>(TimeToBeatEndpoint, query, cancellationToken);
+            var timeToBeat = MapTimeToBeat(rows.FirstOrDefault());
+            cache.Set(cacheKey, timeToBeat, GameLifetime);
+            return timeToBeat;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Completion times unavailable for game {GameId}.", gameId);
+            cache.Set<TimeToBeatDto?>(cacheKey, null, PartFailureLifetime);
+            return null;
+        }
+    }
 
     /// <summary>
     /// The rest of a game's series, and its remakes, remasters and editions (#450, ADR 0084). Supplementary to
@@ -408,8 +455,8 @@ public class IgdbService(
     /// </summary>
     /// <remarks>
     /// Kept apart from the game's own entry, and a failure for a minute only: the game is kept for half an hour,
-    /// and a failure kept with it would degrade every render of the page for that long — the completion times'
-    /// way, which #352 records.
+    /// and a failure kept with it would degrade every render of the page for that long, as the completion times'
+    /// did until #352.
     /// </remarks>
     private async Task<RelatedGamesDto?> GetRelatedGamesAsync(
         int id, int? editionOf, IReadOnlyCollection<int> seriesIds, CancellationToken cancellationToken)
@@ -438,7 +485,7 @@ public class IgdbService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Related games unavailable for game {GameId}.", id);
-            cache.Set<RelatedGamesDto?>(cacheKey, null, RelatedGamesFailureLifetime);
+            cache.Set<RelatedGamesDto?>(cacheKey, null, PartFailureLifetime);
             return null;
         }
     }
@@ -1053,9 +1100,11 @@ public class IgdbService(
             logger.LogWarning("IGDB's upcoming games filled a page of {MaxBatchSize}; the Coming soon candidates are partial.", MaxBatchSize);
 
         // What a field IGDB has removed looks like: no rows and no error. Said once a day, since an empty
-        // panel is otherwise just a panel that is not drawn.
-        if (games.Count == 0)
-            logger.LogWarning("IGDB answered no upcoming games with {MinHypes} follows or more; the Coming soon panel will be empty.", ComingSoon.MinHypes);
+        // panel is otherwise just a panel that is not drawn. Judged without the pinned games, which are asked
+        // for by their id and come back whatever became of the follows: counted with them, one pin would keep
+        // this from ever being said.
+        if (games.All(g => pins.Contains(g.Id)))
+            logger.LogWarning("IGDB answered no upcoming games with {MinHypes} follows or more; the Coming soon panel has only what is pinned.", ComingSoon.MinHypes);
 
         cache.Set(cacheKey, result, ComingSoonLifetime);
         return result;
@@ -1122,46 +1171,126 @@ public class IgdbService(
             .ToList();
 
     /// <summary>
-    /// How long the Just out panel's candidates are kept: a day, keyed by the UTC day, as Coming soon's are.
-    /// IGDB calculates its Twitch figures once a day, so asking more often learns nothing.
+    /// How long each of the Just out panel's two lists is kept: a day, keyed by the UTC day, as Coming soon's
+    /// candidates are. IGDB calculates its Twitch figures once a day, so asking more often learns nothing.
     /// </summary>
     private static readonly TimeSpan JustOutLifetime = TimeSpan.FromHours(24);
 
-    public async Task<IReadOnlyList<JustOutCandidate>> GetJustOutCandidatesAsync(
-        DateOnly today, CancellationToken cancellationToken = default)
+    public async Task<JustOutCandidates> GetJustOutCandidatesAsync(
+        DateOnly today, IReadOnlyCollection<int> pinned, CancellationToken cancellationToken = default)
     {
-        var cacheKey = $"igdb_just_out|{today:yyyy-MM-dd}";
-        if (cache.TryGetValue(cacheKey, out IReadOnlyList<JustOutCandidate>? cached) && cached is not null)
+        var pins = pinned.Distinct().Order().ToList();
+
+        // Two lists, asked for, kept and lost apart (ADR 0104 §3): the most watched, and the games people
+        // followed ahead of their release, the largest of which IGDB's Twitch figure does not count, with the
+        // pinned ones. A list that cannot be asked for is not kept, so the next composition asks for it alone.
+        //
+        // Degrades on purpose where one fails beside the other: that costs the panel a list and not the
+        // panel, and the answer says it is partial, so that the home page is not kept with half of it. What
+        // counts as the caller leaving is the caller's token, as in the home composite: somebody else's
+        // timeout is an OperationCanceledException too.
+        JustOutWatched? watched = null;
+        try
+        {
+            watched = await GetJustOutWatchedAsync(today, cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "IGDB could not be asked for the new games most watched on Twitch; the Just out panel is without them.");
+        }
+
+        IReadOnlyList<IgdbComingSoonGame>? followed = null;
+        try
+        {
+            followed = await GetJustOutFollowedAsync(today, pins, cancellationToken);
+        }
+        // Caught only beside the other list. With neither there is no panel to compose, and the failure is the
+        // caller's to see.
+        catch (Exception ex) when (watched is not null && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "IGDB could not be asked for the new games people followed ahead of their release; the Just out panel is without them and without its pins.");
+        }
+
+        // A game both watched and followed came back twice, the same both times, and is one candidate.
+        IEnumerable<IgdbComingSoonGame> mostWatched = watched?.Games ?? [];
+        var games = mostWatched
+            .Concat(followed ?? [])
+            .DistinctBy(g => g.Id)
+            .Select(g => new JustOutCandidate(
+                MapToPanelGame(g), watched?.Figures.GetValueOrDefault(g.Id) ?? 0, MapToPanelRows(g), g.Hypes ?? 0))
+            .ToList();
+
+        return new JustOutCandidates(games, Partial: watched is null || followed is null);
+    }
+
+    /// <summary>The Just out panel's most watched list, as IGDB answered it.</summary>
+    /// <param name="Figures">IGDB's Twitch figure for each of its five hundred most watched games, by game.</param>
+    /// <param name="Games">Which of those are new games with a release row in the window.</param>
+    private sealed record JustOutWatched(IReadOnlyDictionary<int, double> Figures, IReadOnlyList<IgdbComingSoonGame> Games);
+
+    private async Task<JustOutWatched> GetJustOutWatchedAsync(DateOnly today, CancellationToken cancellationToken)
+    {
+        // The same for everybody and nothing to do with the pins, so one copy a day serves every reader and a
+        // change of pin asks for none of it again.
+        var cacheKey = $"igdb_just_out_watched|{today:yyyy-MM-dd}";
+        if (cache.TryGetValue(cacheKey, out JustOutWatched? cached) && cached is not null)
             return cached;
 
         // Two requests, since a popularity row cannot be filtered by its game's release dates: the most
         // watched games first, then which of them came out in the window. Five hundred of the first held
-        // seventy that passed the rules on 2026-10-25, for a panel of ten.
+        // seventy that passed the rules on 2026-10-25.
         var primitives = await QueryAsync<IgdbPopularityPrimitive>(
             PopularityEndpoint, BuildJustOutPopularityQuery(), cancellationToken);
 
         // Sorted most watched first, so the first row for a game is its highest.
-        var watched = new Dictionary<int, double>();
+        var figures = new Dictionary<int, double>();
         foreach (var p in primitives)
         {
-            if (p is { GameId: int id, Value: double value }) watched.TryAdd(id, value);
+            if (p is { GameId: int id, Value: double value }) figures.TryAdd(id, value);
         }
 
-        IReadOnlyList<JustOutCandidate> result = [];
-        if (watched.Count > 0)
-        {
-            var games = await QueryAsync<IgdbComingSoonGame>(
-                GamesEndpoint, BuildJustOutQuery(today, watched.Keys), cancellationToken);
-            result = games.Select(g => new JustOutCandidate(MapToPanelGame(g), watched[g.Id], MapToPanelRows(g))).ToList();
-        }
+        IReadOnlyList<IgdbComingSoonGame> games = figures.Count == 0
+            ? []
+            : await QueryAsync<IgdbComingSoonGame>(GamesEndpoint, BuildJustOutQuery(today, figures.Keys), cancellationToken);
 
-        // What a removed field or popularity type looks like: no rows and no error. Said once a day, since an
-        // empty panel is otherwise just a panel that is not drawn.
-        if (result.Count == 0)
-            logger.LogWarning("IGDB answered no games watched on Twitch that came out in the last {WindowDays} days; the Just out panel will be empty.", JustOut.WindowDays);
+        // What a removed popularity type looks like: no rows and no error. Said once a day, and of this list
+        // alone, since a panel short of one of its lists is otherwise just a panel.
+        if (games.Count == 0)
+            logger.LogWarning("IGDB answered no games watched on Twitch that came out in the last {WindowDays} days; the Just out panel is without its most watched.", JustOut.WindowDays);
 
+        var result = new JustOutWatched(figures, games);
         cache.Set(cacheKey, result, JustOutLifetime);
         return result;
+    }
+
+    /// <summary>
+    /// The Just out panel's followed list, as IGDB answered it: the new games with a release row in the window
+    /// that enough people followed, and the pinned ones.
+    /// </summary>
+    private async Task<IReadOnlyList<IgdbComingSoonGame>> GetJustOutFollowedAsync(
+        DateOnly today, IReadOnlyList<int> pins, CancellationToken cancellationToken)
+    {
+        // The same for everybody, so one copy a day serves every reader; a pin changes the question.
+        var cacheKey = $"igdb_just_out_followed|{today:yyyy-MM-dd}|{string.Join(',', pins)}";
+        if (cache.TryGetValue(cacheKey, out IReadOnlyList<IgdbComingSoonGame>? cached) && cached is not null)
+            return cached;
+
+        IReadOnlyList<IgdbComingSoonGame> games = await QueryAsync<IgdbComingSoonGame>(
+            GamesEndpoint, BuildJustOutAwaitedQuery(today, pins), cancellationToken);
+
+        // What a removed field looks like: no rows and no error. Said once a day, and of this list alone.
+        // Judged without the pinned games, which are asked for by their id and come back whatever became of
+        // the follows: counted with them, one pin would keep this from ever being said.
+        if (games.All(g => pins.Contains(g.Id)))
+            logger.LogWarning("IGDB answered no games out in the last {WindowDays} days with {MinHypes} follows or more; the Just out panel is without its most followed.", JustOut.WindowDays, ComingSoon.MinHypes);
+
+        // Sixty-nine on 2026-11-22, against a page of five hundred. The answer is in follows order, so the
+        // most followed are still at the top of it, and it is kept.
+        if (games.Count == MaxBatchSize)
+            logger.LogWarning("IGDB's newly released games with follows filled a page of {MaxBatchSize}; the Just out candidates are partial.", MaxBatchSize);
+
+        cache.Set(cacheKey, games, JustOutLifetime);
+        return games;
     }
 
     /// <summary>The Just out panel's first query: the most watched games on Twitch, most watched first.</summary>
@@ -1175,7 +1304,7 @@ public class IgdbService(
 
     /// <summary>
     /// The Just out panel's second query: which of the most watched games are new games with a release row
-    /// stored in the window, with every release row and its platform.
+    /// stored in the window, with every release row, its platform, and the game's follows.
     /// </summary>
     /// <remarks>
     /// By a release row and not by <c>first_release_date</c>, for Coming soon's reason: that is an early-access
@@ -1192,6 +1321,37 @@ public class IgdbService(
             .AppendLine($"where id = ({string.Join(',', ids)})"
                 + $" & game_type = ({string.Join(',', ComingSoon.GameTypes)}) & version_parent = null"
                 + $" & release_dates.date >= {UnixDay(from)} & release_dates.date < {UnixDay(today)};")
+            .AppendLine($"limit {MaxBatchSize};")
+            .ToString();
+    }
+
+    /// <summary>
+    /// The Just out panel's third query: the new games with a release row stored in the window that people
+    /// followed ahead of their release, most followed first, and the pinned games by their id, whatever they
+    /// are, for <see cref="JustOut"/> to judge by the same rules.
+    /// </summary>
+    /// <remarks>
+    /// Coming soon's query turned to face the other way (ADR 0104): the same floor of follows, in the query so
+    /// that one page holds every candidate, and the same range by a release row and not by
+    /// <c>first_release_date</c>. It is the way in for the games IGDB's Twitch figure does not count. Read on
+    /// 2026-11-22, that figure was 0.00000025 for Grand Theft Auto VI, three days out and followed by 1,584,
+    /// against 0.000226 for the five-hundredth game, and zero for Grand Theft Auto V, League of Legends and
+    /// Fortnite.
+    /// </remarks>
+    internal static string BuildJustOutAwaitedQuery(DateOnly today, IReadOnlyCollection<int> pinned)
+    {
+        var from = today.AddDays(-JustOut.WindowDays);
+
+        var awaited = $"game_type = ({string.Join(',', ComingSoon.GameTypes)}) & version_parent = null"
+            + $" & hypes >= {ComingSoon.MinHypes}"
+            + $" & release_dates.date >= {UnixDay(from)} & release_dates.date < {UnixDay(today)}";
+
+        var where = pinned.Count == 0 ? awaited : $"({awaited}) | id = ({string.Join(',', pinned)})";
+
+        return new StringBuilder()
+            .AppendLine(ComingSoonFields)
+            .AppendLine($"where {where};")
+            .AppendLine("sort hypes desc;")
             .AppendLine($"limit {MaxBatchSize};")
             .ToString();
     }
@@ -1341,31 +1501,6 @@ public class IgdbService(
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Community completion times for one game. Supplementary to the page, so a failure here
-    /// degrades to no completion-time section rather than taking the whole game down with it.
-    /// </summary>
-    private async Task<IgdbGameTimeToBeat?> FetchTimeToBeatAsync(
-        int gameId, CancellationToken cancellationToken)
-    {
-        var query = new StringBuilder()
-            .AppendLine("fields game_id,hastily,normally,completely,count;")
-            .AppendLine($"where game_id = {gameId};")
-            .AppendLine("limit 1;")
-            .ToString();
-
-        try
-        {
-            var rows = await QueryAsync<IgdbGameTimeToBeat>(TimeToBeatEndpoint, query, cancellationToken);
-            return rows.FirstOrDefault();
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "Completion times unavailable for game {GameId}.", gameId);
-            return null;
-        }
-    }
-
     private static GameDto MapToGameDto(IgdbGame g)
     {
         var coverUrl = g.Cover?.ImageId is { } coverId
@@ -1450,7 +1585,11 @@ public class IgdbService(
     /// Builds the detail-only half of a game. Named entities are flattened to their names - the
     /// page renders them as chips and the ids are not linkable anywhere yet.
     /// </summary>
-    internal static GameDetailsDto MapToDetailsDto(IgdbGame g, IgdbGameTimeToBeat? timeToBeat)
+    /// <remarks>
+    /// The completion times and the related games are not the detail query's, and are left null here for
+    /// <see cref="WithPartsAsync"/> to fill in.
+    /// </remarks>
+    internal static GameDetailsDto MapToDetailsDto(IgdbGame g)
     {
         var screenshots = g.Screenshots?
                 .Where(sc => sc.ImageId is not null)
@@ -1459,7 +1598,7 @@ public class IgdbService(
             ?? [];
 
         return new GameDetailsDto(
-            MapTimeToBeat(timeToBeat),
+            TimeToBeat: null,
             screenshots,
             MapRelatedGames(g.SimilarGames),
             MapRelatedGames(g.Dlcs),
@@ -1480,15 +1619,16 @@ public class IgdbService(
         entities?.Select(e => e.Name).OfType<string>().ToList() ?? [];
 
     /// <summary>
-    /// Drops rows with no submissions behind them: a zero-count average is not an average.
+    /// IGDB's row for a game, or <see cref="TimeToBeatDto.None"/> for none, and for a row with no submissions
+    /// behind it or no times in it: a zero-count average is not an average.
     /// </summary>
-    internal static TimeToBeatDto? MapTimeToBeat(IgdbGameTimeToBeat? t)
+    internal static TimeToBeatDto MapTimeToBeat(IgdbGameTimeToBeat? t)
     {
-        if (t is null) return null;
+        if (t is null) return TimeToBeatDto.None;
 
         var count = t.Count ?? 0;
-        if (count <= 0) return null;
-        if (t.Hastily is null && t.Normally is null && t.Completely is null) return null;
+        if (count <= 0) return TimeToBeatDto.None;
+        if (t.Hastily is null && t.Normally is null && t.Completely is null) return TimeToBeatDto.None;
 
         return new TimeToBeatDto(t.Hastily, t.Normally, t.Completely, count);
     }

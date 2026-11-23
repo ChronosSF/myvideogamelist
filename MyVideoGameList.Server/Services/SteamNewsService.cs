@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
@@ -49,11 +50,31 @@ public partial class SteamNewsService(
     /// </remarks>
     private const string AnnouncementsFeed = "steam_community_announcements";
 
-    /// <summary>How many characters of article body Steam should return.</summary>
-    private const int SteamMaxLength = 600;
+    /// <summary>How many characters of each item's text Steam is asked for: none, which is all of it.</summary>
+    /// <remarks>
+    /// Asked for any other length, Steam answers with a blurb instead of the body. The blurb is cut at
+    /// that length, and its markup is already gone, each tag deleted with nothing in its place. So the
+    /// text of two blocks runs together ("AircraftHornet", "Anti-Cheat UpdateWe"), and nothing done to
+    /// it afterwards can find the word boundary again. An <c>[img]</c> leaves its address behind as
+    /// well. So the body is asked for, the excerpt is made here (<see cref="ToExcerpt"/>), and only the
+    /// excerpt is kept (<see cref="CachedItem"/>). It is still one request a feed, and the cache holds
+    /// what it held. Steam compresses the answer when asked, which <see cref="SteamNewsClient"/>
+    /// does. Measured across 34 games' feeds in November 2026, the compressed bodies
+    /// came to about twice the bytes of the uncompressed blurbs, half again at the median.
+    /// </remarks>
+    private const int SteamMaxLength = 0;
 
     /// <summary>Length of the plain-text excerpt kept after stripping markup.</summary>
     private const int ExcerptLength = 180;
+
+    /// <summary>The most of one body that is read for its excerpt, in characters.</summary>
+    /// <remarks>
+    /// The longest body seen was 78,739 characters, and the slowest to excerpt took 3.5 ms, so no
+    /// excerpt seen is changed by this. It is here so that a body longer than any seen costs a reader
+    /// no more than one of those. The excerpt is the post's opening, so whatever is cut off was never
+    /// going to be in it.
+    /// </remarks>
+    internal const int MaxBodyScanned = 100_000;
 
     /// <summary>
     /// Ceiling on how many games one aggregate call will fan out to. Each game is a separate
@@ -116,7 +137,18 @@ public partial class SteamNewsService(
     /// whether the copy is only the empty stand-in for a fetch that failed.
     /// </summary>
     private sealed record CachedFeed(
-        IReadOnlyList<SteamNewsItem> Items, DateTimeOffset FetchedAt, DateTimeOffset ExpiresAt, bool Failed);
+        IReadOnlyList<CachedItem> Items, DateTimeOffset FetchedAt, DateTimeOffset ExpiresAt, bool Failed);
+
+    /// <summary>
+    /// One item as the cache keeps it: what a reader is sent of it, its body already made into the
+    /// excerpt and dropped.
+    /// </summary>
+    /// <remarks>
+    /// The body is a news post whole, tens of kilobytes for a long patch note. Kept as it came, it would
+    /// sit in the cache for every reader of the feed in place of the 180 characters any of them is sent.
+    /// </remarks>
+    internal sealed record CachedItem(
+        string? Gid, string? Title, string? Url, string? FeedLabel, long Date, string? Excerpt);
 
     public async Task<IReadOnlyList<NewsItemDto>> GetNewsForGameAsync(
         int igdbGameId, int count = 5, CancellationToken cancellationToken = default)
@@ -292,7 +324,7 @@ public partial class SteamNewsService(
     /// <summary>
     /// One feed, from the cache or from Steam, never throwing.
     /// </summary>
-    private async Task<IReadOnlyList<SteamNewsItem>> FetchFeedAsync(
+    private async Task<IReadOnlyList<CachedItem>> FetchFeedAsync(
         Feed feed, CancellationToken cancellationToken)
     {
         // Noted whether the copy is there or not: this is how the refresh learns which feeds are
@@ -318,7 +350,7 @@ public partial class SteamNewsService(
     /// The items, empty when Steam says the AppID has no accessible feed, or <c>null</c> when Steam
     /// did not answer — which a reader and the refresh treat differently.
     /// </returns>
-    private async Task<IReadOnlyList<SteamNewsItem>?> RequestFeedAsync(
+    private async Task<IReadOnlyList<CachedItem>?> RequestFeedAsync(
         Feed feed, CancellationToken cancellationToken)
     {
         try
@@ -326,7 +358,7 @@ public partial class SteamNewsService(
             var url = $"{NewsEndpoint}?appid={feed.AppId}&count={feed.Count}&maxlength={SteamMaxLength}"
                 + $"&feeds={AnnouncementsFeed}&format=json";
 
-            var client = httpClientFactory.CreateClient("Steam");
+            var client = httpClientFactory.CreateClient(SteamNewsClient.Name);
             using var response = await client.GetAsync(url, cancellationToken);
 
             // A retired or region-locked AppID answers 4xx. That is a normal outcome for a game
@@ -342,7 +374,11 @@ public partial class SteamNewsService(
             var payload = await response.Content
                 .ReadFromJsonAsync<SteamNewsResponse>(cancellationToken);
 
-            return payload?.AppNews?.NewsItems ?? [];
+            // The bodies go no further than this: each is made into its excerpt here, once a fetch,
+            // and only that is kept.
+            return payload?.AppNews?.NewsItems?
+                .Select(item => Condense(item, ToExcerpt, logger, feed.AppId))
+                .ToList() ?? [];
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -353,7 +389,7 @@ public partial class SteamNewsService(
         }
     }
 
-    private void Store(Feed feed, IReadOnlyList<SteamNewsItem> items, bool failed)
+    private void Store(Feed feed, IReadOnlyList<CachedItem> items, bool failed)
     {
         var now = clock.GetUtcNow();
         var lifetime = items.Count > 0 ? FeedCacheLifetime : EmptyFeedCacheLifetime;
@@ -362,9 +398,36 @@ public partial class SteamNewsService(
     }
 
     /// <summary>
-    /// Projects a raw Steam item onto the client DTO, dropping anything unusable.
+    /// One item as Steam sent it, reduced to what the cache keeps: its body made into its excerpt by
+    /// <paramref name="excerpt"/>, which is <see cref="ToExcerpt"/> but for a test.
     /// </summary>
-    internal static NewsItemDto? MapToDto(SteamNewsItem item, GameDto game)
+    /// <remarks>
+    /// Every expression the excerpt runs has a timeout. One that fires costs this item its excerpt, so it
+    /// is shown with its headline alone, and never costs the feed the other items came in.
+    /// </remarks>
+    internal static CachedItem Condense(
+        SteamNewsItem item, Func<string?, string?> excerpt, ILogger logger, int appId)
+    {
+        string? text;
+        try
+        {
+            text = excerpt(item.Contents);
+        }
+        catch (RegexMatchTimeoutException ex)
+        {
+            logger.LogWarning(
+                ex, "Steam news item {Gid} of AppID {AppId} took too long to excerpt and is shown without one.",
+                item.Gid, appId);
+            text = null;
+        }
+
+        return new CachedItem(item.Gid, item.Title, item.Url, item.FeedLabel, item.Date, text);
+    }
+
+    /// <summary>
+    /// Projects a cached Steam item onto the client DTO, dropping anything unusable.
+    /// </summary>
+    internal static NewsItemDto? MapToDto(CachedItem item, GameDto game)
     {
         if (string.IsNullOrWhiteSpace(item.Gid)
             || string.IsNullOrWhiteSpace(item.Title)
@@ -385,7 +448,7 @@ public partial class SteamNewsService(
             Title: CleanTitle(item.Title),
             Url: item.Url,
             Source: string.IsNullOrWhiteSpace(item.FeedLabel) ? "Steam" : item.FeedLabel,
-            Excerpt: ToExcerpt(item.Contents),
+            Excerpt: item.Excerpt,
             PublishedAt: DateTimeOffset.FromUnixTimeSeconds(item.Date));
     }
 
@@ -403,23 +466,38 @@ public partial class SteamNewsService(
     }
 
     /// <summary>
-    /// Flattens Steam's mix of BBCode and HTML into a short plain-text excerpt.
+    /// Flattens the body of a Steam news post, BBCode with the odd HTML tag, into a short plain-text
+    /// excerpt.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Sanitizing here rather than on the client is deliberate: the DTO is documented as plain
     /// text, so no consumer has a reason to render it as markup.
+    /// </para>
+    /// <para>
+    /// Every tag stands for a word boundary, except the ones that mark words inside a line: bold, a
+    /// link. Those leave nothing in their place, so <c>([b][url=…]Report[/url][/b])</c> reads
+    /// "(Report)". Only the tags Steam's posts were seen to use count as tags. Any other bracketed
+    /// word ("[Frontier]", "[Xbox only]") is the author's text and is kept. So is a bracket the author
+    /// escaped (<c>\[CLASSIFIED]</c>), without its backslash. An image or a video is removed whole,
+    /// because an address is not prose. A spoiler's text is kept, as Steam's own blurb kept it.
+    /// </para>
+    /// <para>
+    /// An image's address is removed again afterwards, in the two forms Steam's blurb used to leave
+    /// behind (see <see cref="SteamMaxLength"/>), for an address outside any block.
+    /// </para>
     /// </remarks>
     internal static string? ToExcerpt(string? contents)
     {
         if (string.IsNullOrWhiteSpace(contents)) return null;
+        if (contents.Length > MaxBodyScanned) contents = contents[..MaxBodyScanned];
 
-        // Remove media blocks whole, content included. Stripping only the tags would leave the
-        // bare asset URL behind as prose, and Steam announcements routinely open with one — the
-        // excerpt would start "https://clan.cloudflare.steamstatic.com/..." instead of the news.
-        var text = MediaBlocks().Replace(contents, " ");
-        text = BbCodeTags().Replace(text, " ");
+        var text = DroppedBlocks().Replace(contents, " ");
+        text = BbCodeTags().Replace(text, tag => InlineTags.Contains(tag.Groups["name"].Value) ? "" : " ");
         text = HtmlTags().Replace(text, " ");
+        text = text.Replace(@"\[", "[", StringComparison.Ordinal);
         text = WebUtility.HtmlDecode(text);
+        text = ImageAddresses().Replace(text, " ");
         text = Whitespace().Replace(text, " ").Trim();
 
         if (text.Length == 0) return null;
@@ -432,19 +510,58 @@ public partial class SteamNewsService(
         return string.Concat(text.AsSpan(0, cut).TrimEnd(), "…");
     }
 
+    /// <summary>The tags that mark words inside a line, which leave no word boundary behind.</summary>
+    private static readonly FrozenSet<string> InlineTags =
+        new[] { "b", "i", "u", "c", "strike", "spoiler", "url" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
     // Bounded quantifiers throughout: these run over untrusted upstream text, and an unbounded
-    // nested quantifier is how a regex turns into a denial of service.
+    // nested quantifier is how a regex turns into a denial of service. An opening tag's attributes
+    // are allowed a thousand characters: an [img] with an inline style ran to 545, a [video] to 351.
+    // A tag never follows a backslash, which is how a post writes a bracket that is not one.
+
+    /// <summary>
+    /// A block removed with what is inside it, an image or a video. Stripping only its tags would leave
+    /// its address behind as prose.
+    /// </summary>
     [GeneratedRegex(
-        @"\[(img|previewyoutube|video|audio)[^\]]{0,200}\].{0,2000}?\[/\1\]",
+        @"(?<!\\)\[(img|previewyoutube|video|audio)(?=[\s=\]])[^\]]{0,1000}\].{0,2000}?\[/\1\]",
         RegexOptions.IgnoreCase | RegexOptions.Singleline,
         matchTimeoutMilliseconds: 200)]
-    private static partial Regex MediaBlocks();
+    private static partial Regex DroppedBlocks();
 
-    [GeneratedRegex(@"\[/?[a-zA-Z][^\]]{0,80}\]", RegexOptions.None, matchTimeoutMilliseconds: 200)]
+    /// <summary>
+    /// One tag, opening or closing, of the kinds Steam's posts use, in either case, as the expression
+    /// before it was. Every tag seen was lowercase. A word in brackets that only begins like a tag stays
+    /// text ("[PC]", "[Boss Event]"), because a name has to end at the bracket, at an equals sign, or at
+    /// a space and an attribute of the form <c>name=</c>. A dropped block's own tags are here too, for
+    /// one too long to drop whole, so that at least its tags go.
+    /// </summary>
+    [GeneratedRegex(
+        @"(?<!\\)\[/?(?<name>\*|p|b|i|u|c|strike|spoiler|url|h[1-4]|list|olist|hr|table|tr|th|td|quote|code"
+        + @"|expand|carousel|dynamiclink|img|previewyoutube|video|audio)"
+        + @"(?:=[^\]]{0,1000}|\s+[a-z0-9-]+=[^\]]{0,1000})?\]",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 200)]
     private static partial Regex BbCodeTags();
 
     [GeneratedRegex(@"<[^>]{0,200}>", RegexOptions.None, matchTimeoutMilliseconds: 200)]
     private static partial Regex HtmlTags();
+
+    /// <summary>
+    /// An image's address, as Steam's blurb left it where an <c>[img]</c> stood: Steam's placeholder
+    /// and the path after it, as far as the next space, or an address ending in an image's extension.
+    /// </summary>
+    /// <remarks>
+    /// Only the forms seen in Steam's answers. The placeholder runs to the next space because the blurb
+    /// was cut at its length wherever that fell, inside an address too, and in every blurb read a
+    /// space or the end came after one. A link that is not to an image is prose ("Read more here:
+    /// https://…") and stays.
+    /// </remarks>
+    [GeneratedRegex(
+        @"\{STEAM_CLAN(?:_LOC)?_IMAGE\}\S{0,300}|https?://\S{1,300}?\.(?:png|jpg|gif)(?!\S)",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 200)]
+    private static partial Regex ImageAddresses();
 
     [GeneratedRegex(@"\s+", RegexOptions.None, matchTimeoutMilliseconds: 200)]
     private static partial Regex Whitespace();

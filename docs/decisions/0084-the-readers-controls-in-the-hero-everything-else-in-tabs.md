@@ -126,7 +126,9 @@ The answer is cached for six hours apart from the game's half hour. A failure is
 loader reads, like a missing one from an older API, as a render to keep off the edge
 ([0070](0070-nothing-shows-as-a-blank.md)), and it is kept for a minute: kept with the game, it would degrade
 every render for half an hour, the completion times' way that #352 records, and kept not at all, every render
-of a page nobody may cache would ask IGDB again while it fails.
+of a page nobody may cache would ask IGDB again while it fails. Since #352 the completion times have this shape
+too: a failure is a null `TimeToBeat`, a game with no times is one with a count of 0, and both are kept apart
+from the game ([0017](0017-detail-data-off-the-listing.md)).
 
 ### 7. Your game: the review at the reading column's width
 

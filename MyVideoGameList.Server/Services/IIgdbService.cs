@@ -127,10 +127,12 @@ public interface IIgdbService
         DateOnly today, IReadOnlyCollection<int> pinned, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The candidates for the home page's Just out panel (ADR 0073): the new games among the five hundred most
-    /// watched on Twitch with a release row in the last ninety days, with how much each was watched. Kept for
-    /// the UTC day.
+    /// The candidates for the home page's Just out panel (ADR 0073, 0104): the new games with a release row
+    /// in the last ninety days that are among the five hundred most watched on Twitch, or that enough people
+    /// followed ahead of their release, each with both counts, and the <paramref name="pinned"/> ones whatever
+    /// they are. The two lists are kept for the UTC day, each apart. When IGDB can be asked for only one, the
+    /// answer is that one and says it is partial; when for neither, this throws.
     /// </summary>
-    Task<IReadOnlyList<JustOutCandidate>> GetJustOutCandidatesAsync(
-        DateOnly today, CancellationToken cancellationToken = default);
+    Task<JustOutCandidates> GetJustOutCandidatesAsync(
+        DateOnly today, IReadOnlyCollection<int> pinned, CancellationToken cancellationToken = default);
 }

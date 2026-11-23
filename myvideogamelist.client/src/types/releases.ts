@@ -75,8 +75,9 @@ export interface ComingSoonGame {
 }
 
 /**
- * One game on the home page's Just out panel — mirrors `JustOutDto` (ADR 0073): a new game of the last
- * ninety days that is watched a lot on Twitch, and the day it came out.
+ * One game on the home page's Just out panel — mirrors `JustOutDto` (ADR 0073, 0104): a new game of the last
+ * ninety days that many followed ahead of its release or that is watched a lot on Twitch, and the day it
+ * came out.
  */
 export interface JustOutGame {
     gameId: number;

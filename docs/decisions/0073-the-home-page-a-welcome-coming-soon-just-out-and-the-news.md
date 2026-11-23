@@ -2,6 +2,12 @@
 
 **Status:** Implemented.
 
+> **Later note.** §2's panel, the most watched on Twitch alone, missed the largest games: IGDB's figure for
+> them is next to nothing, Grand Theft Auto VI's three days after its release among them.
+> [0104](0104-just-out-takes-the-followed-beside-the-watched-and-the-admins-pin.md) takes the games people
+> followed ahead of their release beside the most watched, turn about, and lets the admin's pin carry onto
+> the panel.
+
 ## Context
 
 Before launch the owner settled what the home page is. As it stood on 2026-10-25, from the top:

@@ -8,7 +8,10 @@ import { useCommunityTimes } from '@/hooks/useCommunityTimes';
 import { SectionHeading } from '@/components/SectionHeading';
 
 interface CompletionTimesProps {
-    /** Null when IGDB reports no completion times for this game, which is common. */
+    /**
+     * Null when IGDB could not be asked, and no averages when it reports none for this game, which is common:
+     * either way the IGDB row is left out.
+     */
     timeToBeat: TimeToBeatDto | null;
     gameId: number;
 }
