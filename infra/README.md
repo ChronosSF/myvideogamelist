@@ -3,7 +3,7 @@
 The AWS environment, as one CDK app in C#. What it builds and why is ADR 0044; the records it
 rests on are 0007, 0014, 0015 and 0043.
 
-Nine stacks, split by lifetime, named `Mvgl-<env>-<part>`:
+The stacks, split by lifetime, named `Mvgl-<env>-<part>`:
 
 | Stack | Lifetime | Holds |
 |---|---|---|
