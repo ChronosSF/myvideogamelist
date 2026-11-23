@@ -71,7 +71,8 @@ the tasks in both zones with no way out: no task can pull its image or read its 
 start, and one still running loses IGDB, Steam, Cloudflare, SES and its logs, whatever the database does.
 The loss of `eu-central-1b` costs the way out nothing. Two gateways, one in each zone, would make the
 way out survive either; they cost twice as much (§3). The trade is taken because the second can be added
-on any day, and the subnets' type could not cheaply be changed after launch:
+on any day without replacing anything, where the subnets are what had to be settled before the stack
+holds a database:
 
 - **A second gateway is `Site.NatGateways = 2` and a `Data` deploy.** Synthesised, that adds an Elastic
   IP and a gateway in `eu-central-1b`'s `nat` subnet and changes one route, `eu-central-1b`'s task
@@ -79,14 +80,14 @@ on any day, and the subnets' type could not cheaply be changed after launch:
   `NatGatewayId` with "No interruption"
   (<https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-ec2-route.html>).
 - **Each service has one task** until [#101](https://github.com/ChronosSF/myvideogamelist/issues/101), so
-  a lost zone already costs a restart in the other one. That is when the second gateway is worth
+  losing the zone a task is in already costs that task a restart in the other. That is when the second
+  gateway is worth
   deciding again: once a service runs a task in each zone, one of them would otherwise depend on the
   other zone for its way out.
 - **The Multi-AZ database of [#416](https://github.com/ChronosSF/myvideogamelist/issues/416)
   ([0106](0106-productions-database-is-multi-az-and-a-failover-is-a-minute-or-two-of-errors.md)) keeps its
-  standby either way.** What this record
-  changes is that, with one gateway, production as a whole survives the loss of `eu-central-1b` and not
-  of `eu-central-1a`.
+  standby either way.** What this record changes is that, with one gateway, production as a whole
+  survives the loss of `eu-central-1b` and not of `eu-central-1a`.
 
 **Not a regional NAT gateway.** AWS has had one since November 2025, and CDK 2.273 makes one
 (`NatProvider.RegionalGateway`). It needs no public subnet, and "automatically expands across
@@ -157,8 +158,9 @@ So production always on is about $114 a month where dev is about $80 (0044's $74
 The pipeline and `dev-env.mjs resume` start the migration task themselves, outside the stacks, with the
 subnets and the security group they read from `Data`'s outputs, and both said `assignPublicIp=ENABLED`
 outright. In production's private subnets that asks for an address the task has no route to use, at
-$0.005 an hour; in dev's public ones a task without it could not pull its image. So `Data` says which, as `TaskAssignPublicIp`, beside `TaskSubnetIds`, and both launchers pass on what it says:
-the subnets and the address come from one deploy of one stack.
+$0.005 an hour; in dev's public ones a task without it could not pull its image. So `Data` says which,
+as `TaskAssignPublicIp`, beside `TaskSubnetIds`, and both launchers pass on what it says: the subnets
+and the address come from one deploy of one stack.
 
 **It is an output only where the tasks are private.** Dev's live `Data` stack was deployed before it
 existed, and the launchers have to work with it as it is, since `Data` is deployed by hand and never by
