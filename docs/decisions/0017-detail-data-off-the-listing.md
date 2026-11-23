@@ -51,6 +51,15 @@ without guarding each one. Only genuinely singular things — `TimeToBeat`, `Par
 `MultiplayerModes` — are nullable, and each nullability means "IGDB has nothing", which the UI
 renders as an absent section rather than an empty heading.
 
+> **Later note.** Neither holds for the completion times any more (#352). A failed read was a null,
+> exactly like a game with no times, and was kept in the game's cache entry for its half hour; the
+> game page, which shares only a whole render, then shared one without the times at the edge for up
+> to a day. So `TimeToBeat` now follows the related games' shape
+> ([0084](0084-the-readers-controls-in-the-hero-everything-else-in-tabs.md) §6): null means IGDB
+> could not be asked, which the loader reads as a render to keep off the edge, and a game with no
+> times is `TimeToBeatDto.None`, a count of 0 and no averages, which the section hides as before.
+> The times are cached apart from the game, for the same half hour, and a failure for a minute.
+
 ## Consequences
 
 Coverage of completion times is thin in absolute terms — roughly 9,100 rows against IGDB's whole

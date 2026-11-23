@@ -41,7 +41,8 @@ export interface GameRefDto {
 
 /**
  * Average completion times **in seconds**, from community submissions. `count` is how many
- * submissions back them and is often single digits, so it is always shown alongside.
+ * submissions back them and is often single digits, so it is always shown alongside. A game IGDB
+ * has no times for has a `count` of 0 and no averages.
  */
 export interface TimeToBeatDto {
     hastily: number | null;
@@ -85,6 +86,11 @@ export interface StoreLinkDto {
  * results cost far more than a grid of covers can use.
  */
 export interface GameDetailsDto {
+    /**
+     * IGDB's completion times. Null when IGDB could not be asked, which makes the render one to keep off the
+     * edge, as a null `related` does (issue 352); a count of 0 when it was asked and has none. An API older than
+     * this build sends a null for both.
+     */
     timeToBeat: TimeToBeatDto | null;
     screenshots: string[];
     similarGames: GameRefDto[];

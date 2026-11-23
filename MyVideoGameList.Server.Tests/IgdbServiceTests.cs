@@ -369,6 +369,15 @@ internal sealed class StubIgdb(Func<string, string> answerGames) : HttpMessageHa
     /// <summary>The games queries to answer with a 500, as IGDB failing would.</summary>
     public Func<string, bool> Fails { get; init; } = _ => false;
 
+    /// <summary>What the completion times endpoint answers: no row, unless a test says otherwise.</summary>
+    public string TimeToBeatPayload { get; init; } = "[]";
+
+    /// <summary>Whether the completion times endpoint answers with a 500, as IGDB failing would.</summary>
+    public bool TimeToBeatFails { get; init; }
+
+    /// <summary>How many queries reached the completion times endpoint.</summary>
+    public int TimeToBeatQueries { get; private set; }
+
     /// <summary>
     /// Awaited before any endpoint but the token's answers, given its path and its query: how a test holds one
     /// request until another has arrived.
@@ -397,6 +406,14 @@ internal sealed class StubIgdb(Func<string, string> answerGames) : HttpMessageHa
 
         var query = await request.Content!.ReadAsStringAsync(cancellationToken);
         await Hold(request.RequestUri!.AbsolutePath, query);
+        if (request.RequestUri.AbsolutePath == "/v4/game_time_to_beats")
+        {
+            TimeToBeatQueries++;
+            return TimeToBeatFails
+                ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                : Json(TimeToBeatPayload);
+        }
+
         if (request.RequestUri.AbsolutePath != "/v4/games") return Json("[]");
 
         Query = query;
@@ -940,6 +957,64 @@ public class GetGameByIdAsyncTests
         Assert.NotNull(again?.Details?.Related);
         Assert.Equal(2, igdb.Queries);
     }
+
+    /// <summary>
+    /// The Witcher 3's completion times as a row of <c>game_time_to_beats</c>, under the fields the service asks
+    /// for. The figures are a test's, in seconds; the field names are those the service has always read.
+    /// </summary>
+    private const string WitcherTimeToBeatPayload = """
+        [ { "id": 1, "game_id": 1942, "hastily": 133200, "normally": 331200, "completely": 885600, "count": 20 } ]
+        """;
+
+    [Fact]
+    public async Task WhenIgdbHasCompletionTimes_ServesThemAndKeepsThemBesideTheGame()
+    {
+        var igdb = new StubIgdb(AnswerWithItsSeries) { TimeToBeatPayload = WitcherTimeToBeatPayload };
+        var service = igdb.NewService();
+
+        await service.GetGameByIdAsync(1942);
+        var again = await service.GetGameByIdAsync(1942);
+
+        Assert.Equal(new TimeToBeatDto(133200, 331200, 885600, 20), again?.Details?.TimeToBeat);
+        Assert.Equal(1, igdb.TimeToBeatQueries);
+    }
+
+    [Fact]
+    public async Task WhenIgdbHasNoCompletionTimes_AnswersThatItHasNoneAndKeepsIt()
+    {
+        // An answer like any other: a game with no times is a whole page, and kept as long as one with them.
+        var igdb = new StubIgdb(AnswerWithItsSeries);
+        var service = igdb.NewService();
+
+        var first = await service.GetGameByIdAsync(1942);
+        var second = await service.GetGameByIdAsync(1942);
+
+        Assert.Equal(TimeToBeatDto.None, first?.Details?.TimeToBeat);
+        Assert.Equal(TimeToBeatDto.None, second?.Details?.TimeToBeat);
+        Assert.Equal(1, igdb.TimeToBeatQueries);
+    }
+
+    [Fact]
+    public async Task WhenTheCompletionTimesQueryFails_ServesTheGameWithANullAndDoesNotAskAgainAtOnce()
+    {
+        // Null, not None: the page cannot tell a failure from a game with no times by any other means, and
+        // shares a page it thinks whole for up to a day (#352).
+        var igdb = new StubIgdb(AnswerWithItsSeries) { TimeToBeatFails = true };
+        var service = igdb.NewService();
+
+        var first = await service.GetGameByIdAsync(1942);
+        var second = await service.GetGameByIdAsync(1942);
+
+        Assert.Equal("The Witcher 3: Wild Hunt", first?.Title);
+        Assert.NotNull(first?.Details?.Related);
+        Assert.Null(first?.Details?.TimeToBeat);
+        Assert.Null(second?.Details?.TimeToBeat);
+
+        // The failure is kept apart from the game, and for a minute rather than its half hour, so a page nobody
+        // may cache does not ask IGDB again on every render while it fails, nor go on without its times for long.
+        Assert.Equal(1, igdb.Asked.Count(q => q.Contains("where id = 1942;")));
+        Assert.Equal(1, igdb.TimeToBeatQueries);
+    }
 }
 
 /// <summary>
@@ -1031,18 +1106,18 @@ public class MapTimeToBeatTests
     }
 
     [Fact]
-    public void WithNoRow_ReturnsNull()
-        => Assert.Null(IgdbService.MapTimeToBeat(null));
+    public void WithNoRow_ReturnsNone()
+        => Assert.Equal(TimeToBeatDto.None, IgdbService.MapTimeToBeat(null));
 
     [Theory]
     [InlineData(0)]
     [InlineData(null)]
-    public void WithoutSubmissions_ReturnsNullBecauseAZeroCountAverageIsNotAnAverage(int? count)
-        => Assert.Null(IgdbService.MapTimeToBeat(Row(3600, 7200, 10800, count)));
+    public void WithoutSubmissions_ReturnsNoneBecauseAZeroCountAverageIsNotAnAverage(int? count)
+        => Assert.Equal(TimeToBeatDto.None, IgdbService.MapTimeToBeat(Row(3600, 7200, 10800, count)));
 
     [Fact]
-    public void WithACountButNoTimes_ReturnsNull()
-        => Assert.Null(IgdbService.MapTimeToBeat(Row(null, null, null, 5)));
+    public void WithACountButNoTimes_ReturnsNone()
+        => Assert.Equal(TimeToBeatDto.None, IgdbService.MapTimeToBeat(Row(null, null, null, 5)));
 }
 
 public class FoldMultiplayerModesTests
@@ -1166,7 +1241,7 @@ public class MapToDetailsDtoTests
     [Fact]
     public void BuildsScreenshotUrlsFromImageIds()
     {
-        var result = IgdbService.MapToDetailsDto(Game(screenshots: [new(1, "scagdo")]), null);
+        var result = IgdbService.MapToDetailsDto(Game(screenshots: [new(1, "scagdo")]));
 
         Assert.Equal(
             ["https://images.igdb.com/igdb/image/upload/t_screenshot_big/scagdo.jpg"],
@@ -1177,7 +1252,7 @@ public class MapToDetailsDtoTests
     public void CarriesRelatedGamesWithTheirCovers()
     {
         var result = IgdbService.MapToDetailsDto(
-            Game(similar: [new(2155, "Dark Souls", new IgdbCover(1, "co1x78"))]), null);
+            Game(similar: [new(2155, "Dark Souls", new IgdbCover(1, "co1x78"))]));
 
         var similar = Assert.Single(result.SimilarGames);
         Assert.Equal(2155, similar.Id);
@@ -1189,7 +1264,7 @@ public class MapToDetailsDtoTests
     public void DropsRelatedGamesWithNoName()
     {
         // An unnamed related game renders as a blank card and links nowhere useful.
-        var result = IgdbService.MapToDetailsDto(Game(similar: [new(1, null, null)]), null);
+        var result = IgdbService.MapToDetailsDto(Game(similar: [new(1, null, null)]));
 
         Assert.Empty(result.SimilarGames);
     }
@@ -1197,7 +1272,7 @@ public class MapToDetailsDtoTests
     [Fact]
     public void WithNothingFromIgdb_ReturnsEmptyCollectionsRatherThanNulls()
     {
-        var result = IgdbService.MapToDetailsDto(Game(), null);
+        var result = IgdbService.MapToDetailsDto(Game());
 
         Assert.Empty(result.Screenshots);
         Assert.Empty(result.SimilarGames);
@@ -1206,7 +1281,6 @@ public class MapToDetailsDtoTests
         Assert.Empty(result.Languages);
         Assert.Empty(result.Stores);
         Assert.Null(result.ParentGame);
-        Assert.Null(result.TimeToBeat);
         Assert.Null(result.MultiplayerModes);
     }
 
@@ -1214,7 +1288,7 @@ public class MapToDetailsDtoTests
     public void FlattensNamedEntitiesToTheirNames()
     {
         var result = IgdbService.MapToDetailsDto(
-            Game(themes: [new(1, "Fantasy"), new(2, null), new(3, "Open world")]), null);
+            Game(themes: [new(1, "Fantasy"), new(2, null), new(3, "Open world")]));
 
         Assert.Equal(["Fantasy", "Open world"], result.Themes);
     }

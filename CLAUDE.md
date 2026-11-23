@@ -421,8 +421,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   render, signed out and signed in, so keep any change to it the same height in all three. Both it and the Your
   game tab read `useGameEntry()`, from `GameEntryProvider`, keyed on the account and the game; the Overview
   tab sits outside it on purpose, so a signed-in reader's arrival remounts only the hero. Your game is
-  `noindex` and `no-store`. A game's related games are `GameDetailsDto.Related`, one more IGDB query cached
-  apart, and a null there makes the render `no-store`. See `docs/decisions/0084-*`.
+  `noindex` and `no-store`. A game's related games are `GameDetailsDto.Related` and its completion times
+  `TimeToBeat`, each one more IGDB query cached apart, and a null in either makes the render `no-store`, so a
+  game IGDB has no times for is `TimeToBeatDto.None`, never a null (#352). See `docs/decisions/0084-*`.
 
 - **A change of list clears the entry's hand-arranged position, and every writer of a status owes
   that.** `UserGameEntries.Position` is the backlog's "My order": a sparse number, null for a game never
@@ -819,7 +820,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   that degrades to a 200 has to attach `no-store` itself via `data()`; and an *API* that degrades to
   a 200 has to say so in its payload, because neither the loader nor a CDN can tell that 200 from a
   healthy one. `/api/home` does, with
-  `degraded`, and the loader reads it failing closed — only an explicit `false` is shared-cached.
+  `degraded`, and the loader reads it failing closed — only an explicit `false` is shared-cached;
+  `/api/games/{id}` does with a null `Related` or `TimeToBeat`.
   **A route with its own `ErrorBoundary` is its own boundary**, as the game and profile pages are, so
   its `headers` must hand on the thrown `Response`'s policy and fall back to `no-store`, with the
   success policy stated by the loader through `data()`. A client-side navigation's `.data` request

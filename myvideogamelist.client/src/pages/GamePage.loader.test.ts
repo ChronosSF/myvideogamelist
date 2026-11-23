@@ -19,14 +19,17 @@ import type { Route } from './+types/GamePage';
 /** The loader for `/games/{id}`, run as the server runs it. */
 const load = (id: string) => onTheServer(() => loader(loaderArgs(`/games/${id}`, { id }) as unknown as Route.LoaderArgs));
 
+/** IGDB's answer for a game it has no completion times for: times counted from nobody (issue 352). */
+const NO_TIMES = { hastily: null, normally: null, completely: null, count: 0 };
+
 /**
- * The Witcher 3 as the API answers for its page: with the details, and in them the related games IGDB
- * answered for — here none, which is an answer all the same (ADR 0084).
+ * The Witcher 3 as the API answers for its page: with the details, and in them the related games and the
+ * completion times IGDB answered for — here none of either, which is an answer all the same (ADR 0084).
  */
 const WITCHER = game({
     id: 1942,
     title: 'The Witcher 3: Wild Hunt',
-    details: gameDetails({ related: { anchorId: 1942, games: [], editions: [] } }),
+    details: gameDetails({ related: { anchorId: 1942, games: [], editions: [] }, timeToBeat: NO_TIMES }),
 });
 const SCORES = communityScores({ scored: 23, mean: 8.4, distribution: [0, 0, 0, 0, 0, 0, 0, 23, 0, 0], tracked: 31 });
 const TIMES = communityTimes({ normally: { samples: MIN_PLAYTHROUGH_SAMPLES, medianMinutes: 3120 } });
@@ -209,6 +212,37 @@ describe('GamePage loader', () => {
 
         expect(result.data.game.details?.related).toEqual({ anchorId: 1942, games: [], editions: [] });
         expect(cachePolicyOf(result)).toBe(CACHE_GAME);
+    });
+
+    it('lets nothing keep a page whose completion times IGDB did not answer for', async () => {
+        // The API says so with a null, as it does for the related games, and the page renders without IGDB's
+        // times. Kept at the edge it would go on leaving them out for a day after IGDB recovered (issue 352).
+        stubApi(routes({
+            'GET /api/games/1942': () => json({ ...WITCHER, details: { ...WITCHER.details!, timeToBeat: null } }),
+        }));
+
+        const result = await load('1942');
+
+        expect(result.data.game).toMatchObject({ id: 1942 });
+        expect(cachePolicyOf(result)).toBe(PRIVATE_NO_STORE);
+    });
+
+    it('lets a page be cached at the edge when IGDB answered with completion times, or that it has none', async () => {
+        const answers: [string, GameDetailsDto['timeToBeat']][] = [
+            ['times', { hastily: 37 * 3600, normally: 92 * 3600, completely: 246 * 3600, count: 20 }],
+            ['none', NO_TIMES],
+        ];
+
+        for (const [what, timeToBeat] of answers) {
+            stubApi(routes({
+                'GET /api/games/1942': () => json({ ...WITCHER, details: { ...WITCHER.details!, timeToBeat } }),
+            }));
+
+            const result = await load('1942');
+
+            expect(result.data.game.details?.timeToBeat, what).toEqual(timeToBeat);
+            expect(cachePolicyOf(result), what).toBe(CACHE_GAME);
+        }
     });
 
     it("renders without the members' figures, and lets nothing keep it, rather than wait past their deadline", async () => {
