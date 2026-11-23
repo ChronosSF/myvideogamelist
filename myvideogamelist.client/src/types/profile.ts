@@ -31,6 +31,13 @@ export interface PublicProfile {
      * needs IGDB and can fail while this one does not — see `docs/decisions/0029-*`.
      */
     favourites: number;
+    /**
+     * Whether the sitemap lists this profile: the server's one test of a profile with something on it,
+     * the answer of the query the sitemap itself runs (issue 346). The page marks itself `noindex`
+     * when it is false, and works out nothing of its own, so the two cannot disagree. Absent from an
+     * API a release behind, mid-deploy.
+     */
+    listed: boolean;
 }
 
 /**

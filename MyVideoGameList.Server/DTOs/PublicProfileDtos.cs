@@ -46,6 +46,12 @@ namespace MyVideoGameList.Server.DTOs;
 /// <param name="Bio">
 /// What they wrote about themselves, as plain text, or null. Published for the display name's reason.
 /// </param>
+/// <param name="Library">
+/// The owner's own figures, except <see cref="LibraryStatsDto.Recorded"/>, which here counts only the
+/// entries holding something this page shows: a status, a score, a playthrough or a published review.
+/// One holding nothing but notes, an ownership, tags or a private review is the owner's alone, and is
+/// not counted, so that no private act moves a public number (#346).
+/// </param>
 /// <param name="Reviews">
 /// How many public reviews this user has written — the count the page needs before it fetches any
 /// of them, and the number that decides whether the section appears at all.
@@ -54,6 +60,13 @@ namespace MyVideoGameList.Server.DTOs;
 /// How many favourites they have, for the same two reasons. Published because a favourite is the
 /// one thing on the axis made to be shown to other people — see ADR 0029 for why that is not true of
 /// the wishlist, whose size is all that appears here.
+/// </param>
+/// <param name="Listed">
+/// Whether the sitemap lists this profile, which it does when there is something on it: an entry
+/// <paramref name="Library"/> counts, or a favourite. The page marks itself <c>noindex</c> when it is
+/// not, from this and nothing else, so that the two cannot disagree (ADR 0036 §4). It is the answer
+/// of <c>PublicProfileContent.ListedProfiles</c>, the query the sitemap runs, and says nothing the
+/// figures beside it do not already say.
 /// </param>
 public record PublicProfileDto(
     string PublicId,
@@ -66,7 +79,8 @@ public record PublicProfileDto(
     ScoreStatsDto Scores,
     PublicPlaytimeDto Playtime,
     int Reviews,
-    int Favourites);
+    int Favourites,
+    bool Listed);
 
 /// <summary>
 /// What the user has done over the last year, and for how long they have been doing it.

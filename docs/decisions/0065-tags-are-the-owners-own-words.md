@@ -137,6 +137,11 @@ holds only notes or an ownership ([0030](0030-ownership-and-notes-belong-to-the-
 game is published; the figure moves by one. Counting only entries that hold something public is a change to
 the profile's statistics rather than to tags, and is #346.
 
+> **Later note.** #346 is fixed: `recorded` on a public profile, and the sitemap's test for an empty one,
+> count only the entries holding a status, a score, a playthrough or a published review
+> (`PublicProfileContent`). A tag on a game the owner has said nothing else about now moves no public
+> figure, and neither do notes, an ownership or a private review.
+
 ### 8. No event and no status
 
 A tag is not a status ([0018](0018-append-only-status-event-log.md)): a game carries any number at once and
