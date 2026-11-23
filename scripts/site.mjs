@@ -14,6 +14,8 @@ const PRODUCTION = 'prod';
  * - `host`: the one name the site answers by (Site.Host).
  * - `redirectedHosts`: the names that only redirect to it, production's www (Site.RedirectedHosts).
  * - `indexable`: whether a crawler may index it, production's alone (Site.Indexable).
+ * - `multiAzDatabase`: whether its database has a standby in a second zone, production's alone
+ *   (Site.MultiAzDatabase), which `status` adds to the cost it reports.
  * - `basicAuthVariable`: the shell variable that holds the basic-auth pair as `user:password`, when
  *   whoever runs the script has it. Never in the repository, and never printed.
  */
@@ -24,6 +26,7 @@ export function site(env) {
         host: production ? DOMAIN : `${env}.${DOMAIN}`,
         redirectedHosts: production ? [`www.${DOMAIN}`] : [],
         indexable: production,
+        multiAzDatabase: production,
         basicAuthVariable: `MVGL_${env.toUpperCase()}_BASIC_AUTH`,
     };
 }

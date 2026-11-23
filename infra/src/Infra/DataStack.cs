@@ -102,7 +102,9 @@ public sealed class DataStack : Stack
             VpcSubnets = new SubnetSelection { SubnetGroupName = "data" },
             SecurityGroups = [dbSecurityGroup],
             PubliclyAccessible = false,
-            MultiAz = false,
+            // The standby goes in the data subnets' other zone, so the subnet group has to span two
+            // (ADR 0106). Nothing here names the primary's zone, which a Multi-AZ instance may not be given.
+            MultiAz = site.MultiAzDatabase,
             AllocatedStorage = 20,
             StorageType = StorageType.GP3,
             StorageEncrypted = true,

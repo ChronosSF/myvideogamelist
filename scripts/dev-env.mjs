@@ -124,6 +124,9 @@ const COST = {
     parked: '≈ $4.64 a month: the idle floor — storage, secrets, zones, images',
     broken: 'the application stack is up but the database is not: every page fails and the balancer bills anyway',
     aclLeft: 'the web ACL\'s stack outlived the application stack, about $6 a month for nothing. Park again to destroy it',
+    // ADR 0106, from AWS's price list for Frankfurt: a db.t4g.micro is $0.019 an hour in one zone and
+    // $0.037 in two, and gp3 $0.137 a GB-month against $0.274, on 20 GB.
+    standby: 'the rows are dev\'s, and this database has a standby in a second zone: about $16 a month more while it runs',
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -360,6 +363,7 @@ function status() {
     const dbUp = db === 'available';
     const row = appUp && dbUp ? COST.awake : appUp ? COST.broken : dbUp ? COST.appOnly : COST.parked;
     console.log(`  cost row: ${row}`);
+    if (WHERE.multiAzDatabase && dbUp) console.log(`  note: ${COST.standby}.`);
     if (wafUp && app === null) console.log(`  note: ${COST.aclLeft}.`);
     if (app === 'DELETE_FAILED') {
         console.log(`  note: ${NAMES.appStack} failed to delete and still bills. CloudFormation's events say why; park again once that is fixed.`);

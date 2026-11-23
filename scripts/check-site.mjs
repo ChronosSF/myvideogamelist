@@ -3,12 +3,14 @@
  *
  *   node scripts/check-site.mjs <env> [<cdk.out>]
  *
- * site.mjs restates three members of Site.cs for dev-env.mjs and dev-check.mjs, and the acceptance
+ * site.mjs restates four members of Site.cs for dev-env.mjs and dev-check.mjs, and the acceptance
  * test expects of a site what it says: the names that redirect, and whether a crawler may index it.
  * A change to Site.cs that missed it would leave that test checking the old rules. So this compares
  * it with what the CDK app synthesised for the environment, which is Site.cs at work: the names on
  * the distribution, on the certificate and in the zone, where the App stack says the site answers,
- * and whether the SSR server is told it is indexable.
+ * whether the SSR server is told it is indexable, and whether the database is Multi-AZ. The last is
+ * also what holds production's to a standby and dev's to none (ADR 0106): either changes only where
+ * both files are changed.
  *
  * CI's Infrastructure job runs it after each synthesis. By hand, synthesise first, from infra/:
  * `cdk synth -c env=<env> -c imageTag=<any>`. It reads files and asks nothing of anybody.
@@ -50,6 +52,7 @@ function same(what, synthesised, restated) {
 
 const app = template('App');
 const certificate = template('EdgeCert');
+const data = template('Data');
 const names = [where.host, ...where.redirectedHosts];
 
 console.log(`scripts/site.mjs against what was synthesised for ${env}, in ${dir}`);
@@ -68,6 +71,9 @@ same('whether the SSR server is told the site is indexable',
         .flatMap((task) => task.ContainerDefinitions ?? [])
         .some((container) => (container.Environment ?? []).some((e) => e.Name === 'SITE_INDEXABLE' && e.Value === 'true')),
     where.indexable);
+// Read as written, with no default: a template that stopped saying would fail rather than pass as false.
+same('whether the database is Multi-AZ',
+    resources(data, 'AWS::RDS::DBInstance').map((db) => db.MultiAZ), [where.multiAzDatabase]);
 
 if (failed > 0) {
     console.log(`\n${failed} difference(s). infra/src/Infra/Site.cs decides each of these, and scripts/site.mjs restates it: change it there.`);

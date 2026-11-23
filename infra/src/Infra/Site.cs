@@ -43,6 +43,14 @@ public sealed record Site(string Env)
     /// </summary>
     public bool Indexable => IsProduction;
 
+    /// <summary>
+    /// Whether the database is a Multi-AZ deployment: a standby in the other availability zone that RDS
+    /// keeps in step and fails over to by itself. Production's alone (ADR 0106). Dev's stays in one zone,
+    /// the trade ADR 0015 accepted: a standby would nearly double what its database is billed, to keep a
+    /// test site up. CI holds each synthesis to this, so a change here is a change to that check too.
+    /// </summary>
+    public bool MultiAzDatabase => IsProduction;
+
     /// <summary>The Cloud Map private namespace the SSR server finds the API through.</summary>
     public string InternalDomain => $"{Prefix}.internal";
 
