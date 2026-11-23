@@ -47,7 +47,9 @@
  * /healthz answers Healthy through it. Without the variable the gate still goes on: target health
  * is what `ecs wait services-stable` already proved, and the variable is the stronger proof.
  * Where the stack was deployed open (its BasicAuth output is `off`, ADR 0101), the proof is /healthz
- * answering Healthy to nobody in particular, and the pair is not sent.
+ * answering Healthy to nobody in particular, and the pair is not sent. Where it could ask /healthz itself,
+ * open or with the pair, `resume` then asks /version and /api/version too, and keeps the gate off unless
+ * both answer the commit the tag it deployed names (ADR 0059, #433).
  *
  * ---------------------------------------------------------------------------------------------
  * WHAT IT DOES NOT DO
@@ -296,6 +298,41 @@ async function healthy(door, attempts = 18) {
         if (i < attempts) await new Promise((resolve) => setTimeout(resolve, 10_000));
     }
     return false;
+}
+
+/**
+ * Both processes say they were built from the commit `tag` names (ADR 0059): the SSR server at /version
+ * and the API at /api/version, each `{ sha, builtAt }` with the full commit, of which the tag is the first
+ * twelve characters. Neither answer is kept at the edge: /api/* is never cached, and /version says
+ * `private, no-store`, which the pages policy's minimum TTL of 0 obeys. And `services-stable` returns only
+ * once each service is down to one deployment. So the first answer should be the release's, and the few
+ * tries are for a request that fails on the way, not for a cache to catch up.
+ *
+ * Asked only where /healthz was: behind the door without the pair it cannot be, and says so.
+ * Answers null when it was not asked, and otherwise whether both answered the tag.
+ */
+async function answersTag(door, tag, attempts = 6) {
+    const pair = door === 'off' ? undefined : process.env[WHERE.basicAuthVariable];
+    if (door !== 'off' && !pair) return null;
+    const headers = pair ? { authorization: `Basic ${Buffer.from(pair).toString('base64')}` } : {};
+    for (const path of ['/version', '/api/version']) {
+        const url = `https://${NAMES.host}${path}`;
+        let found = null;
+        for (let i = 1; i <= attempts; i++) {
+            try {
+                const response = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+                found = response.ok ? (await response.json())?.sha ?? null : `a ${response.status}`;
+            } catch (error) {
+                found = error.cause?.code ?? error.name;
+            }
+            if (typeof found === 'string' && found.startsWith(tag)) break;
+            note(`  ${url}: ${found ?? 'no sha'} (attempt ${i} of ${attempts}, expecting ${tag}…)`);
+            if (i < attempts) await new Promise((resolve) => setTimeout(resolve, 10_000));
+        }
+        if (typeof found !== 'string' || !found.startsWith(tag)) return false;
+        note(`  ${url}: ${found}`);
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -635,6 +672,17 @@ async function resume() {
         : process.env[WHERE.basicAuthVariable]
             ? 'Healthy, through the distribution.'
             : `The door is on: a 401 without credentials. Set ${WHERE.basicAuthVariable} to user:password for the stronger check.`);
+
+    // What answers is what was deployed: an image built from another commit, or without the commit at all
+    // ("unknown"), is a release this run did not make, and the gate stays off as it does for an unhealthy site.
+    note(`Checking that /version and /api/version answer the commit ${tag} names.`);
+    const deployed = await answersTag(door, tag);
+    if (deployed === false) {
+        fail(`The site does not answer the commit ${tag} names at /version and /api/version, so the gate stays off. `
+            + `${NAMES.appStack} was deployed at ${tag}: the images under that tag were built from another commit, or `
+            + 'without one. Their build arguments are in the deploy workflow; resume again at a tag it pushed.');
+    }
+    if (deployed === null) note(`Which commit answers was not asked: it is behind the door, and ${WHERE.basicAuthVariable} is not set.`);
 
     gate(true);
     console.log('');
