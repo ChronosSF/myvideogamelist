@@ -59,8 +59,8 @@ Zone should the need arise". Since every group must span two, Multi-AZ asks noth
 the Single-AZ instance did.
 
 **The standby keeps the database through a zone's loss, not the site.** Production's tasks reach the
-internet through one NAT gateway, in `eu-central-1a`
-([0105](0105-productions-tasks-run-in-private-subnets-behind-one-nat-gateway.md) §1). Losing
+internet through one NAT gateway, in `eu-central-1a` (ADR 0105 §1, in
+[#504](https://github.com/ChronosSF/myvideogamelist/pull/504) as this is written). Losing
 `eu-central-1b` costs the site a failover. Losing `eu-central-1a` leaves the database answering in
 `eu-central-1b` and the tasks in both zones with no way out, so the site is down until the zone is back
 or there is a second gateway. What that gateway costs, and when it is worth it, is 0105's.
@@ -88,8 +88,12 @@ resolves. §7 is how it is seen.
   the record as soon as its resolver does, with no restart. The session limits of 0079 travel in the
   connection string's startup options, so a new connection carries them.
 - **A primary that vanished rather than shut down**, as in a lost host or zone, never closes its
-  connections. A statement on one waits for the command timeout, 30 seconds, then two more for the
-  cancellation timeout, before the connection is broken and the pool emptied. A new connection to an
+  connections. A statement on one waits for the command timeout, 30 seconds. Npgsql then opens a
+  connection of its own to send the cancel request, which the default GSS mode, `Prefer`, tries twice,
+  each bounded by the connect timeout, and only if the request is delivered waits the cancellation
+  timeout, two seconds more (`NpgsqlConnector.PerformPostgresCancellation` and `DoCancelRequest`). So
+  such a statement fails after half a minute to a minute, and the connection is broken and the pool
+  emptied. A new connection to an
   address that does not answer gives up after the connect timeout, 15 seconds. Those are Npgsql's
   defaults, and nothing here changes them.
 - **The requests.** Every request that needs the database fails while it lasts, as a 500 with its
@@ -116,7 +120,7 @@ resolves. §7 is how it is seen.
 - **The Data Protection keys and email** are not in the database, and nothing changes for them.
 
 So a failover should be AWS's minute or two, plus however long the task's resolver keeps the old record,
-plus up to half a minute more for a request caught on a dead connection. That is an estimate, not a
+plus up to a minute more for a request caught on a dead connection. That is an estimate, not a
 measurement.
 
 ### 4. Nothing retries, for now
