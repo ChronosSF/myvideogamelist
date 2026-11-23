@@ -16,8 +16,9 @@
  * that a name which only redirects does, and - with --alb - that the balancer
  * does not answer directly. With the pair as `user:password` it checks the rest: health, that both
  * processes answer the commit that was deployed, the crawler headers, SITE_URL, every route's
- * Cache-Control, that the cache hits where it should and never where it must not, that a 404 is a 404, and that the write guard survives the edge; with
- * --limiter, that the eleventh wrong password is a 429, at the cost of the caller's own login
+ * Cache-Control, that the cache hits where it should and never where it must not, that a 404 is a
+ * 404, and that the write guard survives the edge; with --limiter, that the eleventh wrong password
+ * is a 429, at the cost of the caller's own login
  * budget for five minutes. Prints one line per check and exits 1 if any failed. Nothing here
  * writes anything anywhere: the one POST that reaches the API is a sign-out by nobody.
  *
