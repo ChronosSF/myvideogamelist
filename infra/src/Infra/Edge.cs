@@ -49,14 +49,14 @@ public sealed class Edge : Construct
         var redirected = site.RedirectedHosts;
         var viewerRequest = new Function(this, "ViewerRequest", new FunctionProps
         {
-            FunctionName = $"{site.Prefix}-viewer-request",
+            FunctionName = site.ViewerRequestFunctionName,
             Runtime = FunctionRuntime.JS_2_0,
             KeyValueStore = basicAuthStore,
             Code = FunctionCode.FromInline(ViewerRequestFunction(site)),
             Comment = $"Sends every other host to {site.Host}"
                 + (site.BehindBasicAuth ? ", then HTTP basic authentication against the store's basic-auth key" : ""),
         });
-        FunctionAssociation[] onEveryBehaviour = site.BehindBasicAuth || redirected.Length > 0
+        FunctionAssociation[] onEveryBehaviour = site.ViewerRequestRuns
             ? [new FunctionAssociation { EventType = FunctionEventType.VIEWER_REQUEST, Function = viewerRequest }]
             : [];
 

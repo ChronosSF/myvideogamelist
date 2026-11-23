@@ -25,11 +25,12 @@
  * HOW TO RUN IT
  * ---------------------------------------------------------------------------------------------
  *   node scripts/dev-env.mjs status             what exists, and which cost row that is
- *   node scripts/dev-env.mjs park               destroy the App stack, stop the database, destroy
- *                                               the web ACL's stack, gate off
+ *   node scripts/dev-env.mjs park               destroy the edge's alarms and the App stack, stop
+ *                                               the database, destroy the web ACL's stack, gate off
  *   node scripts/dev-env.mjs resume             start the database, migrate it at the newest tag,
- *                                               deploy the web ACL's stack, then App at that tag,
- *                                               wait for both services, check the site, gate on
+ *                                               deploy the web ACL's stack, then App at that tag
+ *                                               and the edge's alarms on its distribution, wait for
+ *                                               both services, check the site, gate on
  *   node scripts/dev-env.mjs resume --tag <sha> the same, at a tag of your choosing
  *
  * Options on every command: --env <name> (default dev), --profile <aws profile> (default
@@ -95,6 +96,10 @@ const NAMES = {
     // The web ACL on the distribution, in CloudFront's Region whatever the profile's is (ADR 0098).
     wafStack: `Mvgl-${ENV}-Waf`,
     edgeRegion: 'us-east-1',
+    // The edge's alarms, beside CloudFront's metrics, which read the distribution's id from the App stack,
+    // and the long-lived stack whose topic they send to (ADR 0110).
+    edgeAlarmsStack: `Mvgl-${ENV}-EdgeAlarms`,
+    edgeAlertsStack: `Mvgl-${ENV}-EdgeAlerts`,
     // Production's holding page, in the same Region, which answers by the names its application stack
     // takes: the two cannot both be deployed (ADR 0066 §8). No other environment has one.
     holdingStack: `Mvgl-${ENV}-Holding`,
@@ -333,6 +338,7 @@ function gateValue() {
 function status() {
     const app = stackStatus(NAMES.appStack);
     const waf = stackStatus(NAMES.wafStack, NAMES.edgeRegion);
+    const edgeAlarms = stackStatus(NAMES.edgeAlarmsStack, NAMES.edgeRegion);
     const data = stackStatus(NAMES.dataStack);
     const db = databaseStatus();
     const running = services();
@@ -344,6 +350,7 @@ function status() {
     console.log(`  ${NAMES.appStack}:  ${app ?? 'absent'}`);
     if (app !== null) console.log(`  basic auth at the edge: ${basicAuth()}`);
     console.log(`  ${NAMES.wafStack}:  ${waf ?? 'absent'} (${NAMES.edgeRegion})`);
+    console.log(`  ${NAMES.edgeAlarmsStack}:  ${edgeAlarms ?? 'absent'} (${NAMES.edgeRegion})`);
     // Production's holding page answers by the names its application stack takes, so which of the two
     // is there is the first thing to know about it (ADR 0066 §8, 0103).
     if (WHERE.production) {
@@ -361,6 +368,9 @@ function status() {
     const row = appUp && dbUp ? COST.awake : appUp ? COST.broken : dbUp ? COST.appOnly : COST.parked;
     console.log(`  cost row: ${row}`);
     if (wafUp && app === null) console.log(`  note: ${COST.aclLeft}.`);
+    if (edgeAlarms !== null && !/DELETE_COMPLETE/.test(edgeAlarms) && app === null) {
+        console.log(`  note: ${NAMES.edgeAlarmsStack} outlived the application stack and watches a distribution that is gone. Park again to destroy it.`);
+    }
     if (app === 'DELETE_FAILED') {
         console.log(`  note: ${NAMES.appStack} failed to delete and still bills. CloudFormation's events say why; park again once that is fixed.`);
     }
@@ -381,6 +391,16 @@ function park() {
     // The gate first: a Deploy dev run started while the stack is being destroyed must not
     // redeploy it, and if the gate cannot be set at all, nothing is torn down.
     gate(false);
+
+    // The edge's alarms first: they read the distribution's id from App, and a destroy of App would take
+    // them along anyway, since cdk destroys a stack's dependents with it. By name, so that one left over
+    // from a park that stopped halfway, with App already gone, goes too (ADR 0110).
+    if (stackStatus(NAMES.edgeAlarmsStack, NAMES.edgeRegion) === null) {
+        note(`${NAMES.edgeAlarmsStack} is already gone.`);
+    } else {
+        note(`Destroying ${NAMES.edgeAlarmsStack} in ${NAMES.edgeRegion}: the edge's alarms.`);
+        cdk(['destroy', NAMES.edgeAlarmsStack, '--exclusively', '-c', 'imageTag=parked', '--force']);
+    }
 
     const app = stackStatus(NAMES.appStack);
     if (app === null) {
@@ -616,6 +636,17 @@ async function resume() {
     // --exclusively: the Data stack is not redeployed as a dependency. The stack includes the
     // distribution, so this takes several minutes longer than the services alone would.
     cdk(['deploy', NAMES.appStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never']);
+
+    // The edge's alarms, which read the new distribution's id from App, so after it, and before anything
+    // below can stop the run: an environment that is up is watched (ADR 0110). They send to a topic
+    // another stack makes, by its name, and alarm into nothing until it exists: said, not refused, so
+    // that deploying that stack later needs no second resume.
+    if (stackStatus(NAMES.edgeAlertsStack, NAMES.edgeRegion) === null) {
+        note(`${NAMES.edgeAlertsStack} is not deployed in ${NAMES.edgeRegion}, so the edge's alarms will tell nobody until it is `
+            + '(infra/README.md, "Alarms").');
+    }
+    note(`Deploying ${NAMES.edgeAlarmsStack} in ${NAMES.edgeRegion}: the edge's alarms, on the new distribution.`);
+    cdk(['deploy', NAMES.edgeAlarmsStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never']);
 
     note('Waiting for both services to be stable…');
     aws(['ecs', 'wait', 'services-stable', '--cluster', NAMES.cluster, '--services', 'api', 'ssr']);

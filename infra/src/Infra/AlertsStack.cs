@@ -14,9 +14,18 @@ namespace Infra;
 /// resume (ADR 0080). Deployed by hand, by name, as Data is; the pipeline never touches it. In the
 /// production account it is also where SES sends each bounce and complaint (ADR 0091).
 /// </summary>
+/// <remarks>
+/// Made twice in each account: <c>Alerts</c> where the application's alarms are, and <c>EdgeAlerts</c> in
+/// <c>us-east-1</c>, where CloudFront publishes its metrics and the edge's alarms therefore are (ADR 0110).
+/// The same topic name in each Region, so an alarm finds the one beside it; the same address, from the same
+/// parameter, set in each Region by hand; and a subscription to confirm in each.
+/// </remarks>
 public sealed class AlertsStack : Stack
 {
-    public AlertsStack(Construct scope, string id, IStackProps props, Site site)
+    /// <param name="atTheEdge">
+    /// The <c>us-east-1</c> copy, which only the edge's alarms publish to: no rule and no SES send there.
+    /// </param>
+    public AlertsStack(Construct scope, string id, IStackProps props, Site site, bool atTheEdge = false)
         : base(scope, id, props)
     {
         // Named, because the alarms find it by its name rather than by a cross-stack reference: an
@@ -25,7 +34,7 @@ public sealed class AlertsStack : Stack
         var topic = new Topic(this, "Topic", new TopicProps
         {
             TopicName = site.AlertsTopicName,
-            DisplayName = $"MVGL {site.Env}",
+            DisplayName = atTheEdge ? $"MVGL {site.Env} edge" : $"MVGL {site.Env}",
         });
 
         // The address is in Parameter Store, set by hand before the first deploy, because the
@@ -41,13 +50,16 @@ public sealed class AlertsStack : Stack
         // nothing else in the account or outside it can write to the owner's inbox through here.
         topic.AddToResourcePolicy(Publisher("Alarms", "cloudwatch.amazonaws.com",
             $"arn:{Aws.PARTITION}:cloudwatch:{Region}:{Account}:alarm:{site.Prefix}-*", topic));
-        topic.AddToResourcePolicy(Publisher("TaskStoppedRule", "events.amazonaws.com",
-            $"arn:{Aws.PARTITION}:events:{Region}:{Account}:rule/{site.Prefix}-*", topic));
+        if (!atTheEdge)
+        {
+            topic.AddToResourcePolicy(Publisher("TaskStoppedRule", "events.amazonaws.com",
+                $"arn:{Aws.PARTITION}:events:{Region}:{Account}:rule/{site.Prefix}-*", topic));
+        }
 
         // In the production account, SES as well: the configuration set every email is sent under
         // publishes each bounce and complaint here, the dev environment's included, since its sends
         // are this account's (ADR 0091).
-        if (site.IsProduction)
+        if (site.IsProduction && !atTheEdge)
         {
             topic.AddToResourcePolicy(Publisher("EmailEvents", "ses.amazonaws.com", EmailStack.ConfigurationSetArn, topic));
         }
