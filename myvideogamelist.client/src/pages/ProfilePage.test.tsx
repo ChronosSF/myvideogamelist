@@ -23,6 +23,9 @@ function tagsFor({
     page = 1,
     recorded = 12,
     favourites = 0,
+    // `'absent'` leaves the field out, as an API a release behind does. Not `undefined`, which a
+    // destructuring default would quietly turn back into `true`.
+    listed = true as boolean | 'absent',
 } = {}): Tag[] {
     const profile = {
         publicId,
@@ -30,6 +33,7 @@ function tagsFor({
         displayName,
         favourites,
         library: { tracked: recorded, recorded, byStatus: { finished: 3 } },
+        ...(listed === 'absent' ? {} : { listed }),
     };
 
     return meta({ loaderData: { profile, page, site: SITE } } as unknown as Route.MetaArgs) as Tag[];
@@ -58,18 +62,31 @@ describe('ProfilePage meta', () => {
         expect(tags).toContainEqual({ property: 'profile:username', content: 'AliceInChains' });
     });
 
-    it('keeps a published profile with nothing on it out of the index', () => {
-        // The same test `SitemapService.ListedProfiles` applies on the server. A page listed in the
-        // sitemap and marked noindex is reported as an error, so the two must not disagree.
-        const empty = tagsFor({ recorded: 0, favourites: 0 });
+    it('keeps a published profile the sitemap does not list out of the index', () => {
+        // `listed` is the answer of the query the sitemap runs. A page listed in the sitemap and marked
+        // noindex is reported as an error, so the page takes the sitemap's word for it.
+        const empty = tagsFor({ recorded: 0, favourites: 0, listed: false });
 
         expect(noindex(empty)).toBe(true);
         expect(canonical(empty)).toBeUndefined();
     });
 
-    it('indexes a profile whose only content is a shelf of favourites', () => {
-        // A favourite needs no entry (ADR 0029), so nothing recorded is not the same as nothing here.
-        expect(noindex(tagsFor({ recorded: 0, favourites: 4 }))).toBe(false);
+    it('decides by `listed` alone, never by the figures beside it', () => {
+        // One definition of an empty profile, the server's (issue 346): what counts towards it — a
+        // favourite with nothing recorded, say — is the server's to say, and restating it here is how
+        // the two drift.
+        expect(noindex(tagsFor({ recorded: 0, favourites: 4, listed: true }))).toBe(false);
+        expect(noindex(tagsFor({ recorded: 0, favourites: 0, listed: true }))).toBe(false);
+        expect(noindex(tagsFor({ recorded: 12, favourites: 4, listed: false }))).toBe(true);
+    });
+
+    it('indexes the page when the API is a release behind and sends no `listed`', () => {
+        // That release's sitemap may still list the profile, and the edge keeps what is drawn now for an
+        // hour: a page marked noindex while listed is the error the whole rule exists to prevent.
+        const tags = tagsFor({ recorded: 0, favourites: 0, listed: 'absent' });
+
+        expect(noindex(tags)).toBe(false);
+        expect(canonical(tags)).toBe('https://myvideogamelist.net/u/b4kz9q2mxw7c/AliceInChains');
     });
 
     it('is titled by the handle when there is no display name', () => {
@@ -137,6 +154,7 @@ function importedProfile(activity: Partial<PublicActivity> = {}, recorded = 606)
         playtime: { playthroughs: 0, totalMinutes: 0, withHours: 0 },
         reviews: 0,
         favourites: 0,
+        listed: recorded !== 0,
     };
 }
 

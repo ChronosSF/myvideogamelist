@@ -17,7 +17,12 @@ export interface UserStats {
 export interface LibraryStats {
     /** Games currently in one of the five statuses. */
     tracked: number;
-    /** Every entry, including games taken off the lists that kept their score. */
+    /**
+     * Every entry, including games taken off the lists that kept their score. On a public profile,
+     * only the entries holding something it shows — a status, a score, a playthrough or a published
+     * review — so one with nothing but notes, an ownership, tags or a private review is not counted
+     * (issue 346).
+     */
     recorded: number;
     wishlisted: number;
     byStatus: Record<ListId, number>;

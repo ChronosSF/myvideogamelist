@@ -29,8 +29,11 @@ namespace MyVideoGameList.Server.Services;
 /// <b>Profiles pass both gates the page itself has.</b> Public, because a private profile is a
 /// 404 and listing its name would answer the question that 404 exists to refuse (ADR 0027). And
 /// not empty, because a sitemap is a list of pages worth indexing, and the profile page marks an
-/// empty one <c>noindex</c> — see <c>ProfilePage.tsx</c>, which has to agree with
-/// <see cref="ListedProfiles"/> or a search console reports every disagreement as an error.
+/// empty one <c>noindex</c>. Both are <see cref="PublicProfileContent.ListedProfiles"/>, and the
+/// profile page reads its answer from the profile's <c>Listed</c> rather than deciding for itself,
+/// since a search console reports every page listed here and marked <c>noindex</c> as an error.
+/// What counts as something on a profile is only what the profile shows, so notes, an ownership,
+/// tags or a private review list nobody (#346).
 /// </para>
 /// </remarks>
 public class SitemapService(ApplicationDbContext db) : ISitemapService
@@ -86,13 +89,7 @@ public class SitemapService(ApplicationDbContext db) : ISitemapService
             .Where(g => g.Payload != null);
 
     private IQueryable<ApplicationUser> ListedProfiles() =>
-        db.Users
-            .AsNoTracking()
-            .Where(u => u.ProfileVisibility == ProfileVisibility.Public && u.UserName != null)
-            // Anything at all recorded, or a favourite, which needs no entry (ADR 0029). A review
-            // hangs off an entry, so it is already counted.
-            .Where(u => db.UserGameEntries.Any(e => e.UserId == u.Id)
-                || db.UserFavourites.Any(f => f.UserId == u.Id));
+        PublicProfileContent.ListedProfiles(db).AsNoTracking();
 
     /// <summary>
     /// Where a page starts, or null when it starts past anything an <c>int</c> can skip to. The

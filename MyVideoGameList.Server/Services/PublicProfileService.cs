@@ -42,13 +42,22 @@ public class PublicProfileService(
 
         var figures = await stats.GetStatsAsync(user.Id, cancellationToken);
 
+        // The one figure the stats service counts differently: the owner's own counts every entry,
+        // and this only the entries holding something this page shows. A game with nothing on it
+        // but notes, an ownership, tags or a private review is nobody else's business, and counting
+        // it would let a private act move this number (#346).
+        var recorded = await PublicProfileContent.ShownEntries(db)
+            .CountAsync(e => e.UserId == user.Id, cancellationToken);
+
+        // Asked of the sitemap's own query rather than worked out from the counts, so that the page
+        // and the sitemap cannot come to disagree about which profiles are worth indexing.
+        var listed = await PublicProfileContent.ListedProfiles(db)
+            .AnyAsync(u => u.Id == user.Id, cancellationToken);
+
         // The one figure the stats service has no reason to know about: a review is nothing to do
         // with tracking, and the private profile counts none of them.
-        var reviews = await db.Reviews
-            .AsNoTracking()
-            .CountAsync(
-                r => r.UserId == user.Id && r.Visibility == ReviewVisibility.Public && r.HiddenAt == null,
-                cancellationToken);
+        var reviews = await PublicProfileContent.PublishedReviews(db)
+            .CountAsync(r => r.UserId == user.Id, cancellationToken);
 
         // Nor about favourites, which are an axis of their own rather than a figure about tracking.
         var favourites = await db.UserFavourites
@@ -69,14 +78,20 @@ public class PublicProfileService(
                 figures.Activity.Months,
                 figures.Activity.CurrentStreakMonths,
                 figures.Activity.LongestStreakMonths),
-            Library: figures.Library,
+            Library: new LibraryStatsDto(
+                figures.Library.Tracked,
+                recorded,
+                figures.Library.Wishlisted,
+                figures.Library.ByStatus,
+                figures.Library.CompletionRate),
             Scores: figures.Scores,
             Playtime: new PublicPlaytimeDto(
                 figures.Playtime.Playthroughs,
                 figures.Playtime.TotalMinutes,
                 figures.Playtime.WithHours),
             Reviews: reviews,
-            Favourites: favourites);
+            Favourites: favourites,
+            Listed: listed);
     }
 
     public async Task<PublicFavouritesDto?> GetFavouritesAsync(
@@ -116,12 +131,14 @@ public class PublicProfileService(
         var user = await FindPublicAsync(publicId, cancellationToken);
         if (user is null) return null;
 
-        // Scoped on the review's own UserId and on its own visibility, in the predicate rather than
+        // Scoped on the review's own UserId and on its own visibility, in the query rather than
         // filtered afterwards: this is the authorization boundary and it belongs where it can be
-        // read. A review an admin hid is published nowhere, whatever its author chose (ADR 0076).
-        var published = db.Reviews
+        // read, which for the visibility is PublishedReviews, named for it. A review an admin hid is
+        // published nowhere, whatever its author chose (ADR 0076). The same reviews the profile
+        // counts, and the same that make an entry count on it.
+        var published = PublicProfileContent.PublishedReviews(db)
             .AsNoTracking()
-            .Where(r => r.UserId == user.Id && r.Visibility == ReviewVisibility.Public && r.HiddenAt == null);
+            .Where(r => r.UserId == user.Id);
 
         var total = await published.CountAsync(cancellationToken);
 

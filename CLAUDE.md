@@ -334,7 +334,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   review on a private profile is visible to nobody. `PublicProfileService` reuses `StatsService`
   rather than re-deriving anything, but copies fields into `PublicProfileDto` **one at a time** —
   returning `UserStatsDto` would publish every figure ever added to the private profile, by nobody's
-  decision. A private profile, an id nobody holds and a segment that cannot be an id are the same
+  decision. The one figure it counts itself is `recorded`: **a public figure counts only what the
+  page shows**, so an entry holding nothing but notes, an ownership, tags or a private review moves
+  no public number and lists nobody in the sitemap. Which entries count is `PublicProfileContent`'s
+  alone (#346). A private profile, an id nobody holds and a segment that cannot be an id are the same
   404, before any redirect, so the endpoint cannot be used to ask whether an id has an account.
 
 - **A page loads images only from the hosts its policy names, and an avatar's host is in two
@@ -814,8 +817,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   returns `pageMeta(...)` from `@/lib/seo` with a `path` **built from loader data, never from the
   request** (`/games/0012` renders, and has to say it is `/games/12`), and carries `site` in its loader
   data because `meta` runs in the browser too. The sitemap reads `CachedGames` and public,
-  non-empty profiles and makes no IGDB call; the empty-profile test lives in both
-  `SitemapService.ListedProfiles` and `ProfilePage`'s `meta`, and they must agree. Resource routes
+  non-empty profiles and makes no IGDB call; the empty-profile test is the server's alone,
+  `PublicProfileContent.ListedProfiles`, which the sitemap runs and whose answer the profile carries
+  as `listed`, for `ProfilePage`'s `meta` to mark the page `noindex` from. Never restate it over the
+  figures on the client: two tests that must agree drift apart (#346). Resource routes
   bypass `entry.server.tsx`, so they go out through `resourceResponse`, and so does a loader's
   redirect, through `redirectResponse`, with a `Cache-Control` of its own. See
   `docs/decisions/0036-*`. Structured data is a `script:ld+json` descriptor returned from `meta`,
