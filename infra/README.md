@@ -41,13 +41,15 @@ through the distribution, and no parameter that would open one.
 
 `-c env=prod` synthesises the same stacks in the production account, less `Dns`, and beside them
 `Mvgl-prod-Holding`, below, and `Mvgl-prod-Email`, in the next section. Of the application's own,
-none is deployed yet (ADR 0103). What differs from dev is three members of `Site`:
+none is deployed yet (ADR 0103). What differs from dev is four members of `Site`:
 
 - **`www` only redirects to the apex.** The edge certificate covers it, `App` points it at the
   distribution, and the viewer-request function answers it, and any other name, with a 301 to the same
   address on the host.
 - **The site is indexable.** The SSR server is given `SITE_INDEXABLE=true` (ADR 0036).
 - **It is behind basic auth until a pull request opens it**, which is the launch: `Site.BehindBasicAuth`.
+- **Its database keeps fourteen days of backups**, where dev's keeps seven: `Site.BackupRetentionDays`
+  (ADR 0107, and [Restoring the database](#restoring-the-database)).
 
 Three things to know before deploying any of it:
 
@@ -546,11 +548,11 @@ of which should match, but AWS documents neither, so that release is the check.
 
 ## Restoring the database
 
-RDS keeps seven days of automated backups of each environment's database, a snapshot a day and the
-transaction log between them, so it can be put back as it was at any moment in that window
-(`BackupRetention` in `DataStack.cs`). The instance refuses deletion, and is snapshotted if the stack
-ever lets go of it. A restore never changes the database it is taken from: it makes a new instance
-beside it.
+RDS keeps automated backups of each environment's database, a snapshot a day and the transaction log
+between them, so it can be put back as it was at any moment in the window: seven days, and fourteen for
+production (`Site.BackupRetentionDays`, ADR 0107). The instance refuses deletion, and is snapshotted if
+the stack ever lets go of it. A restore never changes the database it is taken from: it makes a new
+instance beside it.
 
 **Rehearsed on dev on 2026-11-23**, the first time one of these backups was restored (#440). Times are
 UTC.
@@ -674,8 +676,8 @@ table names and counts.
   instance", and says a rename restarts the instance and changes its address. The stack names the
   instance by its identifier, and what CloudFormation makes of the swap is not known. It is to be tried on
   production before the door opens, when nobody is using it (#440).
-- **Anything older than seven days.** Damage noticed on the eighth day is past the window, and nothing
-  keeps a longer copy.
+- **Anything older than the window**, seven days on dev and fourteen on production. Damage noticed a day
+  after it is past undoing, and nothing keeps a longer copy.
 - **The account and the Region.** The backups are where the database is, and there is no copy anywhere
   else.
 

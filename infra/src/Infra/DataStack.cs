@@ -106,7 +106,7 @@ public sealed class DataStack : Stack
             AllocatedStorage = 20,
             StorageType = StorageType.GP3,
             StorageEncrypted = true,
-            BackupRetention = Duration.Days(7),
+            BackupRetention = Duration.Days(site.BackupRetentionDays),
             DeletionProtection = true,
             EnablePerformanceInsights = false,
             RemovalPolicy = RemovalPolicy.SNAPSHOT,

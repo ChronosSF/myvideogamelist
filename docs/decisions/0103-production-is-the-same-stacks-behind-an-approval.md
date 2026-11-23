@@ -7,6 +7,10 @@
 dev` calls. Says what [0101](0101-devs-basic-auth-comes-off-for-the-trial.md)'s "any other environment"
 means for production, and decides 0044's D-5 for it.
 
+> **Later note.** §2's three members of `Site` are four since
+> [0107](0107-production-keeps-fourteen-days-of-backups-and-a-restore-has-been-rehearsed.md): production's
+> database keeps fourteen days of backups where dev's keeps seven.
+
 ## Context
 
 `-c env=prod` synthesised three stacks: the holding page, the alerts topic and the email stack.

@@ -10,6 +10,9 @@
  * the distribution, on the certificate and in the zone, where the App stack says the site answers,
  * and whether the SSR server is told it is indexable.
  *
+ * And one number no script reads, held the same way so that neither environment's changes unsaid:
+ * how many days of backups the database keeps (ADR 0107).
+ *
  * CI's Infrastructure job runs it after each synthesis. By hand, synthesise first, from infra/:
  * `cdk synth -c env=<env> -c imageTag=<any>`. It reads files and asks nothing of anybody.
  */
@@ -50,6 +53,7 @@ function same(what, synthesised, restated) {
 
 const app = template('App');
 const certificate = template('EdgeCert');
+const data = template('Data');
 const names = [where.host, ...where.redirectedHosts];
 
 console.log(`scripts/site.mjs against what was synthesised for ${env}, in ${dir}`);
@@ -68,6 +72,10 @@ same('whether the SSR server is told the site is indexable',
         .flatMap((task) => task.ContainerDefinitions ?? [])
         .some((container) => (container.Environment ?? []).some((e) => e.Name === 'SITE_INDEXABLE' && e.Value === 'true')),
     where.indexable);
+// Read with no default: a template that stopped saying how long fails here, where a missing number
+// read as RDS's own default would pass as nothing having changed.
+same('how many days of backups the database keeps',
+    resources(data, 'AWS::RDS::DBInstance').map((database) => database.BackupRetentionPeriod), [where.backupRetentionDays]);
 
 if (failed > 0) {
     console.log(`\n${failed} difference(s). infra/src/Infra/Site.cs decides each of these, and scripts/site.mjs restates it: change it there.`);
