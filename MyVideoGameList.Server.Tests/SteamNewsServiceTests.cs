@@ -114,7 +114,7 @@ public class GetLatestNewsAsyncTests
     }
 
     [Fact]
-    public async Task GetLatestNewsAsync_AsksSteamForTheWholeBody()
+    public async Task GetLatestNewsAsync_AnyFeed_AsksSteamForTheWholeBody()
     {
         // Asked for any other length, Steam sends a blurb with each tag deleted and nothing in its place,
         // and the words of two blocks run together for good. The excerpt is made here, from the body.
@@ -127,7 +127,7 @@ public class GetLatestNewsAsyncTests
     }
 
     [Fact]
-    public async Task GetLatestNewsAsync_SendsTheExcerptOfTheBodySteamSent()
+    public async Task GetLatestNewsAsync_SteamSendsABody_ReturnsItsExcerpt()
     {
         // Apex Legends, "Apex Legends: Latest Update 11/16/2026" (gid 1849827110426441), as Steam sent
         // it in November 2026, under Hades' AppID.
@@ -317,11 +317,11 @@ public class ToExcerptTests
         "[p]\\[ MAPS ][/p][p]Cobblestone[/p][list][*][p]Fixed some walkable ledges in long A[/p][/*][*][p]Fixed map "
         + "issue that was loading an empty skybox[/p][/*]",
         "[ MAPS ] Cobblestone Fixed some walkable ledges in long A Fixed map issue that was loading an empty skybox")]
-    public void FromTheBody_EveryBlockIsAWordBoundary(string contents, string expected)
+    public void ToExcerpt_BlocksInABody_BecomeWordBoundaries(string contents, string expected)
         => Assert.Equal(expected, SteamNewsService.ToExcerpt(contents));
 
     [Fact]
-    public void FromTheBody_AWordMarkedInsideALineKeepsItsNeighbours()
+    public void ToExcerpt_WordMarkedInsideALine_KeepsItsNeighbours()
     {
         // AppID 252490, "LIVESTOCK" (1845383656383226): a name marked as code inside a sentence.
         var result = SteamNewsService.ToExcerpt(
@@ -331,7 +331,7 @@ public class ToExcerptTests
     }
 
     [Fact]
-    public void FromTheBody_DropsAnImageWithALongStyleWhole()
+    public void ToExcerpt_ImageWithALongStyle_IsDroppedWhole()
     {
         // AppID 252490, "PRINTED AND POLISHED" (1848664643342609): an [img] whose attributes run to over 400
         // characters, past the bound a tag had before.
@@ -349,7 +349,7 @@ public class ToExcerptTests
     }
 
     [Fact]
-    public void FromTheBody_DropsAVideoWhole()
+    public void ToExcerpt_Video_IsDroppedWhole()
     {
         // Counter-Strike 2, "The Cobbled Road to Singapore" (1849827110421973), its opening.
         var result = SteamNewsService.ToExcerpt(
@@ -363,22 +363,48 @@ public class ToExcerptTests
     }
 
     [Fact]
-    public void FromTheBody_KeepsABracketThePostEscapedWithoutItsBackslash()
+    public void ToExcerpt_EscapedBracket_IsKeptWithoutItsBackslash()
     {
         // AppID 1938090, "Modern Warfare 4 Progression and Prestige" (1846651706691566).
         Assert.Equal("Those are [CLASSIFIED].", SteamNewsService.ToExcerpt("Those are \\[CLASSIFIED].[/p]"));
     }
 
-    [Fact]
-    public void FromTheBody_KeepsABracketedWordThatIsNoTag()
-    {
-        // Bloons TD 6, "Update 56.0!" (1840310314340464): a label the post wrote in plain brackets.
-        var result = SteamNewsService.ToExcerpt(
-            "[list][*][Frontier] Full Strength Posse - Have a full Posse of 6[/*][*][Frontier] Gon' Fishin' - Catch 30 "
-            + "Fish[/*]");
+    [Theory]
+    // Bloons TD 6, "Update 56.0!" (1840310314340464): a label the post wrote in plain brackets.
+    [InlineData(
+        "[list][*][Frontier] Full Strength Posse - Have a full Posse of 6[/*][*][Frontier] Gon' Fishin' - Catch 30 "
+        + "Fish[/*]",
+        "[Frontier] Full Strength Posse - Have a full Posse of 6 [Frontier] Gon' Fishin' - Catch 30 Fish")]
+    // Bloons TD 6, "Bloons TD 6 - Update 53.0!" (1824459501605428): one that begins like the tag [p].
+    [InlineData(
+        "[list][*][PC] Resolved an issue which could prevent the FPS cap from applying in all case",
+        "[PC] Resolved an issue which could prevent the FPS cap from applying in all case")]
+    public void ToExcerpt_BracketedWordThatIsNoTag_IsKept(string contents, string expected)
+        => Assert.Equal(expected, SteamNewsService.ToExcerpt(contents));
 
-        Assert.Equal(
-            "[Frontier] Full Strength Posse - Have a full Posse of 6 [Frontier] Gon' Fishin' - Catch 30 Fish", result);
+    [Fact]
+    public void ToExcerpt_TagsInCapitals_AreTagsToo()
+    {
+        // No post read wrote one, but the expression before this one took tags in either case.
+        Assert.Equal("Patch 1.2 Fixed a crash.", SteamNewsService.ToExcerpt("[H2]Patch 1.2[/H2][B]Fixed[/B] a crash."));
+    }
+
+    [Fact]
+    public void ToExcerpt_AttributeNameWithAHyphenOrADigit_IsStillATag()
+    {
+        var result = SteamNewsService.ToExcerpt("[p data-align=\"center\"]Centred text[/p][td col2=\"1\"]Next[/td]");
+
+        Assert.Equal("Centred text Next", result);
+    }
+
+    [Fact]
+    public void ToExcerpt_TextOnlyPastTheScanCap_IsNotRead()
+    {
+        // Nothing past MaxBodyScanned is read, so a body whose only text lies beyond it has no excerpt.
+        var result = SteamNewsService.ToExcerpt(
+            "[p]" + new string(' ', SteamNewsService.MaxBodyScanned) + "Text past the cap.");
+
+        Assert.Null(result);
     }
 
     // Then the blurbs Steam answered before the service asked for the body: no tags left in them, but the
@@ -402,11 +428,11 @@ public class ToExcerptTests
         "{STEAM_CLAN_IMAGE}/4649813/d66fbf64694823ff8108572f51a5f97fb097c0db.png Welcome to the 251st War "
         + "Thunder Steam Screenshot Competition!",
         "Welcome to the 251st War Thunder Steam Screenshot Competition!")]
-    public void DropsTheImagePlaceholderSteamsBlurbKeeps(string contents, string expected)
+    public void ToExcerpt_BlurbOpeningOnAPlaceholder_DropsIt(string contents, string expected)
         => Assert.Equal(expected, SteamNewsService.ToExcerpt(contents));
 
     [Fact]
-    public void DropsAPlaceholderTheBlurbCutsShort()
+    public void ToExcerpt_PlaceholderCutShort_IsDropped()
     {
         // R.E.P.O., "Did someone say "R.E.P.O. MERCH"???" (1825727806710964): the blurb ends at its
         // length, inside the address, and Steam marks the cut.
@@ -418,7 +444,7 @@ public class ToExcerptTests
     }
 
     [Fact]
-    public void DropsAnImagesFullAddressButKeepsALink()
+    public void ToExcerpt_ImageAddressBesideLinks_DropsOnlyTheImage()
     {
         // Stardew Valley, "Stardew Valley x Fangamer Merch Holiday Sale" (1783238125358744): an [img]
         // around an address on Steam's image host, after two links that are part of the news.
@@ -477,7 +503,7 @@ public class CondenseTests
         1_700_000_000);
 
     [Fact]
-    public void KeepsTheExcerptInPlaceOfTheBody()
+    public void Condense_ABody_KeepsItsExcerptInItsPlace()
     {
         var kept = SteamNewsService.Condense(Item, SteamNewsService.ToExcerpt, NullLogger.Instance, 1172470);
 
@@ -489,7 +515,7 @@ public class CondenseTests
     }
 
     [Fact]
-    public void WhenTheExcerptTimesOut_KeepsTheItemWithoutOne()
+    public void Condense_ExcerptTimesOut_KeepsTheItemWithoutOne()
     {
         // One body the expressions cannot finish in time costs its own excerpt, not the feed it came in.
         var kept = SteamNewsService.Condense(

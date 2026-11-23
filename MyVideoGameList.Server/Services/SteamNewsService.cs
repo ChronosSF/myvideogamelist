@@ -58,8 +58,8 @@ public partial class SteamNewsService(
     /// it afterwards can find the word boundary again. An <c>[img]</c> leaves its address behind as
     /// well. So the body is asked for, the excerpt is made here (<see cref="ToExcerpt"/>), and only the
     /// excerpt is kept (<see cref="CachedItem"/>). It is still one request a feed, and the cache holds
-    /// what it held. Steam compresses the answer when asked, which the <c>Steam</c> client in
-    /// <c>Program.cs</c> does. Measured across 34 games' feeds in November 2026, the compressed bodies
+    /// what it held. Steam compresses the answer when asked, which <see cref="SteamNewsClient"/>
+    /// does. Measured across 34 games' feeds in November 2026, the compressed bodies
     /// came to about twice the bytes of the uncompressed blurbs, half again at the median.
     /// </remarks>
     private const int SteamMaxLength = 0;
@@ -74,7 +74,7 @@ public partial class SteamNewsService(
     /// no more than one of those. The excerpt is the post's opening, so whatever is cut off was never
     /// going to be in it.
     /// </remarks>
-    private const int MaxBodyScanned = 100_000;
+    internal const int MaxBodyScanned = 100_000;
 
     /// <summary>
     /// Ceiling on how many games one aggregate call will fan out to. Each game is a separate
@@ -358,7 +358,7 @@ public partial class SteamNewsService(
             var url = $"{NewsEndpoint}?appid={feed.AppId}&count={feed.Count}&maxlength={SteamMaxLength}"
                 + $"&feeds={AnnouncementsFeed}&format=json";
 
-            var client = httpClientFactory.CreateClient("Steam");
+            var client = httpClientFactory.CreateClient(SteamNewsClient.Name);
             using var response = await client.GetAsync(url, cancellationToken);
 
             // A retired or region-locked AppID answers 4xx. That is a normal outcome for a game
@@ -512,7 +512,7 @@ public partial class SteamNewsService(
 
     /// <summary>The tags that mark words inside a line, which leave no word boundary behind.</summary>
     private static readonly FrozenSet<string> InlineTags =
-        new[] { "b", "i", "u", "c", "strike", "spoiler", "url" }.ToFrozenSet(StringComparer.Ordinal);
+        new[] { "b", "i", "u", "c", "strike", "spoiler", "url" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     // Bounded quantifiers throughout: these run over untrusted upstream text, and an unbounded
     // nested quantifier is how a regex turns into a denial of service. An opening tag's attributes
@@ -530,14 +530,17 @@ public partial class SteamNewsService(
     private static partial Regex DroppedBlocks();
 
     /// <summary>
-    /// One tag, opening or closing, of the kinds Steam's posts use. Lowercase, as every one seen was, so
-    /// that "[C]" and "[PC]" in a post's text stay text. A dropped block's own tags are here too, for one
-    /// too long to drop whole, so that at least its tags go.
+    /// One tag, opening or closing, of the kinds Steam's posts use, in either case, as the expression
+    /// before it was. Every tag seen was lowercase. A word in brackets that only begins like a tag stays
+    /// text ("[PC]", "[Boss Event]"), because a name has to end at the bracket, at an equals sign, or at
+    /// a space and an attribute of the form <c>name=</c>. A dropped block's own tags are here too, for
+    /// one too long to drop whole, so that at least its tags go.
     /// </summary>
     [GeneratedRegex(
         @"(?<!\\)\[/?(?<name>\*|p|b|i|u|c|strike|spoiler|url|h[1-4]|list|olist|hr|table|tr|th|td|quote|code"
-        + @"|expand|carousel|dynamiclink|img|previewyoutube|video|audio)(?:=[^\]]{0,1000}|\s+[a-z]+=[^\]]{0,1000})?\]",
-        RegexOptions.None,
+        + @"|expand|carousel|dynamiclink|img|previewyoutube|video|audio)"
+        + @"(?:=[^\]]{0,1000}|\s+[a-z0-9-]+=[^\]]{0,1000})?\]",
+        RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 200)]
     private static partial Regex BbCodeTags();
 
