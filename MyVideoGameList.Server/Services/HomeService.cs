@@ -79,7 +79,7 @@ public class HomeService(
         var news = await newsTask;
         var events = await eventsTask;
         var (upcoming, comingSoonMissing) = await comingSoonTask;
-        var (released, justOutMissing) = await justOutTask;
+        var (released, justOutMissing, justOutPartial) = await justOutTask;
 
         // One judgement, for both caches: it picks how long this process keeps the answer, and it
         // travels in the answer so that nobody keeps the page built from it (ADR 0013). It is
@@ -101,11 +101,14 @@ public class HomeService(
         // GetEventsAsync's catch when our own tables could not be read.
         //
         // The release panels are like the showcases: no game passing a panel's rules is an answer, and the
-        // panel is simply not drawn. Only a failure to ask IGDB, or to read the picks, is missing.
+        // panel is simply not drawn. Only a failure to ask IGDB, or to read the picks, is missing. Just out
+        // is taken from two lists and can lose one of them: it is then drawn from the other, and is partial,
+        // which is degraded like the rest, so that the half panel is asked about again in a minute and is on
+        // nobody's cached page (ADR 0104).
         //
         // News that is only thinner than it should be, because some feeds failed and others did not,
         // cannot be seen from here.
-        var degraded = news.Count == 0 || events.Degraded || comingSoonMissing || justOutMissing;
+        var degraded = news.Count == 0 || events.Degraded || comingSoonMissing || justOutMissing || justOutPartial;
 
         if (degraded)
         {
@@ -117,7 +120,8 @@ public class HomeService(
                 + "{EventsState}, the Coming soon panel {ComingSoonState} and the Just out panel {JustOutState}. "
                 + "Kept for {Lifetime} and marked so that the page is not cached.",
                 news.Count, events.Degraded ? "incomplete" : "whole",
-                comingSoonMissing ? "missing" : "whole", justOutMissing ? "missing" : "whole", DegradedCacheLifetime);
+                comingSoonMissing ? "missing" : "whole",
+                justOutMissing ? "missing" : justOutPartial ? "incomplete" : "whole", DegradedCacheLifetime);
         }
 
         var result = new HomeResponse(news, events, upcoming, released, degraded);
@@ -220,26 +224,28 @@ public class HomeService(
     }
 
     /// <summary>
-    /// The Just out panel (ADR 0073), and whether it is missing: when the admin's hides could not be read, or
-    /// IGDB could not be asked.
+    /// The Just out panel (ADR 0073, 0104); whether it is missing, when the admin's picks could not be read
+    /// or IGDB could not be asked; and whether it is partial, when IGDB could be asked for only one of the two
+    /// lists it is taken from.
     /// </summary>
     /// <remarks>
-    /// Without the hides it is missing rather than composed, as Coming soon is, since a game is hidden because
+    /// Without the picks it is missing rather than composed, as Coming soon is, since a game is hidden because
     /// it should not be on the front page. Degrades rather than fails, like every part of this page.
     /// </remarks>
-    private async Task<(IReadOnlyList<JustOutDto> Games, bool Missing)> GetJustOutAsync(
+    private async Task<(IReadOnlyList<JustOutDto> Games, bool Missing, bool Partial)> GetJustOutAsync(
         DateOnly today, ComingSoonPicks? picks, CancellationToken cancellationToken)
     {
-        if (picks is null) return ([], true);
+        if (picks is null) return ([], true, false);
 
         try
         {
-            return (await justOut.ComposeAsync(today, picks.Hidden, cancellationToken), false);
+            var panel = await justOut.ComposeAsync(today, picks, cancellationToken);
+            return (panel.Games, false, panel.Partial);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "IGDB unavailable while composing the Just out panel.");
-            return ([], true);
+            return ([], true, false);
         }
     }
 

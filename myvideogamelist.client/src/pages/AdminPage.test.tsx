@@ -408,7 +408,7 @@ describe('AdminPage for an admin', () => {
 
         await actor.click(await screen.findByRole('button', { name: 'Remove Grand Theft Auto VI' }));
 
-        expect(await screen.findByText('Nothing pinned or hidden: the panel is IGDB’s follows alone.')).toBeInTheDocument();
+        expect(await screen.findByText('Nothing pinned or hidden: both panels are IGDB’s counts alone.')).toBeInTheDocument();
     });
 
     it('says beside the box when a name is already on the list', async () => {

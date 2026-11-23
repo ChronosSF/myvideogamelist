@@ -1100,9 +1100,11 @@ public class IgdbService(
             logger.LogWarning("IGDB's upcoming games filled a page of {MaxBatchSize}; the Coming soon candidates are partial.", MaxBatchSize);
 
         // What a field IGDB has removed looks like: no rows and no error. Said once a day, since an empty
-        // panel is otherwise just a panel that is not drawn.
-        if (games.Count == 0)
-            logger.LogWarning("IGDB answered no upcoming games with {MinHypes} follows or more; the Coming soon panel will be empty.", ComingSoon.MinHypes);
+        // panel is otherwise just a panel that is not drawn. Judged without the pinned games, which are asked
+        // for by their id and come back whatever became of the follows: counted with them, one pin would keep
+        // this from ever being said.
+        if (games.All(g => pins.Contains(g.Id)))
+            logger.LogWarning("IGDB answered no upcoming games with {MinHypes} follows or more; the Coming soon panel has only what is pinned.", ComingSoon.MinHypes);
 
         cache.Set(cacheKey, result, ComingSoonLifetime);
         return result;
@@ -1169,46 +1171,126 @@ public class IgdbService(
             .ToList();
 
     /// <summary>
-    /// How long the Just out panel's candidates are kept: a day, keyed by the UTC day, as Coming soon's are.
-    /// IGDB calculates its Twitch figures once a day, so asking more often learns nothing.
+    /// How long each of the Just out panel's two lists is kept: a day, keyed by the UTC day, as Coming soon's
+    /// candidates are. IGDB calculates its Twitch figures once a day, so asking more often learns nothing.
     /// </summary>
     private static readonly TimeSpan JustOutLifetime = TimeSpan.FromHours(24);
 
-    public async Task<IReadOnlyList<JustOutCandidate>> GetJustOutCandidatesAsync(
-        DateOnly today, CancellationToken cancellationToken = default)
+    public async Task<JustOutCandidates> GetJustOutCandidatesAsync(
+        DateOnly today, IReadOnlyCollection<int> pinned, CancellationToken cancellationToken = default)
     {
-        var cacheKey = $"igdb_just_out|{today:yyyy-MM-dd}";
-        if (cache.TryGetValue(cacheKey, out IReadOnlyList<JustOutCandidate>? cached) && cached is not null)
+        var pins = pinned.Distinct().Order().ToList();
+
+        // Two lists, asked for, kept and lost apart (ADR 0104 §3): the most watched, and the games people
+        // followed ahead of their release, the largest of which IGDB's Twitch figure does not count, with the
+        // pinned ones. A list that cannot be asked for is not kept, so the next composition asks for it alone.
+        //
+        // Degrades on purpose where one fails beside the other: that costs the panel a list and not the
+        // panel, and the answer says it is partial, so that the home page is not kept with half of it. What
+        // counts as the caller leaving is the caller's token, as in the home composite: somebody else's
+        // timeout is an OperationCanceledException too.
+        JustOutWatched? watched = null;
+        try
+        {
+            watched = await GetJustOutWatchedAsync(today, cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "IGDB could not be asked for the new games most watched on Twitch; the Just out panel is without them.");
+        }
+
+        IReadOnlyList<IgdbComingSoonGame>? followed = null;
+        try
+        {
+            followed = await GetJustOutFollowedAsync(today, pins, cancellationToken);
+        }
+        // Caught only beside the other list. With neither there is no panel to compose, and the failure is the
+        // caller's to see.
+        catch (Exception ex) when (watched is not null && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "IGDB could not be asked for the new games people followed ahead of their release; the Just out panel is without them and without its pins.");
+        }
+
+        // A game both watched and followed came back twice, the same both times, and is one candidate.
+        IEnumerable<IgdbComingSoonGame> mostWatched = watched?.Games ?? [];
+        var games = mostWatched
+            .Concat(followed ?? [])
+            .DistinctBy(g => g.Id)
+            .Select(g => new JustOutCandidate(
+                MapToPanelGame(g), watched?.Figures.GetValueOrDefault(g.Id) ?? 0, MapToPanelRows(g), g.Hypes ?? 0))
+            .ToList();
+
+        return new JustOutCandidates(games, Partial: watched is null || followed is null);
+    }
+
+    /// <summary>The Just out panel's most watched list, as IGDB answered it.</summary>
+    /// <param name="Figures">IGDB's Twitch figure for each of its five hundred most watched games, by game.</param>
+    /// <param name="Games">Which of those are new games with a release row in the window.</param>
+    private sealed record JustOutWatched(IReadOnlyDictionary<int, double> Figures, IReadOnlyList<IgdbComingSoonGame> Games);
+
+    private async Task<JustOutWatched> GetJustOutWatchedAsync(DateOnly today, CancellationToken cancellationToken)
+    {
+        // The same for everybody and nothing to do with the pins, so one copy a day serves every reader and a
+        // change of pin asks for none of it again.
+        var cacheKey = $"igdb_just_out_watched|{today:yyyy-MM-dd}";
+        if (cache.TryGetValue(cacheKey, out JustOutWatched? cached) && cached is not null)
             return cached;
 
         // Two requests, since a popularity row cannot be filtered by its game's release dates: the most
         // watched games first, then which of them came out in the window. Five hundred of the first held
-        // seventy that passed the rules on 2026-10-25, for a panel of ten.
+        // seventy that passed the rules on 2026-10-25.
         var primitives = await QueryAsync<IgdbPopularityPrimitive>(
             PopularityEndpoint, BuildJustOutPopularityQuery(), cancellationToken);
 
         // Sorted most watched first, so the first row for a game is its highest.
-        var watched = new Dictionary<int, double>();
+        var figures = new Dictionary<int, double>();
         foreach (var p in primitives)
         {
-            if (p is { GameId: int id, Value: double value }) watched.TryAdd(id, value);
+            if (p is { GameId: int id, Value: double value }) figures.TryAdd(id, value);
         }
 
-        IReadOnlyList<JustOutCandidate> result = [];
-        if (watched.Count > 0)
-        {
-            var games = await QueryAsync<IgdbComingSoonGame>(
-                GamesEndpoint, BuildJustOutQuery(today, watched.Keys), cancellationToken);
-            result = games.Select(g => new JustOutCandidate(MapToPanelGame(g), watched[g.Id], MapToPanelRows(g))).ToList();
-        }
+        IReadOnlyList<IgdbComingSoonGame> games = figures.Count == 0
+            ? []
+            : await QueryAsync<IgdbComingSoonGame>(GamesEndpoint, BuildJustOutQuery(today, figures.Keys), cancellationToken);
 
-        // What a removed field or popularity type looks like: no rows and no error. Said once a day, since an
-        // empty panel is otherwise just a panel that is not drawn.
-        if (result.Count == 0)
-            logger.LogWarning("IGDB answered no games watched on Twitch that came out in the last {WindowDays} days; the Just out panel will be empty.", JustOut.WindowDays);
+        // What a removed popularity type looks like: no rows and no error. Said once a day, and of this list
+        // alone, since a panel short of one of its lists is otherwise just a panel.
+        if (games.Count == 0)
+            logger.LogWarning("IGDB answered no games watched on Twitch that came out in the last {WindowDays} days; the Just out panel is without its most watched.", JustOut.WindowDays);
 
+        var result = new JustOutWatched(figures, games);
         cache.Set(cacheKey, result, JustOutLifetime);
         return result;
+    }
+
+    /// <summary>
+    /// The Just out panel's followed list, as IGDB answered it: the new games with a release row in the window
+    /// that enough people followed, and the pinned ones.
+    /// </summary>
+    private async Task<IReadOnlyList<IgdbComingSoonGame>> GetJustOutFollowedAsync(
+        DateOnly today, IReadOnlyList<int> pins, CancellationToken cancellationToken)
+    {
+        // The same for everybody, so one copy a day serves every reader; a pin changes the question.
+        var cacheKey = $"igdb_just_out_followed|{today:yyyy-MM-dd}|{string.Join(',', pins)}";
+        if (cache.TryGetValue(cacheKey, out IReadOnlyList<IgdbComingSoonGame>? cached) && cached is not null)
+            return cached;
+
+        IReadOnlyList<IgdbComingSoonGame> games = await QueryAsync<IgdbComingSoonGame>(
+            GamesEndpoint, BuildJustOutAwaitedQuery(today, pins), cancellationToken);
+
+        // What a removed field looks like: no rows and no error. Said once a day, and of this list alone.
+        // Judged without the pinned games, which are asked for by their id and come back whatever became of
+        // the follows: counted with them, one pin would keep this from ever being said.
+        if (games.All(g => pins.Contains(g.Id)))
+            logger.LogWarning("IGDB answered no games out in the last {WindowDays} days with {MinHypes} follows or more; the Just out panel is without its most followed.", JustOut.WindowDays, ComingSoon.MinHypes);
+
+        // Sixty-nine on 2026-11-22, against a page of five hundred. The answer is in follows order, so the
+        // most followed are still at the top of it, and it is kept.
+        if (games.Count == MaxBatchSize)
+            logger.LogWarning("IGDB's newly released games with follows filled a page of {MaxBatchSize}; the Just out candidates are partial.", MaxBatchSize);
+
+        cache.Set(cacheKey, games, JustOutLifetime);
+        return games;
     }
 
     /// <summary>The Just out panel's first query: the most watched games on Twitch, most watched first.</summary>
@@ -1222,7 +1304,7 @@ public class IgdbService(
 
     /// <summary>
     /// The Just out panel's second query: which of the most watched games are new games with a release row
-    /// stored in the window, with every release row and its platform.
+    /// stored in the window, with every release row, its platform, and the game's follows.
     /// </summary>
     /// <remarks>
     /// By a release row and not by <c>first_release_date</c>, for Coming soon's reason: that is an early-access
@@ -1239,6 +1321,37 @@ public class IgdbService(
             .AppendLine($"where id = ({string.Join(',', ids)})"
                 + $" & game_type = ({string.Join(',', ComingSoon.GameTypes)}) & version_parent = null"
                 + $" & release_dates.date >= {UnixDay(from)} & release_dates.date < {UnixDay(today)};")
+            .AppendLine($"limit {MaxBatchSize};")
+            .ToString();
+    }
+
+    /// <summary>
+    /// The Just out panel's third query: the new games with a release row stored in the window that people
+    /// followed ahead of their release, most followed first, and the pinned games by their id, whatever they
+    /// are, for <see cref="JustOut"/> to judge by the same rules.
+    /// </summary>
+    /// <remarks>
+    /// Coming soon's query turned to face the other way (ADR 0104): the same floor of follows, in the query so
+    /// that one page holds every candidate, and the same range by a release row and not by
+    /// <c>first_release_date</c>. It is the way in for the games IGDB's Twitch figure does not count. Read on
+    /// 2026-11-22, that figure was 0.00000025 for Grand Theft Auto VI, three days out and followed by 1,584,
+    /// against 0.000226 for the five-hundredth game, and zero for Grand Theft Auto V, League of Legends and
+    /// Fortnite.
+    /// </remarks>
+    internal static string BuildJustOutAwaitedQuery(DateOnly today, IReadOnlyCollection<int> pinned)
+    {
+        var from = today.AddDays(-JustOut.WindowDays);
+
+        var awaited = $"game_type = ({string.Join(',', ComingSoon.GameTypes)}) & version_parent = null"
+            + $" & hypes >= {ComingSoon.MinHypes}"
+            + $" & release_dates.date >= {UnixDay(from)} & release_dates.date < {UnixDay(today)}";
+
+        var where = pinned.Count == 0 ? awaited : $"({awaited}) | id = ({string.Join(',', pinned)})";
+
+        return new StringBuilder()
+            .AppendLine(ComingSoonFields)
+            .AppendLine($"where {where};")
+            .AppendLine("sort hypes desc;")
             .AppendLine($"limit {MaxBatchSize};")
             .ToString();
     }

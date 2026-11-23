@@ -2,7 +2,10 @@ using MyVideoGameList.Server.DTOs;
 
 namespace MyVideoGameList.Server.Services;
 
-/// <summary>The games the admin pinned to the Coming soon panel, and the ones hidden from it.</summary>
+/// <summary>
+/// The games the admin pinned to the home page's release panels, Coming soon and Just out, and the ones
+/// hidden from them.
+/// </summary>
 public sealed record ComingSoonPicks(IReadOnlySet<int> Pinned, IReadOnlySet<int> Hidden);
 
 /// <summary>

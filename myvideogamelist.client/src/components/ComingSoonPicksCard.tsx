@@ -16,12 +16,14 @@ interface ComingSoonPicksCardProps {
 }
 
 /**
- * The corrections to the home page's Coming soon panel (ADR 0071).
+ * The corrections to the home page's two release panels, Coming soon and Just out (ADR 0071, 0073, 0104).
  *
- * The panel picks itself: the new games of the next three months that the most people follow on IGDB. A
- * pin puts a game on it that too few follow, ahead of the rest; a hide keeps one off, and off the Just out
- * panel too (ADR 0073). Neither changes the panel's dates. A game is named by its IGDB id, which is in its page's address, and the server names it
- * by what IGDB calls it — so a mistyped id is refused rather than pinned as nothing.
+ * Each panel picks itself: Coming soon is the new games of the next three months that the most people
+ * follow on IGDB, and Just out the ones of the last three that the most followed or the most watch on
+ * Twitch. A pin puts a game on a panel that its counts would leave off, ahead of the rest: on Coming soon
+ * until it is out, and on Just out after. A hide keeps one off both. Neither changes a panel's dates. A
+ * game is named by its IGDB id, which is in its page's address, and the server names it by what IGDB calls
+ * it — so a mistyped id is refused rather than pinned as nothing.
  */
 export function ComingSoonPicksCard({ picks, setPick, removePick, reload, reloading }: ComingSoonPicksCardProps) {
     const inputId = useId();
@@ -59,12 +61,14 @@ export function ComingSoonPicksCard({ picks, setPick, removePick, reload, reload
 
     return (
         <section className="admin-card" aria-labelledby="admin-coming-soon-heading">
-            <h2 id="admin-coming-soon-heading" className="admin-card-title">Coming soon on the home page</h2>
+            <h2 id="admin-coming-soon-heading" className="admin-card-title">Coming soon and Just out on the home page</h2>
             <p className="admin-hint">
-                The panel shows the ten new games of the next three months that the most people follow on IGDB.
-                Pin a game to put it ahead of them, however few follow it, or hide one to keep it off — off Just
-                out as well, once it is released. Neither changes the dates: a pinned game known only to its
-                year still waits for a closer one. A change shows within a few minutes.
+                Coming soon shows the ten new games of the next three months that the most people follow on
+                IGDB. Just out shows nine of the last three months: the most followed, and the most watched on
+                Twitch. Pin a game to put it ahead of the rest, whatever its numbers: on Coming soon until it
+                is out, then on Just out for three months, or until the pin is taken off. Hide one to keep it
+                off both. Neither changes the dates: a pinned game known only to its year still waits for a
+                closer one. A change shows within a few minutes.
             </p>
 
             {picks === null ? (
@@ -137,7 +141,7 @@ export function ComingSoonPicksCard({ picks, setPick, removePick, reload, reload
                         </ul>
                     ) : (
                         <p className="admin-hint mt-5">
-                            Nothing pinned or hidden: the panel is IGDB’s follows alone.
+                            Nothing pinned or hidden: both panels are IGDB’s counts alone.
                         </p>
                     )}
                 </>

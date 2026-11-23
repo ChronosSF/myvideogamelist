@@ -27,8 +27,9 @@ export interface HomeResponse {
      */
     comingSoon: ComingSoonGame[];
     /**
-     * The new games of the last ninety days most watched on Twitch, the newest first (ADR 0073). Empty when
-     * none passes the rules, which is an answer rather than a failure.
+     * The new games of the last ninety days most followed on IGDB ahead of their release and most watched on
+     * Twitch, the newest first (ADR 0073, 0104). Empty when none passes the rules, which is an answer rather
+     * than a failure.
      */
     justOut: JustOutGame[];
     /**

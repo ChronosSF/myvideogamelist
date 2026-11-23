@@ -89,12 +89,15 @@ public class HomeServiceTests
     private static readonly JustOutDto Enshrouded =
         new(248643, "Enshrouded", null, new DateOnly(2026, 10, 15), []);
 
-    /// <summary>A Just out panel composing to the games given, whatever it is told is hidden.</summary>
-    private static IJustOutService JustOutReturning(params JustOutDto[] games)
+    /// <summary>A whole Just out panel composing to the games given, whatever it is told is hidden.</summary>
+    private static IJustOutService JustOutReturning(params JustOutDto[] games) =>
+        JustOutReturning(new JustOutPanel(games, Partial: false));
+
+    private static IJustOutService JustOutReturning(JustOutPanel panel)
     {
         var justOut = Substitute.For<IJustOutService>();
-        justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<IReadOnlySet<int>>(), Arg.Any<CancellationToken>())
-            .Returns(games);
+        justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
+            .Returns(panel);
         return justOut;
     }
 
@@ -310,15 +313,16 @@ public class HomeServiceTests
         Assert.Empty(home.JustOut);
         Assert.True(home.Degraded);
         await comingSoon.DidNotReceiveWithAnyArgs().ComposeAsync(default, NoPicks, default);
-        await justOut.DidNotReceiveWithAnyArgs().ComposeAsync(default, new HashSet<int>(), default);
+        await justOut.DidNotReceiveWithAnyArgs().ComposeAsync(default, NoPicks, default);
     }
 
     [Fact]
-    public async Task GetHomeAsync_JustOutComposes_ForUtcTodayWithoutTheHiddenGames()
+    public async Task GetHomeAsync_JustOutComposes_ForUtcTodayWithTheAdminsPinsAndHides()
     {
-        var hidden = new HashSet<int> { 7 };
+        // The picks Coming soon reads, both kinds: a pinned game is on Just out once it is out (ADR 0104).
+        var picks = new ComingSoonPicks(new HashSet<int> { 52189 }, new HashSet<int> { 7 });
         var comingSoon = Substitute.For<IComingSoonService>();
-        comingSoon.GetPicksAsync(Arg.Any<CancellationToken>()).Returns(new ComingSoonPicks(new HashSet<int>(), hidden));
+        comingSoon.GetPicksAsync(Arg.Any<CancellationToken>()).Returns(picks);
         comingSoon.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
             .Returns([GtaVi]);
         var justOut = JustOutReturning(Enshrouded);
@@ -329,7 +333,7 @@ public class HomeServiceTests
 
         Assert.Equal([Enshrouded], home.JustOut);
         Assert.False(home.Degraded);
-        await justOut.Received(1).ComposeAsync(new DateOnly(2026, 10, 17), hidden, Arg.Any<CancellationToken>());
+        await justOut.Received(1).ComposeAsync(new DateOnly(2026, 10, 17), picks, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -344,10 +348,25 @@ public class HomeServiceTests
     }
 
     [Fact]
+    public async Task GetHomeAsync_JustOutHasOnlyOneOfItsLists_IsDrawnFromIt_AndDegraded()
+    {
+        // IGDB could be asked for one list and not the other (ADR 0104): the panel is the one that answered,
+        // and the page is degraded so that nobody keeps it with half a panel.
+        var justOut = JustOutReturning(new JustOutPanel([Enshrouded], Partial: true));
+        var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), justOut: justOut);
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Equal([Enshrouded], home.JustOut);
+        Assert.Equal([GtaVi], home.ComingSoon);
+        Assert.True(home.Degraded);
+    }
+
+    [Fact]
     public async Task GetHomeAsync_IgdbFailsForJustOut_CostsThePanelAndNothingElse()
     {
         var justOut = Substitute.For<IJustOutService>();
-        justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<IReadOnlySet<int>>(), Arg.Any<CancellationToken>())
+        justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("IGDB is down."));
         var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), justOut: justOut);
 

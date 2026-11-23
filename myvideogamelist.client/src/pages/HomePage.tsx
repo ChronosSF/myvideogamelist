@@ -236,7 +236,7 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
 
                 {/* For everybody, after the reader's own two weeks or the showcases standing in for them:
                     what is coming over three months, then what came out over the three before (ADR 0071,
-                    0073). A game on somebody's line may be here too, which is the panel saying it is a big
+                    0073, 0104). A game on somebody's line may be here too, which is the panel saying it is a big
                     one; the two panels meet on today and never hold the same game. */}
                 {comingSoon.length > 0 && (
                     <section className="pt-16 sm:pt-20" aria-labelledby="coming-soon-heading">
@@ -254,7 +254,7 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                         <HomeSectionHeading
                             id="just-out-heading"
                             title="Just out"
-                            subtitle="The new games most watched on Twitch, out in the last three months"
+                            subtitle="The new games most followed on IGDB and most watched on Twitch, out in the last three months"
                             action={{ to: '/games', label: 'Browse all' }}
                         />
                         <JustOutRail games={justOut} today={today} />
