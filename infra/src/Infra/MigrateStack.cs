@@ -11,8 +11,9 @@ namespace Infra;
 /// One task definition that runs the migration bundle baked into the API image, deployed and run
 /// before the application stack changes so that old and new revisions never race each other
 /// through the same migration (ADR 0007, 0044). It is run, not scheduled: the pipeline calls
-/// <c>ecs run-task</c> with the task subnets and the API security group from the data stack's
-/// outputs, and fails the release on a non-zero exit code.
+/// <c>ecs run-task</c> with the task subnets, the API security group and whether the task takes a
+/// public address, all from the data stack's outputs (ADR 0105), and fails the release on a non-zero
+/// exit code.
 /// </summary>
 public sealed class MigrateStack : Stack
 {

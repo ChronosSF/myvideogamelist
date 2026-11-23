@@ -89,6 +89,23 @@ public sealed record Site(string Env)
     public bool BehindBasicAuth => Env != "dev";
 
     /// <summary>
+    /// How many NAT gateways the VPC has, and so where the tasks run (ADR 0105). Dev has none: its
+    /// tasks run in public subnets with public addresses and reach IGDB, Steam, Cloudflare and the AWS
+    /// APIs through the internet gateway, the trade ADR 0015 made. Production has one, and its tasks run
+    /// in private subnets with no public address and reach all of that through it. A second, in the
+    /// other zone, is what would let production's tasks reach the internet whichever zone is lost: it is
+    /// this number and a Data deploy, which adds a gateway and repoints one route and replaces no subnet.
+    /// </summary>
+    public int NatGateways => IsProduction ? 1 : 0;
+
+    /// <summary>
+    /// Whether the tasks run in private subnets with no public address: wherever there is a NAT gateway
+    /// to reach the internet through, and nowhere else, since a task with neither cannot even pull its
+    /// image (ADR 0105).
+    /// </summary>
+    public bool PrivateTasks => NatGateways > 0;
+
+    /// <summary>
     /// The web ACL on the distribution, which is also the name of its metrics, the <c>WebACL</c>
     /// dimension, in <c>us-east-1</c> (ADR 0098).
     /// </summary>

@@ -519,6 +519,12 @@ jobs:
       - name: The scripts agree with dev's synthesis
         run: node scripts/check-site.mjs dev
 
+      # Dev's tasks stay in public subnets with no NAT gateway, the trade ADR 0015 made: a change there
+      # would replace subnets under dev's live database. Production's are in private subnets behind one
+      # (ADR 0105). Each environment's word is here, and the script reads what was synthesised.
+      - name: Dev's tasks are where they were
+        run: node scripts/check-network.mjs dev public
+
       # Production's, the same way, in its own account (ADR 0103). A stack that asks either account
       # something new fails here until a synthesis with that account's credentials has cached the
       # answer and cdk.context.json is committed with it.
@@ -532,6 +538,9 @@ jobs:
 
       - name: The scripts agree with production's synthesis
         run: node scripts/check-site.mjs prod
+
+      - name: Production's tasks are private, behind NAT
+        run: node scripts/check-network.mjs prod private
 
       # An environment has one account, and Program.cs refuses any other before it makes a stack. Dev's
       # stacks asked for with production's account are the case that once synthesised: a deploy with the

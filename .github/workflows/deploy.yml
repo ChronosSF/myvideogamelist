@@ -209,8 +209,19 @@ jobs:
           output() { aws cloudformation describe-stacks --stack-name "Mvgl-$ENV_NAME-Data" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
           SUBNETS=$(output TaskSubnetIds)
           SG=$(output ApiSecurityGroupId)
+          # Whether the task takes a public address is the Data stack's to say, beside its subnets:
+          # DISABLED where they are private behind a NAT gateway, as production's are. A Data stack
+          # that says nothing has public subnets with no NAT gateway, dev's among them, and there a
+          # task without an address cannot even pull its image (ADR 0105).
+          PUBLIC_IP=$(output TaskAssignPublicIp)
+          case "$PUBLIC_IP" in
+            ""|None) PUBLIC_IP=ENABLED ;;
+            ENABLED|DISABLED) ;;
+            *) echo "::error::Mvgl-$ENV_NAME-Data's TaskAssignPublicIp is '$PUBLIC_IP', which is neither ENABLED nor DISABLED."; exit 1 ;;
+          esac
+          echo "Migration task network: subnets $SUBNETS, public address $PUBLIC_IP"
           TASK=$(aws ecs run-task --cluster "mvgl-$ENV_NAME" --task-definition "mvgl-$ENV_NAME-migrate" --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=$PUBLIC_IP}" \
             --query "tasks[0].taskArn" --output text)
           echo "Migration task: $TASK"
           aws ecs wait tasks-stopped --cluster "mvgl-$ENV_NAME" --tasks "$TASK"

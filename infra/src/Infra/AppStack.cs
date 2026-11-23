@@ -355,7 +355,10 @@ public sealed class AppStack : Stack
             // One task per service is what makes AddMemoryCache correct: the IGDB token, the caches
             // and both limiters are per process (ADR 0033, 0034). Not raised before #101.
             DesiredCount = 1,
-            AssignPublicIp = true,
+            // A public address only where the subnets have no NAT gateway to go out through, which is
+            // dev's trade (ADR 0015). Production's tasks have none, and reach IGDB, Steam, Cloudflare,
+            // ECR, the logs, the secrets and SES through the gateway (ADR 0105).
+            AssignPublicIp = !site.PrivateTasks,
             VpcSubnets = subnets,
             SecurityGroups = [securityGroup],
             HealthCheckGracePeriod = Duration.Seconds(60),

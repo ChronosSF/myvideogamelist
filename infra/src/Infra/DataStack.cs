@@ -40,21 +40,20 @@ public sealed class DataStack : Stack
     public DataStack(Construct scope, string id, IStackProps props, Site site, IHostedZone zone)
         : base(scope, id, props)
     {
-        // Two availability zones because a balancer and an RDS subnet group each need two; no NAT
-        // gateway (ADR 0015) - the tasks have public addresses and reach IGDB, Steam, ECR and the
-        // AWS APIs through the internet gateway. The balancer gets subnets of its own so that "the
-        // balancer's subnets" is an exact thing to name in the forwarded-headers trust list.
+        // Two availability zones because a balancer and an RDS subnet group each need two. The
+        // balancer gets subnets of its own so that "the balancer's subnets" is an exact thing to name
+        // in the forwarded-headers trust list. Where the tasks run is Site.NatGateways (ADR 0105):
+        // with none, as dev has, they have public addresses and reach IGDB, Steam, ECR and the AWS
+        // APIs through the internet gateway (ADR 0015); with one, as production has, they are in
+        // private subnets and reach all of that through the gateway, which sits in subnets of its
+        // own, so that the balancer's are still the balancer's alone.
         Vpc = new Vpc(this, "Vpc", new VpcProps
         {
             VpcName = site.Prefix,
             MaxAzs = 2,
-            NatGateways = 0,
-            SubnetConfiguration =
-            [
-                new SubnetConfiguration { Name = "alb", SubnetType = SubnetType.PUBLIC, CidrMask = 27 },
-                new SubnetConfiguration { Name = "tasks", SubnetType = SubnetType.PUBLIC, CidrMask = 24 },
-                new SubnetConfiguration { Name = "data", SubnetType = SubnetType.PRIVATE_ISOLATED, CidrMask = 24 },
-            ],
+            NatGateways = site.NatGateways,
+            NatGatewaySubnets = site.PrivateTasks ? new SubnetSelection { SubnetGroupName = "nat" } : null,
+            SubnetConfiguration = Subnets(site),
         });
 
         // All four groups and every rule between them live here, so the application stack can come
@@ -195,6 +194,15 @@ public sealed class DataStack : Stack
 
         var taskSubnets = Vpc.SelectSubnets(new SubnetSelection { SubnetGroupName = "tasks" });
         _ = new CfnOutput(this, "TaskSubnetIds", new CfnOutputProps { Value = Fn.Join(",", taskSubnets.SubnetIds) });
+        // Whether a task started in those subnets takes a public address, which the pipeline and
+        // dev-env.mjs pass to the migration task beside them, so that the two are read from one
+        // deploy of one stack. Only where the tasks are private: a Data stack that says nothing is
+        // one whose tasks have public addresses, as dev's live one, deployed before this output
+        // existed, says nothing, and dev's template stays as it was made (ADR 0105).
+        if (site.PrivateTasks)
+        {
+            _ = new CfnOutput(this, "TaskAssignPublicIp", new CfnOutputProps { Value = "DISABLED" });
+        }
         _ = new CfnOutput(this, "ApiSecurityGroupId", new CfnOutputProps { Value = ApiSecurityGroup.SecurityGroupId });
         _ = new CfnOutput(this, "ApiRepositoryUri", new CfnOutputProps { Value = ApiRepository.RepositoryUri });
         _ = new CfnOutput(this, "SsrRepositoryUri", new CfnOutputProps { Value = SsrRepository.RepositoryUri });
@@ -202,6 +210,29 @@ public sealed class DataStack : Stack
         _ = new CfnOutput(this, "BasicAuthStoreArn", new CfnOutputProps { Value = BasicAuthStore.KeyValueStoreArn });
         _ = new CfnOutput(this, "DeployRoleArn", new CfnOutputProps { Value = deployRole.RoleArn });
     }
+
+    /// <summary>
+    /// The subnet groups, in the order their ranges are handed out. Dev's are the three it was made
+    /// with, which is why this is two lists rather than one with a switch in each line: a long-lived
+    /// VPC whose subnets were described differently would be a VPC whose subnets were replaced. Where
+    /// the tasks are private their group has a route out through the NAT gateway and nothing in, and
+    /// the gateway's own group comes last, so that every other group's ranges are dev's (ADR 0105).
+    /// </summary>
+    private static SubnetConfiguration[] Subnets(Site site) => site.PrivateTasks
+        ?
+        [
+            new SubnetConfiguration { Name = "alb", SubnetType = SubnetType.PUBLIC, CidrMask = 27 },
+            new SubnetConfiguration { Name = "tasks", SubnetType = SubnetType.PRIVATE_WITH_EGRESS, CidrMask = 24 },
+            new SubnetConfiguration { Name = "data", SubnetType = SubnetType.PRIVATE_ISOLATED, CidrMask = 24 },
+            // The smallest range a subnet can have; a NAT gateway is one address in it.
+            new SubnetConfiguration { Name = "nat", SubnetType = SubnetType.PUBLIC, CidrMask = 28 },
+        ]
+        :
+        [
+            new SubnetConfiguration { Name = "alb", SubnetType = SubnetType.PUBLIC, CidrMask = 27 },
+            new SubnetConfiguration { Name = "tasks", SubnetType = SubnetType.PUBLIC, CidrMask = 24 },
+            new SubnetConfiguration { Name = "data", SubnetType = SubnetType.PRIVATE_ISOLATED, CidrMask = 24 },
+        ];
 
     private SecurityGroup Group(string id, string description, bool allowAllOutbound) =>
         new(this, $"{id}SecurityGroup", new SecurityGroupProps

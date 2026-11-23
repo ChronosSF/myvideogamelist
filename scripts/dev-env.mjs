@@ -487,7 +487,8 @@ async function stoppedTask(task, minutes = 30) {
  * against the old schema passes /healthz and fails on its first query.
  *
  * The task definition is deployed first, because it names its image by tag. The task runs where the
- * API's would, on the Data stack's subnets and security group, and its log is printed whatever it
+ * API's would, on the Data stack's subnets and security group, with a public address only where that
+ * stack does not say otherwise (ADR 0105), and its log is printed whatever it
  * answers. A failure stops the resume here: nothing is deployed, and the gate stays off. One already
  * running stops it before it starts, since two would race each other through the same migrations -
  * the reason migrating is a step of its own (CLAUDE.md).
@@ -508,8 +509,17 @@ async function migrate(tag) {
         '--query', 'Stacks[0].Outputs']).value ?? [];
     const output = (key) => outputs.find((o) => o.OutputKey === key)?.OutputValue
         ?? fail(`${NAMES.dataStack} has no ${key} output.`);
+    // Whether the task takes a public address is the Data stack's to say, beside its subnets: DISABLED
+    // where they are private behind a NAT gateway, as production's are. One that says nothing has public
+    // subnets with no NAT gateway, dev's among them, where a task without an address cannot even pull
+    // its image (ADR 0105).
+    const publicIp = outputs.find((o) => o.OutputKey === 'TaskAssignPublicIp')?.OutputValue ?? 'ENABLED';
+    if (!['ENABLED', 'DISABLED'].includes(publicIp)) {
+        fail(`${NAMES.dataStack}'s TaskAssignPublicIp is ${JSON.stringify(publicIp)}, which is neither ENABLED nor DISABLED.`);
+    }
     const network = `awsvpcConfiguration={subnets=[${output('TaskSubnetIds')}],`
-        + `securityGroups=[${output('ApiSecurityGroupId')}],assignPublicIp=ENABLED}`;
+        + `securityGroups=[${output('ApiSecurityGroupId')}],assignPublicIp=${publicIp}}`;
+    note(`The migration task runs in ${output('TaskSubnetIds')}, public address ${publicIp}.`);
 
     const started = aws(['ecs', 'run-task', '--cluster', NAMES.cluster, '--task-definition', NAMES.migrateTask,
         '--launch-type', 'FARGATE', '--network-configuration', network,
