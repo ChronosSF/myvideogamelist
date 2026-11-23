@@ -45,7 +45,8 @@ or weekly summary, while an alert per anomaly needs an SNS topic. Detection "run
 a day" on Cost Explorer's data, "which has a delay of up to 24 hours". Since December 2023 its two resource
 types can be made by a CloudFormation stack in any Region but GovCloud. AWS has made such a monitor by
 itself, with a daily email, for a standalone account that turned on Cost Explorer on or after 27 March
-2023. Dev's account had none on 2026-11-23. Production's was not read.
+2023. Neither account had a monitor on 2026-11-23: dev's was read then, and the owner read production's
+and found its listing empty.
 
 ## Decision
 
@@ -87,15 +88,15 @@ meant to be running.
 - **Email, not the topic.** An anomaly a day late is no worse than one twelve hours late, given the data's
   own delay. AWS's pages, read for this, state no Region requirement for a topic that subscribes, either way,
   so the topic would be one more thing to prove for no gain.
-- **One per account, so an existing one is deleted first.** Where AWS made a default monitor, the owner
-  deletes it, and its subscription, in the console before the first deploy. With a quota of one, the deploy
-  should otherwise fail at the monitor and roll back.
+- **One per account, so an existing one is deleted first.** Neither account has one today. If AWS makes a
+  default monitor before this stack is deployed, the owner deletes it, and its subscription, in the console
+  first. With a quota of one, the deploy should otherwise fail at the monitor and roll back.
 
 ## Consequences
 
 - **The owner's steps:**
-  - **Production:** `cdk deploy Mvgl-prod-Email` for the alarms, any time, since `Alerts` stands. Then look
-    in the console for a default monitor, and `cdk deploy Mvgl-prod-Costs`.
+  - **Production:** `cdk deploy Mvgl-prod-Email` for the alarms, any time, since `Alerts` stands. Then
+    `cdk deploy Mvgl-prod-Costs`: production had no monitor on 2026-11-23, so nothing is deleted first.
   - **Dev:** `Mvgl-dev-Costs` once its alarm parameter exists. Read on 2026-11-23, it did not, since dev's
     Alerts stack has not been deployed (#434's pull request found it).
 - **What it costs**, from AWS's price list for `eu-central-1` (2026-11-19):

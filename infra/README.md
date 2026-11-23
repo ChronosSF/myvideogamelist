@@ -595,7 +595,8 @@ cdk deploy Mvgl-dev-Costs --profile mvgl-dev -c env=dev
   that turned on Cost Explorer from 27 March 2023, so look first, in the console (Billing and Cost
   Management, Cost Anomaly Detection, Cost monitors), for a monitor of the type "AWS services". If
   there is one, delete it and its alert subscription there before the deploy: with a quota of one, the
-  deploy should otherwise fail at the monitor and roll back. Dev's account had none when this was written; production's was not read.
+  deploy should otherwise fail at the monitor and roll back. Neither account had one on 2026-11-23: dev's
+  was read then, and the owner read production's.
 - **Email only, daily.** An email subscriber may have a daily or a weekly summary; an alert per anomaly
   needs an SNS topic. Detection runs about three times a day on Cost Explorer's data, which is up to a
   day behind, and a new monitor can take a day to start; a service needs ten days of history before
