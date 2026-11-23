@@ -5,7 +5,9 @@
 [0066](0066-a-holding-page-until-production-takes-the-domain.md), whose §8 it fills in. Amends
 [0099](0099-dev-is-deployed-by-hand.md): the steps a run executes are now `deploy.yml`, which `Deploy
 dev` calls. Says what [0101](0101-devs-basic-auth-comes-off-for-the-trial.md)'s "any other environment"
-means for production, and decides 0044's D-5 for it.
+means for production, and decides 0044's D-5 for it. §2's three members of `Site` are four, and
+production's tasks are not in public subnets, since
+[0105](0105-productions-tasks-run-in-private-subnets-behind-one-nat-gateway.md).
 
 ## Context
 

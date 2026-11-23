@@ -8,7 +8,7 @@ Seven stacks, split by lifetime, named `Mvgl-<env>-<part>`:
 | Stack | Lifetime | Holds |
 |---|---|---|
 | `Dns` | permanent | the environment's public hosted zone |
-| `Data` | long-lived | VPC, security groups, RDS, secrets (IGDB's and Turnstile's set by hand), ECR, the cluster, the regional certificate, the GitHub deploy role, the basic-auth store, the origin-verify secret |
+| `Data` | long-lived | VPC (production's with its NAT gateway, ADR 0105), security groups, RDS, secrets (IGDB's and Turnstile's set by hand), ECR, the cluster, the regional certificate, the GitHub deploy role, the basic-auth store, the origin-verify secret |
 | `EdgeCert` | long-lived, `us-east-1` | the certificate CloudFront uses |
 | `Alerts` | long-lived | the topic the alarms send to, and the owner's email subscription to it (ADR 0080) |
 | `Migrate` | each release | the task that runs the migration bundle |
@@ -41,13 +41,22 @@ through the distribution, and no parameter that would open one.
 
 `-c env=prod` synthesises the same stacks in the production account, less `Dns`, and beside them
 `Mvgl-prod-Holding`, below, and `Mvgl-prod-Email`, in the next section. Of the application's own,
-none is deployed yet (ADR 0103). What differs from dev is three members of `Site`:
+none is deployed yet (ADR 0103). What differs from dev is four members of `Site`:
 
 - **`www` only redirects to the apex.** The edge certificate covers it, `App` points it at the
   distribution, and the viewer-request function answers it, and any other name, with a 301 to the same
   address on the host.
 - **The site is indexable.** The SSR server is given `SITE_INDEXABLE=true` (ADR 0036).
 - **It is behind basic auth until a pull request opens it**, which is the launch: `Site.BehindBasicAuth`.
+- **Its tasks are in private subnets behind a NAT gateway**, `Site.NatGateways`: no public address, and
+  out through one gateway in `eu-central-1a`, in a `nat` subnet group of its own, so that the balancer's
+  subnets are still the API's trust list. Dev's tasks keep their public addresses and have no gateway
+  (ADR 0015). The gateway is in `Data`, so it bills from `Data`'s first deploy: about $41.61 a month
+  with its address, $34.31 more than dev's shape once the two tasks' addresses it replaces are taken
+  off, plus $0.052 a GB it carries. Losing `eu-central-1a` leaves both zones' tasks with no way out; a
+  second gateway is `NatGateways = 2` and a `Data` deploy, about $41.61 a month more, and replaces no
+  subnet (ADR 0105). `scripts/check-network.mjs` is CI's check that production's tasks stay private and
+  dev's stay as they are.
 
 Three things to know before deploying any of it:
 
@@ -107,7 +116,10 @@ node scripts/dev-check.mjs --env prod
 The first `resume` runs while the holding page still answers. It migrates the database at the newest
 pushed tag, deploys `Waf`, and stops before `App`, naming the holding page's stack: neither step uses
 the holding page's names, so whatever goes wrong in production's first migration or its first web ACL
-costs the domain nothing. The domain answers nothing from the destroy until the second `resume` has
+costs the domain nothing. That migration is also the first proof of production's way out: the task
+pulls its image, reads its secret and writes its log through the NAT gateway, so a way out that does
+not work fails there, with the holding page untouched (ADR 0105). The domain answers nothing from the
+destroy until the second `resume` has
 finished. That one finds the migration and `Waf` done, deploys `App`, proves the door is on and sets
 `PROD_DEPLOY_ENABLED`. Run the check with `MVGL_PROD_BASIC_AUTH` set to the pair and the profile
 signed in. After that, a release is a run of `Deploy prod`.

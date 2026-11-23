@@ -34,7 +34,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0012](0012-steam-news-without-a-database.md) | Steam news is cached in memory, not stored in the database | Implemented; N3 is 0052, the AppID question an open issue |
 | [0013](0013-http-caching-policy.md) | Every route declares its own `Cache-Control` | Implemented; a `.data` gap closed by 0070 |
 | [0014](0014-rds-postgresql-over-aurora.md) | Managed PostgreSQL on RDS, not Aurora Serverless v2 | Accepted |
-| [0015](0015-fargate-confirmed-and-nat-less-networking.md) | ECS Fargate confirmed, with NAT-less networking | Accepted |
+| [0015](0015-fargate-confirmed-and-nat-less-networking.md) | ECS Fargate confirmed, with NAT-less networking | Accepted; for dev alone since 0105, under which production's tasks are private behind a NAT gateway |
 | [0016](0016-scores-carry-their-sample-size.md) | A score is never shown without its sample size | Implemented; the community endpoints' floors are the server's since 0094 |
 | [0017](0017-detail-data-off-the-listing.md) | Detail-only game data stays out of the listing payload | Implemented |
 | [0018](0018-append-only-status-event-log.md) | Status changes are recorded in an append-only event log | Amended by 0019 |
@@ -123,6 +123,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0102](0102-a-deployed-admin-is-a-hand-set-parameter-the-task-reads.md) | A deployed environment's admin is an account id in a Parameter Store parameter, set by hand and read by the API's task as it starts; the App stack does not deploy where nobody has made it | Implemented; proved only by a deploy |
 | [0103](0103-production-is-the-same-stacks-behind-an-approval.md) | Production is the same stacks from the same code, less the zone, which it looks up; `www` only redirects; one workflow deploys dev and production, and production's waits for an approval; its first deploy is made by hand, behind basic auth | Accepted; built, not deployed |
 | [0104](0104-just-out-takes-the-followed-beside-the-watched-and-the-admins-pin.md) | Just out is the new games people followed ahead of release beside the most watched on Twitch, turn about, because IGDB's Twitch figure does not count the largest games; and a Coming soon pin holds on Just out once its game is out | Implemented |
+| [0105](0105-productions-tasks-run-in-private-subnets-behind-one-nat-gateway.md) | Production's tasks run in private subnets behind one NAT gateway, in subnets of its own, by one member of `Site`; dev keeps 0015's public tasks to the byte; no VPC endpoints; the migration task asks the Data stack whether it takes an address; about $34 a month net, and a second gateway is one number and a Data deploy | Implemented; nothing deployed |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

@@ -139,9 +139,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 
 - **Production is the same stacks, and one workflow deploys both.** `-c env=prod` synthesises what dev
   has, in the production account, less `Dns`: the domain's zone was made by hand and is looked up, never
-  made. What differs is three members of `Site`: `www` only redirects to the apex, the SSR server is
-  given `SITE_INDEXABLE=true`, and the site is behind basic auth until a pull request opens it, which is
-  the launch. The redirect and the door are one viewer-request function, since a behaviour holds one for
+  made. What differs is four members of `Site`: `www` only redirects to the apex, the SSR server is
+  given `SITE_INDEXABLE=true`, the site is behind basic auth until a pull request opens it, which is
+  the launch, and the tasks run in private subnets behind a NAT gateway (`NatGateways`), where dev's
+  have public addresses and no gateway. **Dev's network must not change**, since it is under dev's live
+  database: CI's `scripts/check-network.mjs` holds dev's tasks public and production's private. The
+  migration task is started by `deploy.yml` and `dev-env.mjs`, outside the stacks, and takes its public
+  address from `Data`'s `TaskAssignPublicIp` output, which is there only where the tasks are private
+  (ADR 0105). The redirect and the door are one viewer-request function, since a behaviour holds one for
   each event, and it is on a behaviour only where it has a job, so dev's distribution names none.
   `Deploy dev` and `Deploy prod` both call `deploy.yml`: a change to the steps is a change to both,
   and production's run waits for the `prod` environment's reviewers. **Each caller says
@@ -151,7 +156,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   read. Production's application stack is first made by hand, with `dev-env.mjs resume --env prod`,
   once the holding page's stack is destroyed, since the two answer by the same names. `scripts/site.mjs`
   restates `Site.cs` for the two scripts, and CI holds it to each synthesis with
-  `scripts/check-site.mjs`. Nothing of it is deployed yet. See `docs/decisions/0103-*` and
+  `scripts/check-site.mjs`. Nothing of it is deployed yet. See `docs/decisions/0103-*`, `0105-*` and
   `infra/README.md`.
 
 - **The SSR server holds an idle connection 5 seconds longer than the balancer, which the stack tells it,

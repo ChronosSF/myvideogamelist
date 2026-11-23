@@ -124,6 +124,11 @@ const COST = {
     parked: '≈ $4.64 a month: the idle floor — storage, secrets, zones, images',
     broken: 'the application stack is up but the database is not: every page fails and the balancer bills anyway',
     aclLeft: 'the web ACL\'s stack outlived the application stack, about $6 a month for nothing. Park again to destroy it',
+    // ADR 0105, from AWS's price list for Frankfurt: a NAT gateway is $0.052 an hour and its address
+    // $0.005, about $41.61 a month, in the Data stack, so in every row. The tasks it serves have no public
+    // addresses, which is two of the four the rows count at $0.005 an hour each.
+    nat: (gateways) => `the rows are dev's, and this VPC has ${gateways === 1 ? 'a NAT gateway' : `${gateways} NAT gateways`}: `
+        + `about $${Math.round(gateways * 41.61)} a month more in every row, less $7.30 while the tasks run, which have no public addresses`,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -360,6 +365,7 @@ function status() {
     const dbUp = db === 'available';
     const row = appUp && dbUp ? COST.awake : appUp ? COST.broken : dbUp ? COST.appOnly : COST.parked;
     console.log(`  cost row: ${row}`);
+    if (WHERE.natGateways > 0 && data !== null) console.log(`  note: ${COST.nat(WHERE.natGateways)}.`);
     if (wafUp && app === null) console.log(`  note: ${COST.aclLeft}.`);
     if (app === 'DELETE_FAILED') {
         console.log(`  note: ${NAMES.appStack} failed to delete and still bills. CloudFormation's events say why; park again once that is fixed.`);
