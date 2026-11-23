@@ -156,9 +156,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // day stale after that: caching a failure outlives the failure (ADR 0013). An answer with no
     // tracked count is from an API older than this build, in the middle of a deploy, and is missing a
     // part all the same. So is a game whose related games IGDB did not answer for (ADR 0084): the API
-    // says so with a null, and one older than this build sends none at all.
+    // says so with a null, and one older than this build sends none at all. And so is a game whose
+    // completion times IGDB did not answer for, said the same way (issue 352): a game IGDB has no times
+    // for comes with times counted from nobody, and an API older than that sends a null for both, which
+    // costs a slow page rather than a pinned one.
     const whole = scores !== null && typeof scores.tracked === 'number' && times !== null
-        && game.details?.related != null;
+        && game.details?.related != null && game.details.timeToBeat != null;
 
     // `site` rides along because `meta` runs in the browser too, where the environment it is read
     // from does not exist; `today` because a day read in `meta` could differ between the render and
