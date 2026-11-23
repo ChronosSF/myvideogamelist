@@ -32,6 +32,19 @@ internal static class Program
 
         var site = new Site(env);
         var account = System.Environment.GetEnvironmentVariable("CDK_DEFAULT_ACCOUNT");
+        // An environment has one account, and the stacks go wherever the credentials point. Dev's
+        // synthesise for production's account as readily as for their own, so a deploy with the other
+        // environment's profile would make them there, three of them protected from deletion.
+        // Production's fail in dev's account only by accident, at the zone they look up. So the account
+        // is checked here, before any stack is made. A synthesis with no credentials names the account
+        // itself, as CI's does.
+        if (account != site.Account)
+        {
+            throw new InvalidOperationException(
+                $"env={env} is account {site.Account}, and these credentials are for {account ?? "no account"}. "
+                + "Use the environment's own profile, or set CDK_DEFAULT_ACCOUNT for a synthesis with no credentials.");
+        }
+
         var regional = new Amazon.CDK.Environment
         {
             Account = account,

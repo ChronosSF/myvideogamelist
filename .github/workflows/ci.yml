@@ -533,6 +533,22 @@ jobs:
       - name: The scripts agree with production's synthesis
         run: node scripts/check-site.mjs prod
 
+      # An environment has one account, and Program.cs refuses any other before it makes a stack. Dev's
+      # stacks asked for with production's account are the case that once synthesised: a deploy with the
+      # wrong profile would have made them there. The refusal names both accounts.
+      - name: An environment is refused in the other's account
+        working-directory: infra
+        env:
+          CDK_DEFAULT_ACCOUNT: '381466680659'
+          AWS_REGION: eu-central-1
+          AWS_EC2_METADATA_DISABLED: 'true'
+        run: |
+          if out=$(node_modules/.bin/cdk synth --no-lookups --quiet -c env=dev -c imageTag=000000000000 2>&1); then
+            echo "::error::dev's stacks synthesised for production's account"
+            exit 1
+          fi
+          grep -F "env=dev is account 334393515036, and these credentials are for 381466680659" <<<"$out"
+
   codeql:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest

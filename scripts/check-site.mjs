@@ -7,8 +7,8 @@
  * test expects of a site what it says: the names that redirect, and whether a crawler may index it.
  * A change to Site.cs that missed it would leave that test checking the old rules. So this compares
  * it with what the CDK app synthesised for the environment, which is Site.cs at work: the names on
- * the distribution and on the certificate, where the App stack says the site answers, and whether
- * the SSR server is told it is indexable.
+ * the distribution, on the certificate and in the zone, where the App stack says the site answers,
+ * and whether the SSR server is told it is indexable.
  *
  * CI's Infrastructure job runs it after each synthesis. By hand, synthesise first, from infra/:
  * `cdk synth -c env=<env> -c imageTag=<any>`. It reads files and asks nothing of anybody.
@@ -57,6 +57,11 @@ same("the distribution's names",
     resources(app, 'AWS::CloudFront::Distribution').map((d) => d.DistributionConfig.Aliases ?? []), [names]);
 same("the certificate's names",
     resources(certificate, 'AWS::CertificateManager::Certificate').map((c) => [c.DomainName, ...(c.SubjectAlternativeNames ?? [])]), [names]);
+// Each name whole and once, with its closing dot: a record named for the host inside a zone of the
+// same name is that name, not the name twice over.
+same('the records that point each name at the distribution',
+    resources(app, 'AWS::Route53::RecordSet').map((record) => `${record.Type} ${record.Name}`).sort(),
+    names.flatMap((name) => [`A ${name}.`, `AAAA ${name}.`]).sort());
 same('where the App stack says the site answers', app.Outputs?.SiteUrl?.Value, `https://${where.host}`);
 same('whether the SSR server is told the site is indexable',
     resources(app, 'AWS::ECS::TaskDefinition')

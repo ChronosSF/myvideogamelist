@@ -47,6 +47,13 @@ list. A synthesis with production's credentials made them on 2026-11-22 and wrot
 dev, with no lookups and no credentials, and a stack that asks either account something new fails there
 until its answer is committed.
 
+**An environment is refused in the other's account.** The stacks go wherever the credentials point, and
+dev's synthesised for production's account as readily as for their own: `cdk deploy -c env=dev` with
+production's profile would have made them there, three of them protected from deletion. Production's
+failed in dev's account only by accident, at the zone they look up. So `Program.cs` compares the account
+it is given with `Site.Account` before it makes a stack, and names both when they differ. CI asks for
+dev's stacks with production's account and expects that refusal.
+
 ### 2. What differs is in `Site`, and is three things
 
 - **`RedirectedHosts`**: `www` for production, nothing for any other environment.
@@ -246,8 +253,8 @@ does not deploy, where it would otherwise have made five alarms that reach nobod
 - **`scripts/site.mjs` restates three lines of `Site.cs`** for the two scripts: the host, the names
   that redirect and whether the site is indexable. A change to one is a change to both, and
   `scripts/check-site.mjs` is what says so: CI runs it after each synthesis, against the names on the
-  distribution and the certificate, the `SiteUrl` output and whether the SSR server is told it is
-  indexable. Not stack outputs the scripts read, as they read `BasicAuth`: the acceptance test has to
+  distribution, on the certificate and in the zone's records, the `SiteUrl` output and whether the SSR
+  server is told it is indexable. Not stack outputs the scripts read, as they read `BasicAuth`: the acceptance test has to
   run with no profile signed in.
 - **Not here:** private subnets and a Multi-AZ database (#415, #416), the move of dev's data (#465),
   HSTS on documents ([#436](https://github.com/ChronosSF/myvideogamelist/issues/436)), the managed

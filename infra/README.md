@@ -23,6 +23,10 @@ cdk synth --profile mvgl-dev -c env=dev -c imageTag=<sha>
 cdk deploy Mvgl-dev-Data --profile mvgl-dev -c env=dev
 ```
 
+An environment has one account, and the app refuses to synthesise it with another's credentials:
+`-c env=dev` goes with `--profile mvgl-dev` and `-c env=prod` with `--profile mvgl-prod`. The other
+pairing stops before any stack is made, naming both accounts.
+
 The CLI the pipeline runs is the one `package-lock.json` here pins, which CI audits and synthesises
 with: `npm ci` here installs it, `npx cdk …` runs it, and `scripts/dev-env.mjs` runs it once it is
 installed (#339). A `cdk` installed globally is whatever version it was when installed.
