@@ -23,7 +23,9 @@ function tagsFor({
     page = 1,
     recorded = 12,
     favourites = 0,
-    listed = true as boolean | undefined,
+    // `'absent'` leaves the field out, as an API a release behind does. Not `undefined`, which a
+    // destructuring default would quietly turn back into `true`.
+    listed = true as boolean | 'absent',
 } = {}): Tag[] {
     const profile = {
         publicId,
@@ -31,7 +33,7 @@ function tagsFor({
         displayName,
         favourites,
         library: { tracked: recorded, recorded, byStatus: { finished: 3 } },
-        ...(listed === undefined ? {} : { listed }),
+        ...(listed === 'absent' ? {} : { listed }),
     };
 
     return meta({ loaderData: { profile, page, site: SITE } } as unknown as Route.MetaArgs) as Tag[];
@@ -81,7 +83,7 @@ describe('ProfilePage meta', () => {
     it('indexes the page when the API is a release behind and sends no `listed`', () => {
         // That release's sitemap may still list the profile, and the edge keeps what is drawn now for an
         // hour: a page marked noindex while listed is the error the whole rule exists to prevent.
-        const tags = tagsFor({ recorded: 0, favourites: 0, listed: undefined });
+        const tags = tagsFor({ recorded: 0, favourites: 0, listed: 'absent' });
 
         expect(noindex(tags)).toBe(false);
         expect(canonical(tags)).toBe('https://myvideogamelist.net/u/b4kz9q2mxw7c/AliceInChains');

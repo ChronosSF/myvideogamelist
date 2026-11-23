@@ -22,7 +22,7 @@ public class PublicFiguresFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     private const int Reviewed = 2204;
 
     [Fact]
-    public async Task PublicProfileAndSitemap_PrivateFieldsThenShownOnes_CountAndListOnlyWhatThePageShows()
+    public async Task GetProfile_PrivateFieldsThenShownOnes_CountAndListOnlyWhatThePageShows()
     {
         await api.CacheGamesAsync(Noted, Owned, Tagged, Reviewed);
         using var browser = api.CreateBrowser();
