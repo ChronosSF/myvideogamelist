@@ -58,6 +58,13 @@ more Availability Zones in an AWS Region allows Amazon RDS to create a new stand
 Zone should the need arise". Since every group must span two, Multi-AZ asks nothing more of the VPC than
 the Single-AZ instance did.
 
+**The standby keeps the database through a zone's loss, not the site.** Production's tasks reach the
+internet through one NAT gateway, in `eu-central-1a`
+([0105](0105-productions-tasks-run-in-private-subnets-behind-one-nat-gateway.md) §1). Losing
+`eu-central-1b` costs the site a failover. Losing `eu-central-1a` leaves the database answering in
+`eu-central-1b` and the tasks in both zones with no way out, so the site is down until the zone is back
+or there is a second gateway. What that gateway costs, and when it is worth it, is 0105's.
+
 **What two zones do not give** is a new standby while a whole zone is down: the instance runs on the
 survivor alone until the lost zone is back. The same page's best practice is a subnet in every zone of the
 Region. Not taken: the VPC's zones are #415's to change, every subnet group grows with them, and a zone of
