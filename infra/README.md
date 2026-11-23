@@ -41,13 +41,17 @@ through the distribution, and no parameter that would open one.
 
 `-c env=prod` synthesises the same stacks in the production account, less `Dns`, and beside them
 `Mvgl-prod-Holding`, below, and `Mvgl-prod-Email`, in the next section. Of the application's own,
-none is deployed yet (ADR 0103). What differs from dev is three members of `Site`:
+none is deployed yet (ADR 0103). What differs from dev is four members of `Site`:
 
 - **`www` only redirects to the apex.** The edge certificate covers it, `App` points it at the
   distribution, and the viewer-request function answers it, and any other name, with a 301 to the same
   address on the host.
 - **The site is indexable.** The SSR server is given `SITE_INDEXABLE=true` (ADR 0036).
 - **It is behind basic auth until a pull request opens it**, which is the launch: `Site.BehindBasicAuth`.
+- **The database is Multi-AZ**, `Site.MultiAzDatabase`: a standby in the data subnets' other zone, which
+  RDS fails over to by itself. About $16 a month more than dev's one zone, at AWS's Frankfurt prices for
+  the `db.t4g.micro` and its 20 GB of gp3 (ADR 0106). A failover is
+  [below](#proving-the-failover-before-the-door-opens).
 
 Three things to know before deploying any of it:
 
@@ -122,6 +126,48 @@ aws acm describe-certificate --profile mvgl-prod --region us-east-1 --certificat
 ```
 
 `dev-env.mjs park --env prod` refuses: production is not parked.
+
+### Proving the failover, before the door opens
+
+What a failover does to the API, the SSR server and the background services is read from the code and
+from Npgsql's, and has never been seen (ADR 0106 §3). The first deploy is a rehearsal nobody else is in,
+so cause one then, once the check above has passed, and before the pull request that opens the door.
+
+The instance is Multi-AZ, and names the zone its standby is in:
+
+```bash
+aws rds describe-db-instances --profile mvgl-prod --db-instance-identifier mvgl-prod-db --query "DBInstances[0].[MultiAZ,AvailabilityZone,SecondaryAvailabilityZone]"
+```
+
+In a second terminal, `/readyz` through the door every five seconds, with the pair in `MVGL_PROD_BASIC_AUTH`:
+
+```bash
+while true; do echo "$(date +%T) $(curl -s -o /dev/null -w '%{http_code}' -u "$MVGL_PROD_BASIC_AUTH" https://myvideogamelist.net/readyz)"; sleep 5; done
+```
+
+Then the failover. The CLI refuses `--force-failover` on an instance that is not Multi-AZ:
+
+```bash
+aws rds reboot-db-instance --profile mvgl-prod --db-instance-identifier mvgl-prod-db --force-failover
+```
+
+`/readyz` should go from 200 to 503 and back to 200, with the API's task never replaced: the same task
+before and after.
+
+```bash
+aws ecs list-tasks --profile mvgl-prod --cluster mvgl-prod --service-name api --query "taskArns[0]" --output text
+```
+
+RDS's own record of it is two events, `RDS-EVENT-0013` "failover started" and `RDS-EVENT-0049` "failover
+completed":
+
+```bash
+aws rds describe-events --profile mvgl-prod --source-type db-instance --source-identifier mvgl-prod-db --duration 60
+```
+
+The time between those two, and between the first 503 and the first 200 after it, is the figure ADR 0106
+could only estimate: write it into the record. The errors in between are in `/mvgl/prod/api`. Then run
+`node scripts/dev-check.mjs --env prod` again.
 
 ### The holding page, until production takes the domain
 
@@ -591,6 +637,16 @@ sends 42 requests the rule counts with the pair.
   resume` asks again once a minute for up to twenty minutes; by hand, retry `start-db-instance`.
   If it persists, the way out is a different instance class in `DataStack`, not a different zone -
   a Single-AZ instance cannot be moved.
+
+- **Production's database fails over by itself, and nothing emails you that it did.** For a minute or
+  two every request that needs the database is a 500, `/readyz` is a 503 and the task stays in
+  rotation, and then it recovers with no restart; nothing retries (ADR 0106). AWS fails over for an
+  unhealthy host, a storage failure, an operating-system patch in the maintenance window and a change to
+  the instance, among others. A burst of 500s in the API's log with nothing deployed is the symptom:
+  `aws rds describe-events --profile mvgl-prod --source-identifier mvgl-prod-db --source-type db-instance`
+  names it.
+  An email for it is #406's. A release in the window fails its migration or its smoke test, and is
+  run again.
 
 - **`cdk deploy` deploys a stack's dependencies too.** So `cdk deploy Mvgl-dev-App -c imageTag=…`
   on its own also redeploys `Data`, with whatever this checkout synthesises for it. Before

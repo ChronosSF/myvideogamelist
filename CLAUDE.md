@@ -139,9 +139,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 
 - **Production is the same stacks, and one workflow deploys both.** `-c env=prod` synthesises what dev
   has, in the production account, less `Dns`: the domain's zone was made by hand and is looked up, never
-  made. What differs is three members of `Site`: `www` only redirects to the apex, the SSR server is
-  given `SITE_INDEXABLE=true`, and the site is behind basic auth until a pull request opens it, which is
-  the launch. The redirect and the door are one viewer-request function, since a behaviour holds one for
+  made. What differs is four members of `Site`: `www` only redirects to the apex, the SSR server is
+  given `SITE_INDEXABLE=true`, the site is behind basic auth until a pull request opens it, which is
+  the launch, and the database is Multi-AZ. **A failover is a minute or two in which every request that
+  needs the database is a 500**, and nothing retries: EF's retry would write a list move's event twice
+  when the commit it retries had landed (ADR 0106). The redirect and the door are one viewer-request function, since a behaviour holds one for
   each event, and it is on a behaviour only where it has a job, so dev's distribution names none.
   `Deploy dev` and `Deploy prod` both call `deploy.yml`: a change to the steps is a change to both,
   and production's run waits for the `prod` environment's reviewers. **Each caller says

@@ -123,6 +123,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0102](0102-a-deployed-admin-is-a-hand-set-parameter-the-task-reads.md) | A deployed environment's admin is an account id in a Parameter Store parameter, set by hand and read by the API's task as it starts; the App stack does not deploy where nobody has made it | Implemented; proved only by a deploy |
 | [0103](0103-production-is-the-same-stacks-behind-an-approval.md) | Production is the same stacks from the same code, less the zone, which it looks up; `www` only redirects; one workflow deploys dev and production, and production's waits for an approval; its first deploy is made by hand, behind basic auth | Accepted; built, not deployed |
 | [0104](0104-just-out-takes-the-followed-beside-the-watched-and-the-admins-pin.md) | Just out is the new games people followed ahead of release beside the most watched on Twitch, turn about, because IGDB's Twitch figure does not count the largest games; and a Coming soon pin holds on Just out once its game is out | Implemented |
+| [0106](0106-productions-database-is-multi-az-and-a-failover-is-a-minute-or-two-of-errors.md) | Production's database is Multi-AZ, by one member of `Site`, and dev's stays in one zone; a failover is a minute or two in which every request that needs the database fails and nothing retries, and nothing says it happened until #406 | Implemented; proved only by a deploy |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

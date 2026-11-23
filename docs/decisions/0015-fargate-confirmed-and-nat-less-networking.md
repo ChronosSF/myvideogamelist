@@ -4,7 +4,8 @@
 and adds the network topology it left unstated. The cost baseline below is about $65–74 a month,
 not $40: it priced one Fargate task where the design has two and missed the public IPv4 charge;
 and the credits it says to collect first are no longer earnable —
-[0044](0044-what-the-deployment-walkthrough-settled.md).
+[0044](0044-what-the-deployment-walkthrough-settled.md). Production's database is Multi-AZ, and only
+dev's keeps the Single-AZ trade — [0106](0106-productions-database-is-multi-az-and-a-failover-is-a-minute-or-two-of-errors.md).
 
 ## Context
 
