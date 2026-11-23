@@ -30,15 +30,17 @@
  * With the environment's AWS profile signed in (--profile, mvgl-<env> by default), it first asks AWS,
  * read only, whether the edge's web ACL is on the distribution, holds its one rate rule and logs what
  * it refuses (ADR 0098), and which records the edge certificate is validated by, which it then asks
- * public DNS for: the certificate is renewed only while they are there (ADR 0103 §3). It also asks
- * whether the alarms reach anybody: that the edge's alarms in us-east-1 watch the distribution the App
- * stack has now, and that each Alerts topic has a confirmed subscription (ADR 0080, 0110). Without the
+ * public DNS for: the certificate is renewed only while they are there (ADR 0103 §3). Without the
  * profile those checks are skipped, and the run says so. Every request this script sends through the
  * distribution is counted, and when the rule's limit is known the last check
  * is that the run stayed under half of it, which leaves the rest for whoever runs it to browse with
  * from the same address. Behind basic auth a run sends 43 such requests with the pair, 54 with
  * --limiter, and 9 without; of an open site, 42, or 53 with --limiter. Production's is one more each
  * way, for www.
+ *
+ * The same profile is how it asks whether the alarms reach anybody: that the edge's alarms in
+ * us-east-1 watch the distribution the App stack has now, and that each Alerts topic has a confirmed
+ * subscription (ADR 0080, 0110). It reads the subscriptions' ARNs and never their address.
  */
 
 import { resolveCname } from 'node:dns/promises';
