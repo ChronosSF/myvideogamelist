@@ -46,7 +46,7 @@ Its rollout says merging deploys the App stack, which is a run of Deploy dev by 
     challenge that failed. Its examples hand the code to `error-callback`; the reference does not promise it.
 - **The dev site's basic auth is a credential to a browser.** A request sent with `credentials: 'omit'` goes
   without it, and the door answers 401 to every path but the three it lets through
-  ([0044](0044-what-the-deployment-walkthrough-settled.md), `infra/src/Infra/functions/basic-auth.js`).
+  ([0044](0044-what-the-deployment-walkthrough-settled.md), `infra/src/Infra/functions/viewer-request.js`).
 
 ## Decision
 

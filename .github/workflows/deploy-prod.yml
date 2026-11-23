@@ -1,0 +1,40 @@
+name: Deploy prod
+
+# Run by hand, from the Actions tab or with `gh workflow run deploy-prod.yml`, and then approved: the
+# `prod` GitHub environment asks its reviewers before the job starts, so a release to production is
+# two decisions, to dispatch it and to let it through (ADR 0103). What a run does is deploy.yml, the
+# steps Deploy dev runs; this file only says which environment, and which of its variables is the
+# gate.
+#
+# Like dev's, a run builds master's head, pushes both images to production's own repositories, and
+# deploys only when PROD_DEPLOY_ENABLED is true on the `prod` environment and the application stack
+# is already there. Until production's first deploy, which is made by hand because it takes the
+# domain from the holding page, a run builds and pushes and stops: that is how the images that first
+# deploy needs get there.
+
+on:
+  workflow_dispatch:
+
+# What the deploy needs, granted here because a called workflow can ask for no more than its caller
+# has: a token GitHub signs, which AWS exchanges for the deploy role, and the repository to read.
+permissions:
+  id-token: write
+  contents: read
+
+# Two deploys never interleave: a run dispatched while another runs waits for it.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: prod
+      gate: PROD_DEPLOY_ENABLED
+    # A called workflow's job gets its environment's secret only when the caller passes it, and an
+    # environment's secret that was not passed is an empty string there, with no error. This workflow
+    # has no secret of its own, and the repository none, so what is inherited is nothing; what it does
+    # is let the job that declares the environment read that one secret, PROD_BASIC_AUTH, which
+    # deploy.yml names.
+    secrets: inherit

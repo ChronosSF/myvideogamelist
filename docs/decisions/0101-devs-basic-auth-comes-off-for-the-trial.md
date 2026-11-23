@@ -4,7 +4,9 @@
 [0046](0046-the-balancer-answers-its-own-distribution.md) §4, "health is proved through the door": the
 proof now reads which way the stack was deployed. It also sets aside
 [0044](0044-what-the-deployment-walkthrough-settled.md)'s basic auth on every behaviour, for as long as
-`Site.BehindBasicAuth` is false for an environment.
+`Site.BehindBasicAuth` is false for an environment. What "true for any other environment" means for
+production is [0103](0103-production-is-the-same-stacks-behind-an-approval.md) §5, and since that record
+the door and the redirect of `www` are one function.
 
 ## Context
 

@@ -1,16 +1,19 @@
 /*
- * dev-check.mjs — the acceptance test for the dev environment, through the distribution.
+ * dev-check.mjs — the acceptance test for a deployed environment, through the distribution. Dev's
+ * by default; production's with --env prod (ADR 0103).
  *
  * The walkthrough's Phase 11 list as a program, to run after any change to the stacks and after
- * every resume (ADR 0044, 0046). Everything is asked of https://<env>.myvideogamelist.net the way a
- * browser would ask it, so a pass means the whole chain answered: CloudFront, the basic-auth
- * function, the balancer's prefix-list rule and origin-verify rule, and the two processes.
+ * every resume (ADR 0044, 0046). Everything is asked of the site the way a browser would ask it -
+ * https://<env>.myvideogamelist.net, or the domain itself for production - so a pass means the whole
+ * chain answered: CloudFront, the viewer-request function, the balancer's prefix-list rule and
+ * origin-verify rule, and the two processes.
  *
  *   node scripts/dev-check.mjs [--env dev] [--game <igdb id>] [--alb <balancer dns name>] [--limiter]
  *                              [--profile mvgl-dev]
  *
- * Without MVGL_DEV_BASIC_AUTH it checks only what needs no credential: that the door is on, that
- * the three exempt paths answer, that plain HTTP redirects, and - with --alb - that the balancer
+ * Without MVGL_<ENV>_BASIC_AUTH (MVGL_DEV_BASIC_AUTH for dev) it checks only what needs no
+ * credential: that the door is on, that the three exempt paths answer, that plain HTTP redirects,
+ * that a name which only redirects does, and - with --alb - that the balancer
  * does not answer directly. With the pair as `user:password` it checks the rest: health, the
  * crawler headers, SITE_URL, every route's Cache-Control, that the cache hits where it should and
  * never where it must not, that a 404 is a 404, and that the write guard survives the edge; with
@@ -26,14 +29,20 @@
  *
  * With the environment's AWS profile signed in (--profile, mvgl-<env> by default), it first asks AWS,
  * read only, whether the edge's web ACL is on the distribution, holds its one rate rule and logs what
- * it refuses (ADR 0098); without it, those checks are skipped, and the run says so. Every request this
- * script sends through the distribution is counted, and when the rule's limit is known the last check
+ * it refuses (ADR 0098), and which records the edge certificate is validated by, which it then asks
+ * public DNS for: the certificate is renewed only while they are there (ADR 0103 §3). Without the
+ * profile those checks are skipped, and the run says so. Every request this script sends through the
+ * distribution is counted, and when the rule's limit is known the last check
  * is that the run stayed under half of it, which leaves the rest for whoever runs it to browse with
  * from the same address. Behind basic auth a run sends 43 such requests with the pair, 54 with
- * --limiter, and 9 without; of an open site, 42, or 53 with --limiter.
+ * --limiter, and 9 without; of an open site, 42, or 53 with --limiter. Production's is one more each
+ * way, for www.
  */
 
+import { resolveCname } from 'node:dns/promises';
+
 import { runAws } from './aws-cli.mjs';
+import { site } from './site.mjs';
 
 const ARGS = process.argv.slice(2);
 function option(name, fallback) {
@@ -43,11 +52,13 @@ function option(name, fallback) {
 
 const ENV = option('--env', 'dev');
 const PROFILE = option('--profile', `mvgl-${ENV}`);
-const HOST = `${ENV}.myvideogamelist.net`;
+// Where the environment answers, the names that only redirect there, and whether it is indexable.
+const WHERE = site(ENV);
+const HOST = WHERE.host;
 const SITE = `https://${HOST}`;
 const GAME = option('--game', '1942');
 const ALB = option('--alb', null);
-const PAIR = process.env.MVGL_DEV_BASIC_AUTH;
+const PAIR = process.env[WHERE.basicAuthVariable];
 // The pair as a header, where there is one. Set aside by `theDoorIs` on finding the site open, so that
 // a credential nothing asks for is never sent to it.
 let AUTH = PAIR ? { authorization: `Basic ${Buffer.from(PAIR).toString('base64')}` } : null;
@@ -71,7 +82,9 @@ function skip(what, why) {
 let throughTheEdge = 0;
 
 async function get(path, { auth = false, method = 'GET', headers = {}, payload = undefined, redirect = 'follow', base = SITE } = {}) {
-    if ((base === SITE || base === `http://${HOST}`) && !path.startsWith('/__manifest')) throughTheEdge++;
+    // By any of the distribution's names, over either scheme: the rule counts an address, not a name.
+    const throughTheDistribution = [HOST, ...WHERE.redirectedHosts].includes(new URL(base).host);
+    if (throughTheDistribution && !path.startsWith('/__manifest')) throughTheEdge++;
     const response = await fetch(`${base}${path}`, {
         method,
         redirect,
@@ -146,6 +159,65 @@ async function theFirewall(who) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The edge certificate's validation records, asked of public DNS, which is where ACM looks for them
+// before it renews (ADR 0103 §3). Which records they are is ACM's to say, read only, through the
+// environment's profile.
+// ---------------------------------------------------------------------------------------------
+
+const EDGE_CERT_STACK = `Mvgl-${ENV}-EdgeCert`;
+const dnsName = (name) => name.toLowerCase().replace(/\.$/, '');
+
+/** What a name is a CNAME for in public DNS: nothing, when it has no such record. */
+async function cnames(name) {
+    try {
+        return (await resolveCname(dnsName(name))).map(dnsName);
+    } catch (error) {
+        if (error.code === 'ENOTFOUND' || error.code === 'ENODATA') return [];
+        throw error;
+    }
+}
+
+/**
+ * The certificate CloudFront presents covers every name the distribution answers by, and each of its
+ * validation records is still in public DNS. ACM renews a certificate only while they are, and looks
+ * 45 days before it expires. Production's are the records the holding page's certificate was
+ * validated by too, a record being made for a name and an account, and nothing AWS documents says
+ * what becomes of them when that certificate is deleted. So it is asked, on the day and on every run
+ * after.
+ */
+async function theCertificate(who) {
+    if (!who.ok) {
+        skip("the edge certificate's validation records", who.missing ? who.error : `the ${PROFILE} profile is not signed in (aws sso login --profile ${PROFILE})`);
+        return;
+    }
+
+    const arn = stackOutput(EDGE_CERT_STACK, 'CertificateArn', ['--region', EDGE_REGION]);
+    const certificate = arn
+        ? aws(['acm', 'describe-certificate', '--region', EDGE_REGION, '--certificate-arn', arn, '--query', 'Certificate'])
+        : null;
+    const validations = certificate?.DomainValidationOptions ?? [];
+    const names = [HOST, ...WHERE.redirectedHosts];
+    report(certificate?.Status === 'ISSUED' && names.every((name) => validations.some((v) => v.DomainName === name)),
+        `the edge certificate is issued, for ${names.join(' and ')}`,
+        certificate
+            ? `${certificate.Status}, for ${validations.map((v) => v.DomainName).join(', ') || 'no name'}`
+            : `${EDGE_CERT_STACK} names no certificate that could be read in ${EDGE_REGION}`);
+
+    for (const { DomainName: name, ResourceRecord: record } of validations) {
+        if (!record) {
+            report(false, `${name} is validated by a DNS record`, 'ACM names none for it');
+            continue;
+        }
+        const found = await cnames(record.Name);
+        report(found.includes(dnsName(record.Value)),
+            `${name}'s validation record is in public DNS, which the certificate's renewal needs`,
+            found.length > 0
+                ? `${dnsName(record.Name)} is ${found.join(', ')}`
+                : `${dnsName(record.Name)} has no CNAME: put it back (infra/README.md, "The first deploy")`);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Without credentials.
 // ---------------------------------------------------------------------------------------------
 
@@ -199,6 +271,16 @@ async function theDoor(door) {
     report(http.status === 301 && (http.headers.get('location') ?? '').startsWith(SITE),
         'plain HTTP is redirected to HTTPS', `${http.status} -> ${http.headers.get('location')}`);
 
+    // A name that only redirects, production's www (ADR 0066 §2, 0103): the same path and query on the
+    // host, by a 301, and before the door, so it needs no pair. A term of its own, so that the answer
+    // is the function's and not one the edge kept.
+    for (const name of WHERE.redirectedHosts) {
+        const path = `/games?search=${stamp()}`;
+        const r = await get(path, { base: `https://${name}`, redirect: 'manual' });
+        report(r.status === 301 && r.headers.get('location') === `${SITE}${path}`,
+            `${name} is redirected to the same address on ${HOST}`, `${r.status} -> ${r.headers.get('location')}`);
+    }
+
     if (ALB) {
         // Only a timeout or a refused connection means the security group did its job. Any other
         // error - a certificate name mismatch, say, since the balancer's certificate is for the
@@ -227,13 +309,23 @@ async function health() {
 }
 
 async function crawlers() {
+    // What a crawler is told is the environment's to decide (ADR 0036): production is indexable, so it
+    // names its sitemap and sends no X-Robots-Tag of its own; anything else names none and says noindex,
+    // nofollow on every response. Neither ever disallows a path.
     const robots = await get('/robots.txt', { auth: true });
     const disallowsSomething = /^Disallow:\s*\S/m.test(robots.body);
-    const namesSitemap = /^Sitemap:/m.test(robots.body);
-    report(robots.status === 200 && !disallowsSomething && !namesSitemap,
-        '/robots.txt is 200, disallows nothing and names no sitemap', `${robots.status}${disallowsSomething ? ', disallows a path' : ''}${namesSitemap ? ', has a Sitemap line' : ''}`);
-    report(robots.headers.get('x-robots-tag') === 'noindex, nofollow',
-        'documents carry X-Robots-Tag: noindex, nofollow', robots.headers.get('x-robots-tag') ?? '(none)');
+    const sitemapLine = /^Sitemap:\s*(\S+)/m.exec(robots.body)?.[1] ?? null;
+    const robotsDetail = `${robots.status}${disallowsSomething ? ', disallows a path' : ''}, ${sitemapLine ? `Sitemap: ${sitemapLine}` : 'no Sitemap line'}`;
+    const tag = robots.headers.get('x-robots-tag');
+    if (WHERE.indexable) {
+        report(robots.status === 200 && !disallowsSomething && sitemapLine === `${SITE}/sitemap.xml`,
+            `/robots.txt is 200, disallows nothing and names ${SITE}/sitemap.xml`, robotsDetail);
+        report(tag === null, 'SITE_INDEXABLE arrived: documents carry no X-Robots-Tag', tag ?? '(none)');
+    } else {
+        report(robots.status === 200 && !disallowsSomething && sitemapLine === null,
+            '/robots.txt is 200, disallows nothing and names no sitemap', robotsDetail);
+        report(tag === 'noindex, nofollow', 'documents carry X-Robots-Tag: noindex, nofollow', tag ?? '(none)');
+    }
     const api = await get('/api/home', { auth: true });
     report(/noindex/.test(api.headers.get('x-robots-tag') ?? ''), 'API responses carry X-Robots-Tag: noindex', api.headers.get('x-robots-tag') ?? '(none)');
     const sitemap = await get('/sitemaps/pages.xml', { auth: true });
@@ -359,7 +451,8 @@ async function writeGuard() {
 }
 
 console.log(`Checking ${SITE}`);
-// Whether AWS can be asked at all, once, for the web ACL and for what the App stack was deployed as.
+// Whether AWS can be asked at all, once, for the web ACL, the edge certificate and what the App stack
+// was deployed as.
 const who = runAws(PROFILE, ['sts', 'get-caller-identity']);
 // Apart from the site's own checks, so that nothing AWS answers can keep them from running.
 let rule = null;
@@ -369,8 +462,13 @@ try {
     report(false, "the edge's web ACL could be read", error.message);
 }
 try {
+    await theCertificate(who);
+} catch (error) {
+    report(false, "the edge certificate's validation records could be asked for", error.code ?? error.message);
+}
+try {
     const door = await theDoorIs(who.ok);
-    if (door === 'on' && !AUTH) console.log('  (behind basic auth, and no MVGL_DEV_BASIC_AUTH: credential-free checks only)');
+    if (door === 'on' && !AUTH) console.log(`  (behind basic auth, and no ${WHERE.basicAuthVariable}: credential-free checks only)`);
     await theDoor(door);
     if (door === 'off' || AUTH) {
         await health();

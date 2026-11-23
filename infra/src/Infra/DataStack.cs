@@ -186,7 +186,9 @@ public sealed class DataStack : Stack
         BasicAuthStore = new KeyValueStore(this, "BasicAuth", new KeyValueStoreProps
         {
             KeyValueStoreName = $"{site.Prefix}-basic-auth",
-            Comment = "basic-auth: the expected Authorization header value for the dev site",
+            // Worded so that dev's is the text it was made with: the store is long-lived, and a
+            // changed comment is a change to it for nothing.
+            Comment = $"basic-auth: the expected Authorization header value for the {site.Env} site",
         });
 
         var deployRole = DeployRole(site);

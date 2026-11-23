@@ -13,5 +13,16 @@
   "hosted-zone:account=381466680659:domainName=myvideogamelist.net:region=us-east-1": {
     "Id": "/hostedzone/Z0425538J91LD6EDYYVV",
     "Name": "myvideogamelist.net."
-  }
+  },
+  "availability-zones:account=381466680659:region=eu-central-1": [
+    "eu-central-1a",
+    "eu-central-1b",
+    "eu-central-1c"
+  ],
+  "cc-api-provider:account=381466680659:expectedMatchCount=exactly-one:propertiesToReturn.0=PrefixListId:propertyMatch.PrefixListName=com.amazonaws.global.cloudfront.origin-facing:region=eu-central-1:typeName=AWS$:$:EC2$:$:PrefixList": [
+    {
+      "PrefixListId": "pl-a3a144ca",
+      "Identifier": "pl-a3a144ca"
+    }
+  ]
 }

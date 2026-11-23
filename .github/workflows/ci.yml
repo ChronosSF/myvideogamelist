@@ -506,13 +506,48 @@ jobs:
       # The dev app, in the account and Region its cached lookups were made in, which are the keys
       # cdk.context.json holds them under. Any tag names the per-release stacks. No instance metadata is
       # asked for credentials that are not there.
-      - name: Synthesise
+      - name: Synthesise dev
         working-directory: infra
         env:
           CDK_DEFAULT_ACCOUNT: '334393515036'
           AWS_REGION: eu-central-1
           AWS_EC2_METADATA_DISABLED: 'true'
         run: node_modules/.bin/cdk synth --no-lookups --quiet -c env=dev -c imageTag=000000000000
+
+      # scripts/site.mjs restates three members of Site.cs for the acceptance test, dev-check.mjs. This
+      # holds it to what was just synthesised, which is Site.cs at work.
+      - name: The scripts agree with dev's synthesis
+        run: node scripts/check-site.mjs dev
+
+      # Production's, the same way, in its own account (ADR 0103). A stack that asks either account
+      # something new fails here until a synthesis with that account's credentials has cached the
+      # answer and cdk.context.json is committed with it.
+      - name: Synthesise production
+        working-directory: infra
+        env:
+          CDK_DEFAULT_ACCOUNT: '381466680659'
+          AWS_REGION: eu-central-1
+          AWS_EC2_METADATA_DISABLED: 'true'
+        run: node_modules/.bin/cdk synth --no-lookups --quiet -c env=prod -c imageTag=000000000000
+
+      - name: The scripts agree with production's synthesis
+        run: node scripts/check-site.mjs prod
+
+      # An environment has one account, and Program.cs refuses any other before it makes a stack. Dev's
+      # stacks asked for with production's account are the case that once synthesised: a deploy with the
+      # wrong profile would have made them there. The refusal names both accounts.
+      - name: An environment is refused in the other's account
+        working-directory: infra
+        env:
+          CDK_DEFAULT_ACCOUNT: '381466680659'
+          AWS_REGION: eu-central-1
+          AWS_EC2_METADATA_DISABLED: 'true'
+        run: |
+          if out=$(node_modules/.bin/cdk synth --no-lookups --quiet -c env=dev -c imageTag=000000000000 2>&1); then
+            echo "::error::dev's stacks synthesised for production's account"
+            exit 1
+          fi
+          grep -F "env=dev is account 334393515036, and these credentials are for 381466680659" <<<"$out"
 
   codeql:
     name: CodeQL (${{ matrix.language }})

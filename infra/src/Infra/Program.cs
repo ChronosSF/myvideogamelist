@@ -1,4 +1,5 @@
 using Amazon.CDK;
+using Amazon.CDK.AWS.Route53;
 
 namespace Infra;
 
@@ -9,8 +10,9 @@ namespace Infra;
 /// deploy without one and nothing ever falls back to <c>latest</c>. The Region comes from the
 /// profile; nothing here names one except <c>us-east-1</c>, for CloudFront's certificates, and
 /// <see cref="Site.EmailRegion"/>, where the domain is verified with SES (ADR 0088). See ADR
-/// 0044. <c>env=prod</c> is, for now, the holding page (ADR 0066), and the email stack and its Alerts
-/// topic (ADR 0088, 0091).
+/// 0044. <c>env=prod</c> is the same stacks in the production account, less the zone, which it looks
+/// up, and beside them the holding page, until production takes the domain from it, and the email
+/// stack (ADR 0066, 0088, 0103).
 /// </summary>
 internal static class Program
 {
@@ -30,6 +32,19 @@ internal static class Program
 
         var site = new Site(env);
         var account = System.Environment.GetEnvironmentVariable("CDK_DEFAULT_ACCOUNT");
+        // An environment has one account, and the stacks go wherever the credentials point. Dev's
+        // synthesise for production's account as readily as for their own, so a deploy with the other
+        // environment's profile would make them there, three of them protected from deletion.
+        // Production's fail in dev's account only by accident, at the zone they look up. So the account
+        // is checked here, before any stack is made. A synthesis with no credentials names the account
+        // itself, as CI's does.
+        if (account != site.Account)
+        {
+            throw new InvalidOperationException(
+                $"env={env} is account {site.Account}, and these credentials are for {account ?? "no account"}. "
+                + "Use the environment's own profile, or set CDK_DEFAULT_ACCOUNT for a synthesis with no credentials.");
+        }
+
         var regional = new Amazon.CDK.Environment
         {
             Account = account,
@@ -37,45 +52,53 @@ internal static class Program
         };
         // CloudFront reads certificates from us-east-1 and nowhere else.
         var edge = new Amazon.CDK.Environment { Account = account, Region = "us-east-1" };
+        // Where the alarms send. Production's is pinned to the Region the domain is verified with SES
+        // in, because SES sends each bounce and complaint to the same topic (ADR 0091).
+        var alerts = site.IsProduction
+            ? new Amazon.CDK.Environment { Account = account, Region = Site.EmailRegion }
+            : regional;
 
-        // Production is a holding page until #98 builds the rest (ADR 0066): one stack, whole in
-        // us-east-1, in the account the domain's zone lives in. A Dns stack in particular must never
-        // be synthesised for it - it would create a second zone named for the domain beside the real
-        // one, which the production app looks up instead (ADR 0044). Not termination-protected: it is
-        // meant to be destroyed at #98, and holds nothing a deploy would not put back.
-        //
-        // Beside it, in the Region where the domain is verified with SES, the configuration set every
-        // email is sent under and the role the dev environment's API sends email as, through this
-        // account's production access (ADR 0088, 0091). Pinned to that Region, never the profile's: a
-        // role granting the identity in another Region would refuse every send. And the Alerts stack,
-        // in the same Region, which is production's own (ADR 0044): its topic is where SES sends each
-        // bounce and complaint, and #98's alarms will be sent. It goes before Email, whose events need
-        // its topic. Long-lived, and kept at #98. Each is deployed by hand, by name.
+        // The zone the environment's names live in. Every environment but production has its own,
+        // delegated from the domain's, alone in a permanent stack. Production's is the domain's, made
+        // by hand in its account: a Dns stack must never be synthesised for it, since it would create
+        // a second zone named for the domain beside the real one. The certificate stack looks that one
+        // up instead (ADR 0044).
+        IHostedZone? ownZone = null;
         if (site.IsProduction)
         {
-            var email = new Amazon.CDK.Environment { Account = account, Region = Site.EmailRegion };
+            // The holding page, until production takes the domain from it (ADR 0066): one stack, whole
+            // in us-east-1. Not termination-protected: it is destroyed just before the application
+            // stack is first deployed, since the two answer by the same names, and holds nothing a
+            // deploy would not put back (ADR 0103).
             _ = new HoldingStack(app, site.StackName("Holding"), new StackProps { Env = edge }, site);
-            _ = new AlertsStack(app, site.StackName("Alerts"), new StackProps { Env = email }, site);
-            _ = new EmailStack(app, site.StackName("Email"), new StackProps { Env = email }, new Site("dev"));
-            app.Synth();
-            return;
+            // The configuration set every email is sent under and the role the dev environment's API
+            // sends email as, through this account's production access (ADR 0088, 0091). Pinned to the
+            // Region the domain is verified in, never the profile's: a role granting the identity in
+            // another Region would refuse every send. Deployed by hand, by name, after Alerts, whose
+            // topic its events need.
+            _ = new EmailStack(app, site.StackName("Email"), new StackProps { Env = alerts }, new Site("dev"));
+        }
+        else
+        {
+            ownZone = new DnsStack(app, site.StackName("Dns"),
+                new StackProps { Env = regional, CrossRegionReferences = true, TerminationProtection = true }, site).Zone;
         }
 
         // Three of the long-lived stacks refuse deletion: a mistake in one of them is a zone whose
         // name servers are delegated to, or a database. The two per-release stacks stay disposable.
-        // The zone is referenced from the certificate stack in another Region, which CDK carries
-        // over with a parameter rather than a CloudFormation export; both sides must opt in.
-        var dns = new DnsStack(app, site.StackName("Dns"),
-            new StackProps { Env = regional, CrossRegionReferences = true, TerminationProtection = true }, site);
+        // A zone of the environment's own is referenced from the certificate stack in another Region,
+        // which CDK carries over with a parameter rather than a CloudFormation export; both sides must
+        // opt in.
         var edgeCert = new EdgeCertStack(app, site.StackName("EdgeCert"),
-            new StackProps { Env = edge, CrossRegionReferences = true, TerminationProtection = true }, site, dns.Zone);
+            new StackProps { Env = edge, CrossRegionReferences = true, TerminationProtection = true }, site, ownZone);
+        var zone = edgeCert.Zone;
         var data = new DataStack(app, site.StackName("Data"),
-            new StackProps { Env = regional, TerminationProtection = true }, site, dns.Zone);
+            new StackProps { Env = regional, TerminationProtection = true }, site, zone);
         // Where the alarms send, long-lived because an email subscription is confirmed by a person.
         // The fourth long-lived stack, and not protected: destroying it loses that confirmation and
         // nothing else, and destroying and redeploying it is how a lost subscription is made again.
         // Nothing refers to it; the alarms in App name its topic (ADR 0080).
-        _ = new AlertsStack(app, site.StackName("Alerts"), new StackProps { Env = regional }, site);
+        _ = new AlertsStack(app, site.StackName("Alerts"), new StackProps { Env = alerts }, site);
 
         // The two per-release stacks exist in every synthesis, tag or no tag, because the Data
         // stack's cross-stack outputs are derived from what consumes them. Cross-stack references
@@ -99,7 +122,7 @@ internal static class Program
         // read when App deploys, so the web ACL's stack has to be there by then. The application stack
         // opts in on its side.
         var application = new AppStack(app, site.StackName("App"),
-            new StackProps { Env = regional, CrossRegionReferences = true }, site, dns.Zone, data, edgeCert.Certificate,
+            new StackProps { Env = regional, CrossRegionReferences = true }, site, zone, data, edgeCert.Certificate,
             waf.WebAclArn, tag);
         if (imageTag is null)
         {
@@ -108,6 +131,14 @@ internal static class Program
                 Annotations.Of(stack).AddError(
                     $"{stack.StackName} deploys an image, so name it: -c imageTag=<sha>. The long-lived stacks need no tag.");
             }
+        }
+        // An alarm can only tell a topic in its own Region, and production's topic is where SES is.
+        // Dev's Alerts stack is wherever the rest of dev is, so only production can get this wrong.
+        if (alerts.Region != regional.Region)
+        {
+            Annotations.Of(application).AddError(
+                $"{application.StackName} is being synthesised for {regional.Region ?? "no Region"}, and its alarms send to the "
+                + $"topic {site.StackName("Alerts")} makes in {alerts.Region}. Deploy production with a profile whose Region is that one.");
         }
 
         app.Synth();

@@ -1,5 +1,6 @@
 /*
- * dev-env.mjs — park, resume and inspect the AWS dev environment.
+ * dev-env.mjs — park, resume and inspect the AWS dev environment; and, with --env prod, inspect
+ * production and make its application stack, which is never parked (ADR 0103).
  *
  * ---------------------------------------------------------------------------------------------
  * WHAT THIS IS FOR
@@ -32,13 +33,17 @@
  *   node scripts/dev-env.mjs resume --tag <sha> the same, at a tag of your choosing
  *
  * Options on every command: --env <name> (default dev), --profile <aws profile> (default
- * mvgl-<env>). Everything goes through `aws --profile`, `cdk --profile` and `gh`, so it does
+ * mvgl-<env>). With --env prod, `status` and `resume` work as they do for dev and `park` refuses:
+ * `resume` is how production's application stack is first made, since the pipeline only ever updates
+ * one, and it stops before that stack while the holding page's still holds the domain's names, with
+ * the migration and the web ACL done (ADR 0066 §8, 0103). Everything goes through `aws --profile`,
+ * `cdk --profile` and `gh`, so it does
  * nothing unless the SSO session behind that profile is signed in: `aws sso login --profile
  * mvgl-dev` first. Unlike the other tools in this directory, which only print SQL, this one acts
  * on AWS — every command it runs is printed before it runs.
  *
  * The site is behind basic auth at the edge (ADR 0046), so `resume` proves the door is on - a 401
- * without credentials - and, when MVGL_DEV_BASIC_AUTH holds the pair as `user:password`, that
+ * without credentials - and, when MVGL_DEV_BASIC_AUTH (MVGL_<ENV>_BASIC_AUTH) holds the pair as `user:password`, that
  * /healthz answers Healthy through it. Without the variable the gate still goes on: target health
  * is what `ecs wait services-stable` already proved, and the variable is the stronger proof.
  * Where the stack was deployed open (its BasicAuth output is `off`, ADR 0101), the proof is /healthz
@@ -58,6 +63,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAws } from './aws-cli.mjs';
+import { site } from './site.mjs';
 
 const ARGS = process.argv.slice(2);
 const COMMAND = ARGS[0];
@@ -69,6 +75,10 @@ function option(name, fallback) {
 
 const ENV = option('--env', 'dev');
 const PROFILE = option('--profile', `mvgl-${ENV}`);
+// Where the environment answers, and what holds its basic-auth pair for whoever runs this.
+const WHERE = site(ENV);
+// What the pipeline that deploys it is called, in what this prints.
+const PIPELINE = `Deploy ${ENV}`;
 
 /**
  * The one repository the deploy role trusts (infra/src/Infra/Site.cs), and so the only one whose
@@ -85,11 +95,14 @@ const NAMES = {
     // The web ACL on the distribution, in CloudFront's Region whatever the profile's is (ADR 0098).
     wafStack: `Mvgl-${ENV}-Waf`,
     edgeRegion: 'us-east-1',
+    // Production's holding page, in the same Region, which answers by the names its application stack
+    // takes: the two cannot both be deployed (ADR 0066 §8). No other environment has one.
+    holdingStack: `Mvgl-${ENV}-Holding`,
     dataStack: `Mvgl-${ENV}-Data`,
     migrateStack: `Mvgl-${ENV}-Migrate`,
     migrateTask: `mvgl-${ENV}-migrate`,
     migrateLogGroup: `/mvgl/${ENV}/migrate`,
-    host: `${ENV}.myvideogamelist.net`,
+    host: WHERE.host,
     apiRepository: 'mvgl/api',
     ssrRepository: 'mvgl/ssr',
     gateVariable: `${ENV.toUpperCase()}_DEPLOY_ENABLED`,
@@ -267,7 +280,7 @@ function hasTag(repository, tag) {
  */
 async function healthy(door, attempts = 18) {
     const url = `https://${NAMES.host}/healthz`;
-    const pair = door === 'off' ? undefined : process.env.MVGL_DEV_BASIC_AUTH;
+    const pair = door === 'off' ? undefined : process.env[WHERE.basicAuthVariable];
     const headers = pair ? { authorization: `Basic ${Buffer.from(pair).toString('base64')}` } : {};
     const answers = door === 'off' || pair;
     const expecting = answers ? '200 Healthy' : 'a 401 at the door';
@@ -331,6 +344,11 @@ function status() {
     console.log(`  ${NAMES.appStack}:  ${app ?? 'absent'}`);
     if (app !== null) console.log(`  basic auth at the edge: ${basicAuth()}`);
     console.log(`  ${NAMES.wafStack}:  ${waf ?? 'absent'} (${NAMES.edgeRegion})`);
+    // Production's holding page answers by the names its application stack takes, so which of the two
+    // is there is the first thing to know about it (ADR 0066 §8, 0103).
+    if (WHERE.production) {
+        console.log(`  ${NAMES.holdingStack}: ${stackStatus(NAMES.holdingStack, NAMES.edgeRegion) ?? 'absent'} (${NAMES.edgeRegion})`);
+    }
     console.log(`  database ${NAMES.database}: ${db ?? 'absent'}`);
     console.log(`  services: ${running.length === 0 ? 'none' : running.map((s) => `${s.name} ${s.running}/${s.desired}`).join(', ')}`);
     console.log(`  newest tag in both repositories: ${tag ?? 'none pushed yet'}`);
@@ -352,6 +370,14 @@ function status() {
 }
 
 function park() {
+    // Production is not parked. Its application stack is what answers at the domain, and nothing here
+    // would put the holding page back in its place; taking production down is a decision made by hand,
+    // stack by stack, never a default of a script whose other environment is parked every week.
+    if (WHERE.production) {
+        fail('Production is never parked: this would destroy the stack that answers at the domain and stop its database. '
+            + 'If that is meant, do it by hand, by name.');
+    }
+
     // The gate first: a Deploy dev run started while the stack is being destroyed must not
     // redeploy it, and if the gate cannot be set at all, nothing is torn down.
     gate(false);
@@ -470,7 +496,7 @@ async function migrate(tag) {
     const running = runningMigrations();
     if (running.length > 0) {
         fail(`A migration task is already running (${running.join(', ')}): from a resume that stopped waiting `
-            + 'for it, or from Deploy dev. Two at once would race through the same migrations. Wait for it to stop, '
+            + `for it, or from ${PIPELINE}. Two at once would race through the same migrations. Wait for it to stop, `
             + 'then resume again.');
     }
 
@@ -523,8 +549,35 @@ function requireAdminParameter() {
         + `Until an account is the admin:\n  aws ssm put-parameter --profile ${PROFILE} --name ${NAMES.adminParameter} --type String --value none`);
 }
 
+/**
+ * Production's application stack answers by the names the holding page's stack holds, and CloudFront
+ * gives a name to one distribution at a time: deployed over it, the stack fails on its distribution,
+ * minutes in, and rolls back (ADR 0066 §8). So a resume stops here while that stack exists, just
+ * before the application stack and after everything that has no use for those names: the migration
+ * and the web ACL are made while the holding page still answers, where whatever goes wrong in either
+ * costs the domain nothing. Destroying it is the moment the domain stops answering, which is the
+ * owner's to choose, and so is never done here.
+ */
+function requireNoHoldingPage() {
+    const holding = holdingPage();
+    if (!holding) return;
+    fail(`Everything before ${NAMES.appStack} is done. ${NAMES.holdingStack} is ${holding} in ${NAMES.edgeRegion}, and it holds the names ${NAMES.appStack} answers by. `
+        + 'Destroy it, when the domain may stop answering for the minutes that follow (ADR 0066 §8, 0103), and run this again:\n'
+        + `  cdk destroy ${NAMES.holdingStack} --profile ${PROFILE} -c env=${ENV}`);
+}
+
+/** The holding page's stack's status while it stands; null once it is gone, or where there never was one. */
+function holdingPage() {
+    const holding = stackStatus(NAMES.holdingStack, NAMES.edgeRegion);
+    return holding === null || holding === 'DELETE_COMPLETE' ? null : holding;
+}
+
 async function resume() {
     requireAdminParameter();
+    const holding = holdingPage();
+    if (holding) {
+        note(`${NAMES.holdingStack} is ${holding}, so this run stops before ${NAMES.appStack}: it migrates the database and deploys ${NAMES.wafStack}, which the holding page has no part in.`);
+    }
     const db = databaseStatus();
     if (db === null) fail(`Database ${NAMES.database} does not exist. Deploy ${NAMES.dataStack} first.`);
     if (db === 'stopped') {
@@ -544,7 +597,7 @@ async function resume() {
         fail(`Tag ${chosen} is not in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}.`);
     }
     const tag = chosen ?? newestCommonTag();
-    if (!tag) fail(`No tag is present in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}. Run Deploy dev to build and push one first (ADR 0099).`);
+    if (!tag) fail(`No tag is present in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}. Run ${PIPELINE} to build and push one first (ADR 0099).`);
 
     // Before the application: the database is available now, and the tag is the one about to serve.
     await migrate(tag);
@@ -554,6 +607,9 @@ async function resume() {
     // here is, though this stack depends on nothing.
     note(`Deploying ${NAMES.wafStack} in ${NAMES.edgeRegion}: the edge's web ACL and its rate rule.`);
     cdk(['deploy', NAMES.wafStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never']);
+
+    // Here, and not at the top: only the application stack takes the holding page's names.
+    requireNoHoldingPage();
 
     note(`Deploying ${NAMES.appStack} at image tag ${tag}.`);
 
@@ -571,14 +627,14 @@ async function resume() {
         // should deploy to. This command is safe to repeat once the cause is fixed.
         fail(`https://${NAMES.host}/healthz did not answer as expected, so the gate stays off. `
             + (door === 'off'
-                ? `${NAMES.appStack} was deployed open, so a 401 means a behaviour still names the basic-auth function.`
+                ? `${NAMES.appStack} was deployed open, so a 401 means the viewer-request function still asks for the pair.`
                 : 'A function error rather than a 401 means the basic-auth key is not in the store: set it, then `resume` again.'));
     }
     note(door === 'off'
         ? 'Healthy, through the distribution, to anybody: the site is deployed without basic auth (ADR 0101).'
-        : process.env.MVGL_DEV_BASIC_AUTH
+        : process.env[WHERE.basicAuthVariable]
             ? 'Healthy, through the distribution.'
-            : 'The door is on: a 401 without credentials. Set MVGL_DEV_BASIC_AUTH to user:password for the stronger check.');
+            : `The door is on: a 401 without credentials. Set ${WHERE.basicAuthVariable} to user:password for the stronger check.`);
 
     gate(true);
     console.log('');
@@ -588,7 +644,7 @@ async function resume() {
 const COMMANDS = { status, park, resume };
 
 if (!COMMANDS[COMMAND]) {
-    console.error('Usage: node scripts/dev-env.mjs <status|park|resume> [--env dev] [--profile mvgl-dev] [--tag <sha>]');
+    console.error('Usage: node scripts/dev-env.mjs <status|park|resume> [--env dev|prod] [--profile mvgl-<env>] [--tag <sha>]');
     process.exit(1);
 }
 
