@@ -9,6 +9,7 @@ The stacks, split by lifetime, named `Mvgl-<env>-<part>`:
 |---|---|---|
 | `Dns` | permanent | the environment's public hosted zone |
 | `Data` | long-lived | VPC, security groups, RDS, secrets (IGDB's and Turnstile's set by hand), ECR, the cluster, the regional certificate, the GitHub deploy role, the basic-auth store, the origin-verify secret |
+| `Costs` | long-lived | Cost Anomaly Detection: a monitor of the account's spending per service, and a daily email of what it finds (ADR 0111) |
 | `EdgeCert` | long-lived, `us-east-1` | the certificate CloudFront uses |
 | `Alerts` | long-lived | the topic the alarms send to, and the owner's email subscription to it (ADR 0080) |
 | `EdgeAlerts` | long-lived, `us-east-1` | the same again, for the edge's alarms, which CloudFront's Region obliges to live there (ADR 0110) |
@@ -72,9 +73,10 @@ Three things to know before deploying any of it:
 
 In this order, and any time before the day:
 
-1. `EdgeCert` and `Data`, by name. `Alerts` is there already, for SES. `EdgeAlerts` too, in `us-east-1`,
-   after its parameter there, and confirmed ([Alarms](#alarms)): `resume` deploys the edge's alarms
-   beside `App`, and they send to its topic.
+1. `EdgeCert` and `Data`, by name. `Alerts` is there already, for SES, and `Costs` can go beside it
+   ([Cost anomalies](#cost-anomalies)). `EdgeAlerts` too, in `us-east-1`, after its parameter there, and
+   confirmed ([Alarms](#alarms)): `resume` deploys the edge's alarms beside `App`, and they send to its
+   topic.
 
    ```bash
    npx cdk deploy Mvgl-prod-EdgeCert Mvgl-prod-Data --exclusively --profile mvgl-prod -c env=prod
@@ -228,6 +230,39 @@ aws sesv2 delete-suppressed-destination --email-address "<address>" --profile mv
 `aws sesv2 list-suppressed-destinations` lists every address on the list, with its reason and when it
 was added. The account's own suppression setting should name both reasons too, as it did when this was
 written (ADR 0091): `aws sesv2 get-account --query SuppressionAttributes`.
+
+**Two alarms on the account's rates**, in `Mvgl-prod-Email`, sent to the same topic (ADR 0111). AWS
+reviews an account at a 5% bounce rate or a 0.1% complaint rate and may pause it at 10% or 0.5%, and
+every email of both environments counts, so each alarm is at half the review level:
+
+| Name | Fires when |
+|---|---|
+| `mvgl-prod-ses-bounce-rate` | the account's `Reputation.BounceRate` reaches 2.5% (0.025, as SES publishes it) |
+| `mvgl-prod-ses-complaint-rate` | the account's `Reputation.ComplaintRate` reaches 0.05% (0.0005) |
+
+SES works the rates out over a representative volume of the account's mail, not over a fixed period,
+and AWS's announcement of them says they are worked out again with every send. So an hour without a
+figure keeps each alarm where it was, as SES's guide recommends. They are the account's rates, with
+no dimension; SES also publishes the configuration set's own, under `ses:configuration-set`, which
+nothing alarms on. Each costs $0.10 a
+month. A deploy of `Mvgl-prod-Email` brings them, and nothing else changes in it:
+
+```bash
+cdk deploy Mvgl-prod-Email --profile mvgl-prod -c env=prod
+```
+
+Then each alarm's email, as every alarm's is proved:
+
+```bash
+aws cloudwatch set-alarm-state --profile mvgl-prod --region eu-central-1 --alarm-name mvgl-prod-ses-bounce-rate --state-value ALARM --state-reason "Testing the alarm email"
+```
+
+With the state kept through hours without data, that one stays in ALARM until the next send brings a
+figure; set it back with the same command and `--state-value OK`. What the rate is now:
+
+```bash
+aws cloudwatch describe-alarms --profile mvgl-prod --region eu-central-1 --alarm-name-prefix mvgl-prod-ses- --query "MetricAlarms[].[AlarmName,StateValue,StateReason]" --output table
+```
 
 ## Turnstile, for sign-up
 
@@ -598,6 +633,39 @@ been one.
 And on the next release deployed after these: no task-stopped email and no `unhealthy-target`. A
 deploy stops the old tasks by the scheduler's hand and starts the new targets as "initial", neither
 of which should match, but AWS documents neither, so that release is the check.
+
+## Cost anomalies
+
+The budget alerts say the total is high; `Mvgl-<env>-Costs` says which service made it so (ADR 0111).
+It holds AWS Cost Anomaly Detection's monitor of the account's spending, each AWS service watched
+apart, and a subscription that emails the alarm address a daily summary of any anomaly whose total
+impact is $5 or more. Free. One per account, beside `Alerts`, whose parameter it reads; long-lived,
+deployed by hand, and never by the pipeline.
+
+**Once per environment**, after the parameter exists (see [Alarms](#alarms)):
+
+```bash
+cdk deploy Mvgl-dev-Costs --profile mvgl-dev -c env=dev
+```
+
+```bash
+cdk deploy Mvgl-prod-Costs --profile mvgl-prod -c env=prod
+```
+
+- **An account may hold one such monitor.** AWS made one by itself, with a daily email, for an account
+  that turned on Cost Explorer from 27 March 2023, so look first, in the console (Billing and Cost
+  Management, Cost Anomaly Detection, Cost monitors), for a monitor of the type "AWS services". If
+  there is one, delete it and its alert subscription there before the deploy: with a quota of one, the
+  deploy should otherwise fail at the monitor and roll back. Neither account had one on 2026-11-23: dev's
+  was read then, and the owner read production's.
+- **Email only, daily.** An email subscriber may have a daily or a weekly summary; an alert per anomaly
+  needs an SNS topic. Detection runs about three times a day on Cost Explorer's data, which is up to a
+  day behind, and a new monitor can take a day to start; a service needs ten days of history before
+  its anomalies are found.
+- **The console is the way to look.** Each Cost Explorer API request may cost $0.01, and AWS does not
+  say whether that includes the anomaly calls, so the check after the deploy is the console's Cost
+  monitors page: `mvgl-<env>-services`, with its subscription `mvgl-<env>-services-daily`. The first
+  anomaly over $5 is the first email, and the only proof there is of the path to the inbox.
 
 ## Parking and resuming
 
