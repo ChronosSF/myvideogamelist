@@ -361,23 +361,29 @@ function destroyHalf(side, stack) {
 
 const steps = [];
 
+/** Runs a step and records when it started and ended, and whether it worked, whichever way it ends. */
 async function step(name, work) {
     const started = new Date();
     note(`\n== ${clock(started)} ${name}`);
-    const result = await work();
-    const ended = new Date();
-    steps.push({ name, started, ended });
-    note(`== ${clock(ended)} ${name}: ${Math.round((ended - started) / 1000)}s`);
-    return result;
+    let outcome = 'failed';
+    try {
+        const result = await work();
+        outcome = 'done';
+        return result;
+    } finally {
+        const ended = new Date();
+        steps.push({ name, started, ended, outcome });
+        note(`== ${clock(ended)} ${name}: ${outcome}, ${Math.round((ended - started) / 1000)}s`);
+    }
 }
 
 function summary() {
     if (steps.length === 0) return;
-    console.log('\nStep | Started (UTC) | Ended (UTC) | Took');
-    console.log('---|---|---|---');
+    console.log('\nStep | Started (UTC) | Ended (UTC) | Took | Outcome');
+    console.log('---|---|---|---|---');
     for (const s of steps) {
         const took = Math.round((s.ended - s.started) / 1000);
-        console.log(`${s.name} | ${clock(s.started)} | ${clock(s.ended)} | ${Math.floor(took / 60)}m ${took % 60}s`);
+        console.log(`${s.name} | ${clock(s.started)} | ${clock(s.ended)} | ${Math.floor(took / 60)}m ${took % 60}s | ${s.outcome}`);
     }
 }
 
@@ -385,13 +391,19 @@ async function rehearse() {
     const keep = ARGS.includes('--keep');
     const live = database(DEV, 'mvgl-dev-db');
     const findings = {};
+    // Whether this run has begun to deploy the stack. Until it has, nothing in the account is its to
+    // remove: a stack already there is another run's, or one kept on purpose with --keep.
+    let deploying = false;
     try {
         await step('Preflight', () => {
             if (!live) fail('Dev\'s database mvgl-dev-db is not there.');
             // A parked database would have to be started, which is a change to it; the rehearsal does not make one.
             if (live.status !== 'available') fail(`Dev's database is "${live.status}". The rehearsal reads only an available one, and starts nothing.`);
             if (live.securityGroups?.length !== 1) fail(`Dev's database has ${live.securityGroups?.length} security groups; the stand-in expects one.`);
-            if (stackStatus(DEV, STACKS.rehearsal) !== null) fail(`${STACKS.rehearsal} is already there: clean --rehearsal first.`);
+            if (stackStatus(DEV, STACKS.rehearsal) !== null) {
+                fail(`${STACKS.rehearsal} is already there, from another rehearsal, and is left as it is. `
+                    + 'Once nobody needs it: node scripts/move-data.mjs clean --rehearsal');
+            }
             const migrations = runningMigrations(DEV);
             if (migrations.length > 0) fail(`A migration task is running (${migrations.join(', ')}). Wait for the release to finish.`);
             findings.apiTag = serviceTag(DEV, 'api');
@@ -400,6 +412,7 @@ async function rehearse() {
             if (findings.apiTag !== findings.migrateTag) note('  The two differ, so the migration on the stand-in is not the one the API was migrated with.');
         });
 
+        deploying = true;
         await step(`Deploy ${STACKS.rehearsal}, the stand-in included`, () => cdk(DEV, ['deploy', STACKS.rehearsal, '--exclusively',
             '--require-approval', 'never',
             '--parameters', `LiveSubnetGroup=${live.subnetGroup}`, '--parameters', `LiveSecurityGroup=${live.securityGroups[0]}`]));
@@ -475,7 +488,9 @@ async function rehearse() {
         note(`\n${error.message}`);
         findings.failed = true;
     } finally {
-        if (keep) {
+        if (!deploying) {
+            note('\nThis run made nothing, so it removes nothing.');
+        } else if (keep) {
             note(`\n--keep: ${STACKS.rehearsal} and the stand-in are left as they are. Remove them today: node scripts/move-data.mjs clean --rehearsal`);
         } else {
             try {
