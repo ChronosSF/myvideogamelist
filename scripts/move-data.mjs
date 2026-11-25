@@ -258,13 +258,35 @@ async function readDump(side, group, task) {
         bytes: Number(dumped?.match(/^dumped (\d+) bytes/)?.[1] ?? NaN),
         seconds: Number(dumped?.match(/in (\d+)s/)?.[1] ?? NaN),
         uploadSeconds: Number(upload.find((line) => line.startsWith('uploaded '))?.match(/in (\d+)s/)?.[1] ?? NaN),
+        uploaded: upload.includes('upload: done'),
     };
+}
+
+/** What the restore container's exit code means: MoveStack.cs's RestoreScript gives each its own. */
+const RESTORE_EXIT = {
+    refusedNotEmpty: 3,
+    restoredUncounted: 4,
+    refusedOtherDump: 5,
+};
+
+/**
+ * Runs the restore task for one dump, named by the digest its dump task printed. The restore container
+ * refuses any other, so an older dump left in the bucket by a failed upload is never restored.
+ */
+function runRestore(side, family, net, sha256) {
+    if (!/^[0-9a-f]{64}$/.test(sha256 ?? '')) fail('No dump\'s digest to restore by, so nothing was restored.');
+    return runTask(side, family, net, {
+        containerOverrides: [{ name: 'restore', environment: [{ name: 'EXPECTED_SHA256', value: sha256 }] }],
+    });
 }
 
 async function readRestore(side, group, task) {
     const id = taskId(task.arn);
     const download = await logOf(side, group, `move/download/${id}`, 'download: done');
-    const restore = await logOf(side, group, `move/restore/${id}`, exitOf(task, 'restore') === 3 ? 'Refused' : 'restore: done');
+    const exit = exitOf(task, 'restore');
+    const last = exit === RESTORE_EXIT.refusedNotEmpty || exit === RESTORE_EXIT.refusedOtherDump ? 'Refused'
+        : exit === RESTORE_EXIT.restoredUncounted ? 'Restored, and committed' : 'restore: done';
+    const restore = await logOf(side, group, `move/restore/${id}`, last);
     for (const line of [...download, ...restore]) note(`  | ${line}`);
     const downloaded = download.find((line) => line.startsWith('downloaded '));
     return {
@@ -433,11 +455,23 @@ async function rehearse() {
             if (exitOf(task, 'dump') !== 0 || exitOf(task, 'upload') !== 0) {
                 fail(`The dump task failed: dump ${exitOf(task, 'dump')}, upload ${exitOf(task, 'upload')} (${task.reason}).`);
             }
+            if (!read.uploaded) fail('The dump task did not say its upload finished.');
             return read;
         });
 
+        // Named by a digest that is not the dump's, as an older dump left in the bucket would be. It must
+        // refuse before it touches the stand-in, which the restore after it, into a database that has to
+        // be empty, then shows.
+        await step('Restore a dump it was not given, which must refuse', async () => {
+            const arn = runRestore(DEV, output('RestoreTaskFamily'), net, '0'.repeat(64));
+            const task = { arn, ...(await stopped(DEV, arn)) };
+            const read = await readRestore(DEV, group, task);
+            findings.refusedOther = exitOf(task, 'restore') === RESTORE_EXIT.refusedOtherDump && read.refused;
+            if (!findings.refusedOther) fail(`A restore named by another digest was not refused: restore exited ${exitOf(task, 'restore')}.`);
+        });
+
         const restore = await step('Restore the dump into the stand-in', async () => {
-            const arn = runTask(DEV, output('RestoreTaskFamily'), net);
+            const arn = runRestore(DEV, output('RestoreTaskFamily'), net, dump.sha256);
             const task = { arn, ...(await stopped(DEV, arn)) };
             const read = await readRestore(DEV, group, task);
             if (exitOf(task, 'download') !== 0 || exitOf(task, 'restore') !== 0) {
@@ -447,10 +481,10 @@ async function rehearse() {
         });
 
         await step('Restore again, which must refuse', async () => {
-            const arn = runTask(DEV, output('RestoreTaskFamily'), net);
+            const arn = runRestore(DEV, output('RestoreTaskFamily'), net, dump.sha256);
             const task = { arn, ...(await stopped(DEV, arn)) };
             const read = await readRestore(DEV, group, task);
-            findings.refused = exitOf(task, 'restore') === 3 && read.refused;
+            findings.refused = exitOf(task, 'restore') === RESTORE_EXIT.refusedNotEmpty && read.refused;
             if (!findings.refused) fail(`The second restore was not refused: restore exited ${exitOf(task, 'restore')}.`);
         });
 
@@ -505,7 +539,9 @@ async function rehearse() {
         }
         summary();
     }
-    if (findings.failed || !findings.same || !findings.bytesIntact) process.exitCode = 1;
+    // A live database that moved while it was dumped makes the comparison prove nothing, whatever it says.
+    if (findings.steady === false) note('\nDev\'s counts moved while it was dumped, so this rehearsal proves nothing. Run it again.');
+    if (findings.failed || !findings.steady || !findings.same || !findings.bytesIntact) process.exitCode = 1;
 }
 
 async function cleanRehearsal() {
@@ -590,28 +626,46 @@ async function restore() {
     requireDeployed(PROD, STACKS.in);
     requireDeployed(DEV, STACKS.out);
     const output = outputs(PROD, STACKS.in);
-    const read = await step('Restore the dump into production\'s database', async () => {
-        const started = runTask(PROD, output('RestoreTaskFamily'), network(PROD));
-        const task = { arn: started, ...(await stopped(PROD, started)) };
-        const result = await readRestore(PROD, output('RestoreLogGroup'), task);
-        if (exitOf(task, 'restore') === 3) {
-            fail('Refused: production\'s database is not empty. Nothing was written. Infra/README.md says what to do.');
-        }
-        if (exitOf(task, 'download') !== 0 || exitOf(task, 'restore') !== 0) {
-            fail(`The restore task failed: download ${exitOf(task, 'download')}, restore ${exitOf(task, 'restore')} (${task.reason}). `
-                + 'It ran in one transaction, so production\'s database is as empty as it was; run it again once the cause is known.');
-        }
-        return result;
-    });
 
-    // What the dump counted, from the newest dump task's log in dev's account.
+    // The newest dump, from its task's log in dev's account, judged before production is touched: one whose
+    // upload did not finish, or whose counts moved while it ran, is not one to restore. The restore is then
+    // given its digest, and refuses whatever else the bucket holds.
     const devOutput = outputs(DEV, STACKS.out);
     const group = devOutput('DumpLogGroup');
     const streams = aws(DEV, ['logs', 'describe-log-streams', '--log-group-name', group, '--log-stream-name-prefix', 'move/dump/',
         '--query', 'logStreams[].{name: logStreamName, last: lastEventTimestamp}']).value ?? [];
     const newest = streams.sort((a, b) => (b.last ?? 0) - (a.last ?? 0))[0];
-    if (!newest) fail(`No dump's log in ${group}, so there is nothing to compare with.`);
+    if (!newest) fail(`No dump's log in ${group}, so there is nothing to restore.`);
     const dumped = await readDump(DEV, group, { arn: newest.name.replace('move/dump/', '') });
+    if (!dumped.uploaded) fail('The newest dump\'s upload did not finish, so the bucket does not hold it. Nothing was restored; dump again.');
+    if (!compare('dev before the dump', dumped.before, 'dev after it', dumped.after)) {
+        fail('Dev\'s counts moved while the newest dump ran. Nothing was restored; stop what writes, and dump again.');
+    }
+
+    const read = await step('Restore the dump into production\'s database', async () => {
+        const started = runRestore(PROD, output('RestoreTaskFamily'), network(PROD), dumped.sha256);
+        const task = { arn: started, ...(await stopped(PROD, started)) };
+        const result = await readRestore(PROD, output('RestoreLogGroup'), task);
+        const exit = exitOf(task, 'restore');
+        if (exit === RESTORE_EXIT.refusedOtherDump) {
+            fail('Refused: the bucket holds another dump than the newest one dev wrote. Nothing was written; dump again.');
+        }
+        if (exit === RESTORE_EXIT.refusedNotEmpty) {
+            fail('Refused: production\'s database is not empty. Nothing was written. Infra/README.md says what to do.');
+        }
+        // Exit 4, or any failure after the line that says pg_restore finished, as a task stopped from outside
+        // would be: the copy is committed either way.
+        if (exit === RESTORE_EXIT.restoredUncounted || (exit !== 0 && Number.isFinite(result.seconds))) {
+            fail('Restored and committed, but what followed it failed, so the copy was not counted. Production\'s database now '
+                + 'holds the copy and refuses another restore. Do not open the door; infra/README.md says what to do.');
+        }
+        if (exitOf(task, 'download') !== 0 || exit !== 0) {
+            fail(`The restore task failed: download ${exitOf(task, 'download')}, restore ${exit} (${task.reason}). `
+                + 'Nothing was committed, so production\'s database is as empty as it was; run it again once the cause is known.');
+        }
+        return result;
+    });
+
     const same = compare('dev after the dump', dumped.after, 'production', read.copy);
     const intact = dumped.sha256 !== null && dumped.sha256 === read.sha256;
     note(`  The digest the restore read ${intact ? 'is' : 'is NOT'} the one the dump wrote.`);

@@ -146,16 +146,24 @@ internal static class MoveTasks
         """;
 
     /// <summary>
-    /// Into an empty database only, which is what makes the restore safe to run again and impossible to run
-    /// over a database in service: exit 3 says it refused. In one transaction, so a restore that fails leaves
-    /// the database as empty as it found it. Its statistics are gathered at once, and the copy is counted in
-    /// a session that cannot write.
+    /// The one dump the script names, by the digest the dump task printed: a dump whose upload failed leaves
+    /// an older one in the bucket, and exit 5 says it refused that before touching the database. Into an
+    /// empty database only, which is what makes the restore safe to run again and impossible to run over a
+    /// database in service: exit 3 says it refused. In one transaction, so a pg_restore that fails leaves the
+    /// database as empty as it found it. What comes after it, the statistics and the count of the copy in a
+    /// session that cannot write, runs once the copy is committed, so its failure is exit 4, which says the
+    /// database now holds the copy and is not one to restore into again.
     /// </summary>
     internal const string RestoreScript =
         """
         set -euo pipefail
         trap 'rm -f /move/myvideogamelist.dump' EXIT
         if [ ! -f /move/downloaded ]; then echo "The download did not finish, so nothing was restored."; exit 1; fi
+        sum=$(sha256sum /move/myvideogamelist.dump | cut -d ' ' -f 1)
+        if [ "$sum" != "$EXPECTED_SHA256" ]; then
+          echo "Refused: the bucket holds a dump with sha256 $sum, not the one named, $EXPECTED_SHA256. Nothing was restored."
+          exit 5
+        fi
         pg_restore --version
         held=$(psql -X -At -v ON_ERROR_STOP=1 -c "$EMPTY_SQL")
         if [ "$held" != "0" ]; then
@@ -165,8 +173,15 @@ internal static class MoveTasks
         started=$(date +%s)
         pg_restore --no-owner --no-privileges --single-transaction --exit-on-error --dbname="$PGDATABASE" /move/myvideogamelist.dump
         echo "restored in $(( $(date +%s) - started ))s"
-        psql -X -q -v ON_ERROR_STOP=1 -c "ANALYZE"
-        PGOPTIONS="-c default_transaction_read_only=on" psql -X -At -v ON_ERROR_STOP=1 -c "$CHECK_SQL" | sed "s/^/copy /"
+        if ! psql -X -q -v ON_ERROR_STOP=1 -c "ANALYZE"; then
+          echo "Restored, and committed, but ANALYZE failed after it."
+          exit 4
+        fi
+        if ! copy=$(PGOPTIONS="-c default_transaction_read_only=on" psql -X -At -v ON_ERROR_STOP=1 -c "$CHECK_SQL"); then
+          echo "Restored, and committed, but the copy could not be counted."
+          exit 4
+        fi
+        echo "$copy" | sed "s/^/copy /"
         echo "restore: done"
         """;
 
@@ -234,6 +249,9 @@ internal static class MoveTasks
             ["PGAPPNAME"] = $"mvgl-move-{name}",
             ["CHECK_SQL"] = Lf(CheckSql),
             ["EMPTY_SQL"] = Lf(EmptySql),
+            // The digest of the dump to restore, which the script gives each run from the dump task's log.
+            // Never a real one by default: a restore run without it refuses, before touching the database.
+            ["EXPECTED_SHA256"] = "unset",
         };
         if (readOnly)
         {

@@ -47,8 +47,12 @@ task subnets, behind the API's security group, as the migration task runs.
   It acts only if the first left its mark, so the task's exit code says whether the whole of it worked.
 - **The counts are what is compared**: the newest migration and how many there are, every table's row
   count, and every sequence's last value, read the same way before the dump, after it and from the copy.
-  Names and numbers, nothing of anybody's. Each side also prints the dump's SHA-256, so the bytes the
-  restore read can be held to the bytes the dump wrote.
+  Names and numbers, nothing of anybody's.
+- **The restore takes one dump, named by its digest.** The dump task prints the dump's SHA-256, and the
+  script gives it to the restore, which refuses with exit code 5 anything else the bucket holds before it
+  touches the database: a dump whose upload failed leaves an older one there. The script also reads the
+  newest dump's log before it starts, and does not restore one whose upload did not finish or whose
+  counts moved while it ran.
 - **`scripts/move-data.mjs`** runs it, in the manner of `dev-env.mjs`: `rehearse`, and the day's `dump`,
   `restore` and `clean`.
 
@@ -96,8 +100,10 @@ Production's `Data` stack makes a database that holds nothing. The restore write
 that: a database that holds any relation outside PostgreSQL's own schemas is refused with exit code 3, so
 the task cannot be run over a database in service. It restores in one transaction, which "ensures that
 either all the commands complete successfully, or no changes are applied"
-([pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html)), so a restore that fails leaves the
-database as empty as it found it, and can be run again.
+([pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html)), so a pg_restore that fails leaves
+the database as empty as it found it, and can be run again. What follows it, the statistics and the count
+of the copy, runs once the copy is committed, so its failure has a code of its own, 4, which says the
+database now holds the copy.
 
 So **the restore comes before production's first `dev-env.mjs resume --env prod`**, which migrates the
 database before anything else, and production's database is never migrated before the move.
@@ -190,8 +196,8 @@ On the day:
 2. **Dev stops taking writes.** The pipeline's gate goes off, so no run brings the API back, and the API
    is scaled to nothing; it is the only writer, its background work included. `dump` refuses until it is.
 3. `move-data.mjs dump`. It fails if the counts moved while it ran, before production is touched.
-4. `move-data.mjs restore`, which compares the copy with what the dump counted and the digest with the
-   dump's.
+4. `move-data.mjs restore`, which restores the newest dump by its digest, once its log says its upload
+   finished and its counts held, and compares the copy with what it counted.
 5. `move-data.mjs clean`: the dump deleted, both halves destroyed.
 6. 0103 §7's steps 6 to 9: the first `resume`, the holding page destroyed, the second `resume`, the
    acceptance test.
@@ -212,8 +218,12 @@ kinder, and is a line on #465.
   API scaled back to one task and its gate back on, and the members told the move is later.
 - **A dump that fails, or whose counts moved,** has written nothing to production. It is run again; the
   next dump replaces the object.
-- **A restore that fails** leaves production's database empty, by its one transaction, and is run again
+- **A restore stopped before it starts**, because the newest dump is not whole or the bucket holds another,
+  has written nothing. The dump is run again.
+- **A pg_restore that fails** leaves production's database empty, by its one transaction, and is run again
   from the same dump.
+- **A restore that committed and then failed**, exit code 4, holds the copy uncounted, and is treated as
+  the next case.
 - **A restore that succeeded but does not compare** leaves production's database holding the copy, and the
   next restore refuses it. Production's database has never served anybody at that point, so it can be
   emptied, but how is not rehearsed, and is a line on #465. The door stays shut, and dev is brought back
@@ -257,4 +267,5 @@ need production's account, and production's database:
   `--expected-bucket-owner`; the upload and the download became s3api's `put-object` and `get-object`,
   which do. The third went through, in fourteen minutes from the first command to an account read clean.
   The times and what was compared are in `infra/README.md`. The stand-in ran for about forty minutes
-  across the three, which is cents.
+  across the three, which is cents. The restore's digest check and its exit code 4 came after, from the
+  review of #507, and were run against a local database, not yet in AWS.

@@ -178,7 +178,10 @@ database, while dev was open. Times are UTC.
 | Removed | 09:56:20 to 09:59:36, 3 m 16 s, and the account read clean |
 
 Most of each task's minute is Fargate starting it, not the data, which is small. Two runs before this one
-failed and removed what they had made: why, and what changed, is ADR 0109's last paragraph.
+failed and removed what they had made: why, and what changed, is ADR 0109's last paragraph. After it, the
+review of #507 made the restore take its dump by digest (exit code 5 for any other) and give a failure
+after its commit a code of its own (4). Those were run against the compose database and a throwaway
+server, not yet in AWS; the next rehearsal runs them there, a refused dump included.
 
 #### Ahead of the day
 
@@ -237,7 +240,9 @@ Both profiles signed in, from the repository root.
    node scripts/move-data.mjs dump
    ```
 
-4. **The restore**, which then compares the copy with what the dump counted, and the digests:
+4. **The restore.** It first reads the newest dump's log in dev's account, and stops if its upload did not
+   finish or its counts moved. Then it restores that dump and no other, named by its digest, and compares
+   the copy with what the dump counted:
 
    ```bash
    node scripts/move-data.mjs restore
@@ -261,11 +266,17 @@ Both profiles signed in, from the repository root.
 
 - **The dump fails, or says the counts moved**: production was not touched. Find what still writes, then
   `dump` again; the next dump replaces the object.
-- **The restore fails**: it ran in one transaction, so production's database is as empty as before. Run
-  `restore` again from the same dump.
+- **The restore stops before it starts**, because the newest dump's upload did not finish or its counts
+  moved, or the restore task refuses with exit code 5 because the bucket holds another dump than that one:
+  nothing was written. `dump` again.
+- **The restore fails** before it says it restored: pg_restore runs in one transaction, so production's
+  database is as empty as before. Run `restore` again from the same dump.
 - **The restore is refused**, exit code 3: production's database already holds something, because its
   first `resume` ran before the move or a restore already succeeded. Nothing was written. How to empty it
   is not rehearsed (#465).
+- **The restore committed and then failed**, exit code 4 or any failure after its "restored in" line:
+  `ANALYZE` or the count of the copy did not finish, so nothing was compared. Production's database holds
+  the copy and refuses another restore. Do not open the door; emptying it is not rehearsed.
 - **The restore succeeded and does not compare**: do not open the door. As above, emptying production's
   database is not rehearsed.
 - **Going back altogether**, at any point before the door opens: dev's database was only read. `clean`,
