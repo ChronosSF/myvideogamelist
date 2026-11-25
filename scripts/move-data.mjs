@@ -315,7 +315,9 @@ function emptyBucket(side, bucket) {
     for (const upload of uploads) {
         aws(side, ['s3api', 'abort-multipart-upload', '--bucket', bucket, '--key', upload.key, '--upload-id', upload.id]);
     }
-    const left = aws(side, ['s3api', 'list-objects-v2', '--bucket', bucket, '--query', 'KeyCount']).value;
+    // The objects themselves, counted: the CLI pages this call, and a field of one page, KeyCount, comes
+    // back null once it has.
+    const left = aws(side, ['s3api', 'list-objects-v2', '--bucket', bucket, '--query', 'length(Contents || `[]`)']).value;
     if (left !== 0) fail(`${bucket} still holds ${left} objects after the dump was deleted. Look before destroying anything.`);
     return 'emptied';
 }
@@ -546,16 +548,23 @@ function leftovers() {
 async function dump() {
     requireDeployed(DEV, STACKS.out);
     // Nothing may write to dev after the dump, or it is lost: the API is the only writer, its background
-    // work included, so it has to be stopped, by the owner, before this runs.
-    const api = aws(DEV, ['ecs', 'describe-services', '--cluster', 'mvgl-dev', '--services', 'api',
-        '--query', 'services[0].{desired: desiredCount, running: runningCount, pending: pendingCount}'], { allowFailure: true }).value;
-    if (api && (api.desired !== 0 || api.running !== 0 || api.pending !== 0)) {
-        fail(`Dev's API is running (${api.running} of ${api.desired}), and anything it writes after the dump would be lost. Stop it first:\n`
-            + `  aws ecs update-service --profile ${DEV.profile} --cluster mvgl-dev --service api --desired-count 0`);
+    // work included, so it has to be stopped, by the owner, before this runs. Read without allowing a
+    // failure: an answer that cannot be read is not an answer that the API has stopped.
+    const api = aws(DEV, ['ecs', 'describe-services', '--cluster', 'mvgl-dev', '--services', 'api', '--query',
+        '{service: services[0].{status: status, desired: desiredCount, running: runningCount, pending: pendingCount}, missing: failures[].reason}']).value;
+    if (api?.service) {
+        if (api.service.desired !== 0 || api.service.running !== 0 || api.service.pending !== 0) {
+            fail(`Dev's API is running (${api.service.running} of ${api.service.desired}), and anything it writes after the dump would be lost. Stop it first:\n`
+                + `  aws ecs update-service --profile ${DEV.profile} --cluster mvgl-dev --service api --desired-count 0`);
+        }
+    } else if (!api?.missing?.includes('MISSING')) {
+        fail(`ECS said neither that dev's API service exists nor that it is missing (${JSON.stringify(api)}), so whether it is stopped is not known.`);
     }
     const migrations = runningMigrations(DEV);
     if (migrations.length > 0) fail(`A migration task is running (${migrations.join(', ')}). Wait for it.`);
-    note(`Dev's database is at the migrations of ${serviceTag(DEV, 'api')}, the tag its API last ran. Production's newest tag must be the same.`);
+    // What migrated the database last is the migration task's newest revision, whether a release or a resume ran it.
+    note(`Dev's database is at the migrations of ${imageTag(DEV, 'mvgl-dev-migrate')}, the tag its migration task last ran. `
+        + 'Production\'s newest tag must be the same.');
 
     const output = outputs(DEV, STACKS.out);
     const arn = await step('Dump dev\'s database into production\'s bucket', async () => {
@@ -565,7 +574,12 @@ async function dump() {
         if (exitOf(task, 'dump') !== 0 || exitOf(task, 'upload') !== 0) {
             fail(`The dump task failed: dump ${exitOf(task, 'dump')}, upload ${exitOf(task, 'upload')} (${task.reason}). Nothing was restored; run it again.`);
         }
-        compare('dev before the dump', read.before, 'dev after it', read.after);
+        // Counts that moved while the dump ran mean something wrote: the dump is not the last state, and
+        // restoring it would lose what came after. Caught here, production is still untouched.
+        if (!compare('dev before the dump', read.before, 'dev after it', read.after)) {
+            fail('Dev\'s database changed while it was being dumped, so something still writes to it. Find it and stop it, '
+                + 'then dump again: the dump in the bucket is replaced by the next one.');
+        }
         return started;
     });
     summary();

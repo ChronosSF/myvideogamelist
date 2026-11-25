@@ -170,6 +170,14 @@ internal static class MoveTasks
         echo "restore: done"
         """;
 
+    /// <summary>
+    /// A script or a query with Unix line endings, whatever the checkout has. A raw string keeps its source
+    /// file's, which a Windows checkout writes as CRLF: sh then reads the carriage return as part of each
+    /// line, so <c>set -o pipefail</c> names no option and the task fails before it starts, and the same
+    /// commit synthesises one template on Windows and another in CI.
+    /// </summary>
+    private static string Lf(string text) => text.ReplaceLineEndings("\n");
+
     internal static LogGroup Logs(Construct scope, string name) =>
         new(scope, "Logs", new LogGroupProps
         {
@@ -224,8 +232,8 @@ internal static class MoveTasks
             ["PGCONNECT_TIMEOUT"] = "15",
             // What pg_stat_activity names the session, so that it is plain on the live database.
             ["PGAPPNAME"] = $"mvgl-move-{name}",
-            ["CHECK_SQL"] = CheckSql,
-            ["EMPTY_SQL"] = EmptySql,
+            ["CHECK_SQL"] = Lf(CheckSql),
+            ["EMPTY_SQL"] = Lf(EmptySql),
         };
         if (readOnly)
         {
@@ -237,7 +245,7 @@ internal static class MoveTasks
             Image = ContainerImage.FromRegistry(PostgresImage),
             Essential = essential,
             EntryPoint = ["sh", "-c"],
-            Command = [script],
+            Command = [Lf(script)],
             Environment = environment,
             Secrets = new Dictionary<string, Amazon.CDK.AWS.ECS.Secret>
             {
@@ -258,7 +266,7 @@ internal static class MoveTasks
             Image = ContainerImage.FromRegistry(AwsCliImage),
             Essential = essential,
             EntryPoint = ["sh", "-c"],
-            Command = [script],
+            Command = [Lf(script)],
             Environment = new Dictionary<string, string>
             {
                 ["BUCKET"] = move.BucketName,

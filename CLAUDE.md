@@ -57,6 +57,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
 | `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database, destroys the web ACL's stack and gates the pipeline off; `resume` is the reverse at the newest pushed tag, migrating the database at that tag first, since a parked environment skips the pipeline's migrations, and proving the site answers, through the door where it has one. Every deploy is `--exclusively`, so the Data stack is never touched by accident. With `--env prod`, `resume` is how production's application stack is first made, and `park` refuses. See ADR 0044, 0046, 0103 |
 | `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door, and of a site deployed open (ADR 0101) everything with no pair; with the `mvgl-dev` profile signed in, also that the web ACL is on the distribution (ADR 0098) and that the edge certificate's validation records are in public DNS, which its renewal needs (ADR 0103). `--env prod` is production's, which expects an indexable site and `www` redirected (ADR 0103) |
+| `node scripts/move-data.mjs rehearse\|dump\|restore\|clean` | Dev's accounts and lists into production's database at launch: a dump by a task in dev's VPC, through a bucket in production's account, restored by a task in production's into its empty database. `rehearse` runs it all inside dev's account, into a stand-in it makes, and removes everything the same hour; `dump`, `restore` and `clean` are the day's, in `infra/README.md`'s order. Reads dev's database only, in a session that cannot write, and never prints a row. See ADR 0109 |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -96,8 +97,9 @@ docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         The tables not built yet, and the two constraints every table answers to
 scripts/                        Dev-only tools. The seeding tools print SQL to stdout and never open
                                 a database connection — piping to psql stays a deliberate act.
-                                dev-env.mjs is the exception: it acts on AWS, through a signed-in
-                                CLI profile, and prints every command before running it
+                                dev-env.mjs and move-data.mjs are the exceptions: they act on AWS,
+                                through a signed-in CLI profile, and print every command before
+                                running it
 ROADMAP.md                      Not the plan any more: where it lives (GitHub issues), and the old IDs' map
 .editorconfig  Directory.Build.props  .gitleaks.toml
                                 The house style, NuGet's audit, and what the secret scan allows (ADR 0061)
