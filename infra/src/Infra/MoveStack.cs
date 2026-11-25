@@ -128,7 +128,7 @@ internal static class MoveTasks
         if [ ! -f /move/dumped ]; then echo "The dump did not finish, so nothing was uploaded."; exit 1; fi
         aws --version
         started=$(date +%s)
-        aws s3 cp /move/myvideogamelist.dump "s3://$BUCKET/$KEY" --expected-bucket-owner "$BUCKET_OWNER" --only-show-errors
+        aws s3api put-object --bucket "$BUCKET" --key "$KEY" --body /move/myvideogamelist.dump --expected-bucket-owner "$BUCKET_OWNER" --query ETag --output text > /dev/null
         echo "uploaded to s3://$BUCKET/$KEY in $(( $(date +%s) - started ))s"
         echo "upload: done"
         """;
@@ -137,7 +137,7 @@ internal static class MoveTasks
         """
         set -euo pipefail
         started=$(date +%s)
-        aws s3 cp "s3://$BUCKET/$KEY" /move/myvideogamelist.dump --expected-bucket-owner "$BUCKET_OWNER" --only-show-errors
+        aws s3api get-object --bucket "$BUCKET" --key "$KEY" --expected-bucket-owner "$BUCKET_OWNER" /move/myvideogamelist.dump --query ContentLength --output text > /dev/null
         size=$(wc -c < /move/myvideogamelist.dump)
         sum=$(sha256sum /move/myvideogamelist.dump | cut -d ' ' -f 1)
         echo "downloaded $size bytes in $(( $(date +%s) - started ))s, sha256 $sum"
@@ -271,7 +271,9 @@ internal static class MoveTasks
             {
                 ["BUCKET"] = move.BucketName,
                 ["KEY"] = Move.Key,
-                // A bucket of that name in any other account is refused rather than written to.
+                // A bucket of that name in any other account is refused rather than written to. The scripts
+                // call s3api's put-object and get-object, which take this, and not `aws s3 cp`, which does
+                // not: the second rehearsal's upload failed on it.
                 ["BUCKET_OWNER"] = move.Target.Account,
             },
             Logging = LogDrivers.AwsLogs(new AwsLogDriverProps { LogGroup = logs, StreamPrefix = "move" }),
@@ -309,7 +311,7 @@ internal sealed class MoveOut : Construct
             new PolicyStatement(new PolicyStatementProps
             {
                 Sid = "WriteTheDump",
-                Actions = ["s3:PutObject", "s3:AbortMultipartUpload"],
+                Actions = ["s3:PutObject"],
                 Resources = [$"arn:{Aws.PARTITION}:s3:::{move.BucketName}/{Move.Key}"],
             }));
 
@@ -367,7 +369,7 @@ internal sealed class MoveIn : Construct
         {
             Sid = "TheDumpTaskWrites",
             Principals = [new AccountPrincipal(move.Source.Account)],
-            Actions = ["s3:PutObject", "s3:AbortMultipartUpload"],
+            Actions = ["s3:PutObject"],
             Resources = [dump],
             Conditions = new Dictionary<string, object>
             {
