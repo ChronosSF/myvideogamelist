@@ -71,7 +71,8 @@ Three things to know before deploying any of it:
 
 In this order, and any time before the day:
 
-1. `EdgeCert` and `Data`, by name. `Alerts` is there already, for SES.
+1. `EdgeCert` and `Data`, by name. `Alerts` is there already, for SES, and `Costs` can go beside it
+   ([Cost anomalies](#cost-anomalies)).
 
    ```bash
    npx cdk deploy Mvgl-prod-EdgeCert Mvgl-prod-Data --exclusively --profile mvgl-prod -c env=prod
@@ -237,8 +238,9 @@ every email of both environments counts, so each alarm is at half the review lev
 
 SES works the rates out over a representative volume of the account's mail, not over a fixed period,
 and AWS's announcement of them says they are worked out again with every send. So an hour without a
-figure keeps each alarm where it was, as SES's guide recommends. They are the account's rates, with no dimension; SES also publishes the
-configuration set's own, under `ses:configuration-set`, which nothing alarms on. Each costs $0.10 a
+figure keeps each alarm where it was, as SES's guide recommends. They are the account's rates, with
+no dimension; SES also publishes the configuration set's own, under `ses:configuration-set`, which
+nothing alarms on. Each costs $0.10 a
 month. A deploy of `Mvgl-prod-Email` brings them, and nothing else changes in it:
 
 ```bash
@@ -589,6 +591,10 @@ deployed by hand, and never by the pipeline.
 
 ```bash
 cdk deploy Mvgl-dev-Costs --profile mvgl-dev -c env=dev
+```
+
+```bash
+cdk deploy Mvgl-prod-Costs --profile mvgl-prod -c env=prod
 ```
 
 - **An account may hold one such monitor.** AWS made one by itself, with a daily email, for an account

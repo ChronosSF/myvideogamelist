@@ -99,7 +99,7 @@ internal static class Program
         // Long-lived and deployed by hand, like Alerts; nothing refers to it (ADR 0111).
         _ = new CostsStack(app, site.StackName("Costs"), new StackProps { Env = alerts }, site);
         // Where the alarms send, long-lived because an email subscription is confirmed by a person.
-        // The fourth long-lived stack, and not protected: destroying it loses that confirmation and
+        // Long-lived, and not protected: destroying it loses that confirmation and
         // nothing else, and destroying and redeploying it is how a lost subscription is made again.
         // Nothing refers to it; the alarms in App name its topic (ADR 0080).
         _ = new AlertsStack(app, site.StackName("Alerts"), new StackProps { Env = alerts }, site);
