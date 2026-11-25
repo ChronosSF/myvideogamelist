@@ -65,7 +65,7 @@ API and `/version` on the SSR server, each `{ sha, builtAt }`, `unknown` locally
 says a deployed site is failing: five alarms and a rule in the `App` stack, emailed through the
 hand-deployed `Alerts` stack to the address in the `/mvgl/<env>/alarm-email` parameter, which the
 repository never holds, and two on the edge in `us-east-1`, which `EdgeAlarms` and `EdgeAlerts` keep there
-(ADR 0110); the IGDB one counts the API's Information line per IGDB call
+(ADR 0110); `App`'s IGDB failure alarm counts the API's Information line per IGDB call
 (`Observability/IgdbCallLog.cs`, ADR 0080, `infra/README.md`).
 
 ## Layout

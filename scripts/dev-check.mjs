@@ -275,7 +275,12 @@ async function theAlarms(who) {
 
     // The function's alarm exists where the function runs, and only there: behind the door, or where a name
     // only redirects (Site.ViewerRequestRuns). Whether the door is on is the stack's to say.
-    const runs = stackOutput(APP_STACK, 'BasicAuth') !== 'off' || WHERE.redirectedHosts.length > 0;
+    const door = stackOutput(APP_STACK, 'BasicAuth');
+    if (door === null && WHERE.redirectedHosts.length === 0) {
+        skip(`whether an alarm watches ${VIEWER_REQUEST}`, `${APP_STACK} says nothing of the door: no stack, or no BasicAuth output`);
+        return;
+    }
+    const runs = door === 'on' || WHERE.redirectedHosts.length > 0;
     const thrown = alarms.find((alarm) => alarm.name === `${EDGE_ALARM}function-errors`);
     if (runs) {
         report(thrown !== undefined && (thrown.dimensions ?? []).some((d) => d.Name === 'FunctionName' && d.Value === VIEWER_REQUEST) && tells(thrown),

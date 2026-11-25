@@ -176,11 +176,13 @@ function cdkEntry() {
     fail('The CDK CLI is not installed: npm ci --prefix infra');
 }
 
-function cdk(args) {
+/** `allowFailure` for a step whose failure the caller reports itself: the answer is then whether it worked. */
+function cdk(args, { allowFailure = false } = {}) {
     const full = ['--profile', PROFILE, '-c', `env=${ENV}`, ...args];
     show('cdk', full);
     const r = spawnSync(process.execPath, [cdkEntry(), ...full], { cwd: INFRA, stdio: 'inherit' });
-    if (r.status !== 0) fail(`cdk ${args[0]} ${args[1]} failed with exit code ${r.status}`);
+    if (r.status !== 0 && !allowFailure) fail(`cdk ${args[0]} ${args[1]} failed with exit code ${r.status}`);
+    return r.status === 0;
 }
 
 function gh(args) {
@@ -221,6 +223,15 @@ function basicAuth() {
     const r = aws(['cloudformation', 'describe-stacks', '--stack-name', NAMES.appStack,
         '--query', "Stacks[0].Outputs[?OutputKey=='BasicAuth'].OutputValue | [0]"], { allowFailure: true });
     return r.ok && r.value === 'off' ? 'off' : 'on';
+}
+
+/**
+ * Whether a stack stands with what it made: not absent, and not one whose creation never finished, failed and
+ * rolled back, or is being deleted. A first create that failed is ROLLBACK_COMPLETE, which exists and holds
+ * nothing.
+ */
+function stands(status) {
+    return status !== null && !/^(REVIEW_IN_PROGRESS|CREATE_IN_PROGRESS|CREATE_FAILED|ROLLBACK_|DELETE_)/.test(status);
 }
 
 function databaseStatus() {
@@ -339,6 +350,7 @@ function status() {
     const app = stackStatus(NAMES.appStack);
     const waf = stackStatus(NAMES.wafStack, NAMES.edgeRegion);
     const edgeAlarms = stackStatus(NAMES.edgeAlarmsStack, NAMES.edgeRegion);
+    const edgeAlerts = stackStatus(NAMES.edgeAlertsStack, NAMES.edgeRegion);
     const data = stackStatus(NAMES.dataStack);
     const db = databaseStatus();
     const running = services();
@@ -351,6 +363,7 @@ function status() {
     if (app !== null) console.log(`  basic auth at the edge: ${basicAuth()}`);
     console.log(`  ${NAMES.wafStack}:  ${waf ?? 'absent'} (${NAMES.edgeRegion})`);
     console.log(`  ${NAMES.edgeAlarmsStack}:  ${edgeAlarms ?? 'absent'} (${NAMES.edgeRegion})`);
+    console.log(`  ${NAMES.edgeAlertsStack}:  ${edgeAlerts ?? 'absent'} (${NAMES.edgeRegion}, long-lived, deployed by hand)`);
     // Production's holding page answers by the names its application stack takes, so which of the two
     // is there is the first thing to know about it (ADR 0066 §8, 0103).
     if (WHERE.production) {
@@ -370,6 +383,9 @@ function status() {
     if (wafUp && app === null) console.log(`  note: ${COST.aclLeft}.`);
     if (edgeAlarms !== null && !/DELETE_COMPLETE/.test(edgeAlarms) && app === null) {
         console.log(`  note: ${NAMES.edgeAlarmsStack} outlived the application stack and watches a distribution that is gone. Park again to destroy it.`);
+    }
+    if (stands(edgeAlarms) && !stands(edgeAlerts)) {
+        console.log(`  note: the edge's alarms stand, and ${NAMES.edgeAlertsStack}, whose topic they send to, does not: they tell nobody (infra/README.md, "Alarms").`);
     }
     if (app === 'DELETE_FAILED') {
         console.log(`  note: ${NAMES.appStack} failed to delete and still bills. CloudFormation's events say why; park again once that is fixed.`);
@@ -637,16 +653,20 @@ async function resume() {
     // distribution, so this takes several minutes longer than the services alone would.
     cdk(['deploy', NAMES.appStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never']);
 
-    // The edge's alarms, which read the new distribution's id from App, so after it, and before anything
-    // below can stop the run: an environment that is up is watched (ADR 0110). They send to a topic
-    // another stack makes, by its name, and alarm into nothing until it exists: said, not refused, so
-    // that deploying that stack later needs no second resume.
-    if (stackStatus(NAMES.edgeAlertsStack, NAMES.edgeRegion) === null) {
-        note(`${NAMES.edgeAlertsStack} is not deployed in ${NAMES.edgeRegion}, so the edge's alarms will tell nobody until it is `
+    // The edge's alarms, which read the new distribution's id from App, so after it, and before the checks
+    // below: an environment that is up is watched (ADR 0110). They send to a topic another stack makes, by
+    // its name, and alarm into nothing until it stands: said, not refused, so that deploying that stack
+    // later needs no second resume. And a failure here is said, not fatal either: App is up and billing by
+    // now, and stopping would leave it so with the gate off, for want of alarms one command restores.
+    const edgeAlerts = stackStatus(NAMES.edgeAlertsStack, NAMES.edgeRegion);
+    if (!stands(edgeAlerts)) {
+        note(`${NAMES.edgeAlertsStack} is ${edgeAlerts ?? 'not deployed'} in ${NAMES.edgeRegion}, so the edge's alarms will tell nobody until it stands `
             + '(infra/README.md, "Alarms").');
     }
     note(`Deploying ${NAMES.edgeAlarmsStack} in ${NAMES.edgeRegion}: the edge's alarms, on the new distribution.`);
-    cdk(['deploy', NAMES.edgeAlarmsStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never']);
+    const watched = cdk(['deploy', NAMES.edgeAlarmsStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never'],
+        { allowFailure: true });
+    if (!watched) note(`${NAMES.edgeAlarmsStack} did not deploy; the resume carries on, and says so again at the end.`);
 
     note('Waiting for both services to be stable…');
     aws(['ecs', 'wait', 'services-stable', '--cluster', NAMES.cluster, '--services', 'api', 'ssr']);
@@ -668,6 +688,12 @@ async function resume() {
             : `The door is on: a 401 without credentials. Set ${WHERE.basicAuthVariable} to user:password for the stronger check.`);
 
     gate(true);
+    if (!watched) {
+        note('');
+        note(`The environment is up and gated on, and nothing watches its edge: ${NAMES.edgeAlarmsStack} failed to deploy, `
+            + 'and its output above says why. Once that is fixed:');
+        note(`  cdk deploy ${NAMES.edgeAlarmsStack} --exclusively --profile ${PROFILE} -c env=${ENV} -c imageTag=${tag}`);
+    }
     console.log('');
     status();
 }
