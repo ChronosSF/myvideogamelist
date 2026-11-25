@@ -178,7 +178,7 @@ site in use is known from PostgreSQL's guide and from how long it took.
 - **The API's session limits are its own.** The minute an API transaction may sit idle (0079 §2) is set on
   the API's connection string, so it does not reach the dump's session.
 - **On dev it held its locks for about a second**: pg_dump's own time, by its task's log, in each of the
-  two rehearsal runs that reached it. The counts read just before and just after it were the same. On the
+  three rehearsal runs that reached it. The counts read just before and just after it were the same. On the
   day dev's API is stopped first, so nothing is held up at all.
 
 ### 6. The day, in order
@@ -258,7 +258,7 @@ need production's account, and production's database:
   the account to show it, and refuses to remove a rehearsal stack it did not make.
 - **After the launch** the three stacks, `MoveStack.cs`, `move-data.mjs` and the runbook's section go, as
   the holding page's stack does once production holds the domain.
-- **The rehearsal of 2026-11-25 took three runs**, and each removed everything it made, which the account
+- **The rehearsal of 2026-11-25 took four runs**, and each removed everything it made, which the account
   was read to show. The first failed at its first line: the scripts are C# raw strings, which kept a
   Windows checkout's CRLF, and sh read `pipefail` with a carriage return after it. The dump's container
   stopped before it ran psql, so it never connected to dev's database. Every script now passes through a
@@ -266,6 +266,7 @@ need production's account, and production's database:
   synthesised. The second dumped dev's database and failed at the upload, since `aws s3 cp` does not take
   `--expected-bucket-owner`; the upload and the download became s3api's `put-object` and `get-object`,
   which do. The third went through, in fourteen minutes from the first command to an account read clean.
-  The times and what was compared are in `infra/README.md`. The stand-in ran for about forty minutes
-  across the three, which is cents. The restore's digest check and its exit code 4 came after, from the
-  review of #507, and were run against a local database, not yet in AWS.
+  The review of #507 then made the restore take its dump by digest and give a failure after its commit a
+  code of its own, and the fourth ran that code, a restore named by another digest refused included, in
+  thirteen minutes. Its times and what was compared are in `infra/README.md`. The stand-in ran for about
+  fifty minutes across the four, which is cents.

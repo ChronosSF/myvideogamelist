@@ -168,26 +168,27 @@ database, while dev was open. Times are UTC.
 
 | | |
 |---|---|
-| Started | 09:45:39, from `node scripts/move-data.mjs rehearse` |
-| The stack, the stand-in included | 09:45:48 to 09:51:42, 5 m 54 s. RDS made the stand-in PostgreSQL 18.3, as dev's is |
-| The dump | 09:51:46 to 09:53:03, 1 m 17 s for the task. pg_dump 18.7 ran for a second and wrote 347,340 bytes, and the upload took 4 s |
-| The restore | 09:53:03 to 09:54:08, 1 m 6 s for the task. The download took 4 s and pg_restore under a second |
-| The second restore | 09:54:08 to 09:55:15, refused as it should be: the stand-in held 113 relations |
-| Dev's migration task, at dev's tag, on the stand-in | 09:55:15 to 09:56:20: "No migrations were applied. The database is already up to date." |
+| Started | 14:18:01, from `node scripts/move-data.mjs rehearse` |
+| The stack, the stand-in included | 14:18:08 to 14:23:34, 5 m 26 s. RDS made the stand-in PostgreSQL 18.3, as dev's is |
+| The dump | 14:23:38 to 14:24:42, 1 m 3 s for the task. pg_dump 18.7 ran for under a second and wrote 347,426 bytes, and the upload took 4 s |
+| A restore named by another digest | 14:24:42 to 14:25:44, refused with exit code 5 before it touched the stand-in |
+| The restore | 14:25:44 to 14:26:46, 1 m 2 s for the task. The download took 4 s and pg_restore a second, into the stand-in the refusal had left empty |
+| The restore again | 14:26:46 to 14:27:50, refused with exit code 3: the stand-in held 113 relations |
+| Dev's migration task, at dev's tag, on the stand-in | 14:27:50 to 14:28:43: "No migrations were applied. The database is already up to date." |
 | What was compared | the live database just before the dump, just after it, and the copy: the same 39 lines, 35 migrations, the row count of each of 27 tables and the last value of each of 11 sequences. The digest the restore read was the one the dump wrote |
-| Removed | 09:56:20 to 09:59:36, 3 m 16 s, and the account read clean |
+| Removed | 14:28:43 to 14:31:15, 2 m 31 s, and the account read clean |
 
-Most of each task's minute is Fargate starting it, not the data, which is small. Two runs before this one
-failed and removed what they had made: why, and what changed, is ADR 0109's last paragraph. After it, the
-review of #507 made the restore take its dump by digest (exit code 5 for any other) and give a failure
-after its commit a code of its own (4). Those were run against the compose database and a throwaway
-server, not yet in AWS; the next rehearsal runs them there, a refused dump included.
+Most of each task's minute is Fargate starting it, not the data, which is small. This was the fourth run
+that day, and the first of the code as it is here: the third had passed at 09:45 before the review of #507
+added the refusal of another dump. The two before that failed and removed what they had made; why, and what
+changed, is ADR 0109's last paragraph.
 
 #### Ahead of the day
 
 1. **Rehearse again**, the week before, with the `mvgl-dev` profile signed in. It deploys
-   `Mvgl-dev-MoveRehearsal`, dumps the live database, restores into a stand-in, restores again to see it
-   refused, migrates the stand-in, compares, and removes everything, then reads the account to show it.
+   `Mvgl-dev-MoveRehearsal`, dumps the live database, sees a restore named by another digest refused,
+   restores into a stand-in, sees a second restore refused, migrates the stand-in, compares, and removes
+   everything, then reads the account to show it.
    Cents, once:
 
    ```bash
