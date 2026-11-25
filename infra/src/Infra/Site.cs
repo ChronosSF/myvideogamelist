@@ -89,6 +89,19 @@ public sealed record Site(string Env)
     public bool BehindBasicAuth => Env != "dev";
 
     /// <summary>
+    /// The CloudFront function on the viewer request, which is also the name of its metrics, the
+    /// <c>FunctionName</c> dimension, in <c>us-east-1</c>.
+    /// </summary>
+    public string ViewerRequestFunctionName => $"{Prefix}-viewer-request";
+
+    /// <summary>
+    /// Whether the viewer-request function has a job, and so is on every behaviour: the door, or a name
+    /// that only redirects (ADR 0101, 0103). Where it has neither it is made and no behaviour names it,
+    /// so it runs for nobody, and no alarm watches it (ADR 0110).
+    /// </summary>
+    public bool ViewerRequestRuns => BehindBasicAuth || RedirectedHosts.Length > 0;
+
+    /// <summary>
     /// The web ACL on the distribution, which is also the name of its metrics, the <c>WebACL</c>
     /// dimension, in <c>us-east-1</c> (ADR 0098).
     /// </summary>

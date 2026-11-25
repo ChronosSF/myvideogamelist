@@ -37,6 +37,10 @@
  * from the same address. Behind basic auth a run sends 43 such requests with the pair, 54 with
  * --limiter, and 9 without; of an open site, 42, or 53 with --limiter. Production's is one more each
  * way, for www.
+ *
+ * The same profile is how it asks whether the alarms reach anybody: that the edge's alarms in
+ * us-east-1 watch the distribution the App stack has now, and that each Alerts topic has a confirmed
+ * subscription (ADR 0080, 0110). It reads the subscriptions' ARNs and never their address.
  */
 
 import { resolveCname } from 'node:dns/promises';
@@ -214,6 +218,77 @@ async function theCertificate(who) {
             found.length > 0
                 ? `${dnsName(record.Name)} is ${found.join(', ')}`
                 : `${dnsName(record.Name)} has no CNAME: put it back (infra/README.md, "The first deploy")`);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Whether an alarm reaches anybody, asked of AWS: the edge's alarms watch the distribution the App stack
+// has now, and each topic the alarms send to has a subscription somebody confirmed (ADR 0080, 0110). Read
+// only, through the environment's profile, and never the address: only the subscriptions' ARNs are asked.
+// ---------------------------------------------------------------------------------------------
+
+const ALERTS_STACK = `Mvgl-${ENV}-Alerts`;
+const EDGE_ALERTS_STACK = `Mvgl-${ENV}-EdgeAlerts`;
+const EDGE_ALARMS_STACK = `Mvgl-${ENV}-EdgeAlarms`;
+const EDGE_ALARM = `mvgl-${ENV}-edge-`;
+const VIEWER_REQUEST = `mvgl-${ENV}-viewer-request`;
+
+/** How many of a topic's subscriptions were confirmed: an unconfirmed one's ARN is `PendingConfirmation`. */
+function confirmedSubscriptions(topicArn) {
+    const arns = aws(['sns', 'list-subscriptions-by-topic', '--topic-arn', topicArn, '--region', topicArn.split(':')[3],
+        '--query', 'Subscriptions[].SubscriptionArn']);
+    return Array.isArray(arns) ? arns.filter((arn) => arn.startsWith('arn:')).length : null;
+}
+
+async function theAlarms(who) {
+    if (!who.ok) {
+        skip('whether the alarms reach anybody', who.missing ? who.error : `the ${PROFILE} profile is not signed in (aws sso login --profile ${PROFILE})`);
+        return;
+    }
+
+    // SNS deletes a subscription nobody confirmed within two days, and the link at the foot of every alarm's
+    // email removes one, and CloudFormation notices neither (infra/README.md, "Things that will bite you").
+    const topics = {};
+    for (const [stack, region] of [[ALERTS_STACK, []], [EDGE_ALERTS_STACK, ['--region', EDGE_REGION]]]) {
+        topics[stack] = stackOutput(stack, 'TopicArn', region);
+        const confirmed = topics[stack] ? confirmedSubscriptions(topics[stack]) : null;
+        report(confirmed > 0, `${stack}'s topic has a confirmed subscription`,
+            topics[stack] === null ? `${stack} has no TopicArn output${region.length ? ` in ${EDGE_REGION}` : ''}: deploy it (infra/README.md, "Alarms")`
+                : confirmed === null ? 'its subscriptions could not be read' : `${confirmed} confirmed`);
+    }
+
+    // The distribution's metrics are named by its id, which a resume makes anew: an alarm naming another is
+    // an alarm on a distribution that is gone.
+    const alarms = aws(['cloudwatch', 'describe-alarms', '--region', EDGE_REGION, '--alarm-name-prefix', EDGE_ALARM,
+        '--query', 'MetricAlarms[].{name: AlarmName, state: StateValue, actions: AlarmActions, metrics: Metrics, dimensions: Dimensions}']) ?? [];
+    const tells = (alarm) => topics[EDGE_ALERTS_STACK] !== null && (alarm.actions ?? []).includes(topics[EDGE_ALERTS_STACK]);
+    const distribution = stackOutput(APP_STACK, 'DistributionId');
+    const rate = alarms.find((alarm) => alarm.name === `${EDGE_ALARM}5xx-rate`);
+    const watched = [...new Set((rate?.metrics ?? [])
+        .flatMap((m) => m.MetricStat?.Metric?.Dimensions ?? [])
+        .filter((d) => d.Name === 'DistributionId')
+        .map((d) => d.Value))];
+    report(rate !== undefined && watched.length === 1 && watched[0] === distribution && tells(rate),
+        `${EDGE_ALARM}5xx-rate watches ${APP_STACK}'s distribution and tells ${EDGE_ALERTS_STACK}'s topic`,
+        rate ? `${watched.join(', ') || 'no distribution'} (${APP_STACK} has ${distribution ?? 'none'}), ${rate.state}`
+            : `no such alarm in ${EDGE_REGION}: deploy ${EDGE_ALARMS_STACK} (infra/README.md, "Alarms")`);
+
+    // The function's alarm exists where the function runs, and only there: behind the door, or where a name
+    // only redirects (Site.ViewerRequestRuns). Whether the door is on is the stack's to say.
+    const door = stackOutput(APP_STACK, 'BasicAuth');
+    if (door === null && WHERE.redirectedHosts.length === 0) {
+        skip(`whether an alarm watches ${VIEWER_REQUEST}`, `${APP_STACK} says nothing of the door: no stack, or no BasicAuth output`);
+        return;
+    }
+    const runs = door === 'on' || WHERE.redirectedHosts.length > 0;
+    const thrown = alarms.find((alarm) => alarm.name === `${EDGE_ALARM}function-errors`);
+    if (runs) {
+        report(thrown !== undefined && (thrown.dimensions ?? []).some((d) => d.Name === 'FunctionName' && d.Value === VIEWER_REQUEST) && tells(thrown),
+            `${EDGE_ALARM}function-errors watches ${VIEWER_REQUEST} and tells ${EDGE_ALERTS_STACK}'s topic`,
+            thrown ? thrown.state : `no such alarm in ${EDGE_REGION}: deploy ${EDGE_ALARMS_STACK}`);
+    } else {
+        report(thrown === undefined, `no alarm watches ${VIEWER_REQUEST}, which runs for nobody on an open site with one name`,
+            thrown ? 'there is one' : 'none');
     }
 }
 
@@ -465,6 +540,11 @@ try {
     await theCertificate(who);
 } catch (error) {
     report(false, "the edge certificate's validation records could be asked for", error.code ?? error.message);
+}
+try {
+    await theAlarms(who);
+} catch (error) {
+    report(false, 'the alarms could be read', error.message);
 }
 try {
     const door = await theDoorIs(who.ok);

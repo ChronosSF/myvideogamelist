@@ -12,9 +12,11 @@ The stacks, split by lifetime, named `Mvgl-<env>-<part>`:
 | `Costs` | long-lived | Cost Anomaly Detection: a monitor of the account's spending per service, and a daily email of what it finds (ADR 0111) |
 | `EdgeCert` | long-lived, `us-east-1` | the certificate CloudFront uses |
 | `Alerts` | long-lived | the topic the alarms send to, and the owner's email subscription to it (ADR 0080) |
+| `EdgeAlerts` | long-lived, `us-east-1` | the same again, for the edge's alarms, which CloudFront's Region obliges to live there (ADR 0110) |
 | `Migrate` | each release | the task that runs the migration bundle |
 | `Waf` | disposable, `us-east-1` | the web ACL on the distribution, its one rate rule, and the log of what it refuses (ADR 0098) |
 | `App` | disposable | the balancer, both services, the distribution in front of the balancer, the DNS alias, the alarms |
+| `EdgeAlarms` | disposable, `us-east-1` | the alarms on the distribution and its viewer-request function (ADR 0110) |
 
 Context: `env` (required) and `imageTag` (the git SHA; without it `Migrate` and `App` synthesise
 with an error the CLI refuses to deploy over, so nothing falls back to `latest`).
@@ -34,7 +36,7 @@ installed (#339). A `cdk` installed globally is whatever version it was when ins
 
 The long-lived stacks are deployed from a developer machine; the pipeline deploys `Migrate` and
 `App` only, as the deploy role the `Data` stack creates, and `scripts/dev-env.mjs` makes and destroys
-`Waf` around `App`. The balancer admits CloudFront's
+`Waf` and `EdgeAlarms` around `App`. The balancer admits CloudFront's
 origin-facing prefix list and nothing else, so there is no way to reach the environment except
 through the distribution, and no parameter that would open one.
 
@@ -72,7 +74,9 @@ Three things to know before deploying any of it:
 In this order, and any time before the day:
 
 1. `EdgeCert` and `Data`, by name. `Alerts` is there already, for SES, and `Costs` can go beside it
-   ([Cost anomalies](#cost-anomalies)).
+   ([Cost anomalies](#cost-anomalies)). `EdgeAlerts` too, in `us-east-1`, after its parameter there, and
+   confirmed ([Alarms](#alarms)): `resume` deploys the edge's alarms beside `App`, and they send to its
+   topic.
 
    ```bash
    npx cdk deploy Mvgl-prod-EdgeCert Mvgl-prod-Data --exclusively --profile mvgl-prod -c env=prod
@@ -478,8 +482,8 @@ beside `RequestsPerFiveMinutes` in `src/Infra/WafStack.cs`.
   ```
 - **It costs about $6 a month awake**: $5 for the ACL and $1 for the rule, prorated by the hour, and $0.60 a
   million requests. Nothing parked.
-- **No alarm yet.** WAF reports a CloudFront ACL's metrics in `us-east-1`, so an alarm on it needs a topic
-  there, which is #434's.
+- **No alarm yet.** WAF reports a CloudFront ACL's metrics in `us-east-1`, where `EdgeAlerts`' topic now is
+  (ADR 0110), so one would send there and cost what each of the edge's alarms does.
 
 **Proving it, on the resume after it first deploys.** `scripts/dev-check.mjs` with the profile signed in
 checks that the distribution names the ACL, that the ACL holds the one rule and that it logs. Then a burst
@@ -526,6 +530,22 @@ Every alarm also says when it is back to OK. **The address is never in the repos
 public: it is a Parameter Store value the owner sets in the environment's account, which the stack
 reads on every deploy.
 
+**Two more watch the edge**: what CloudFront answers by itself, which never reaches the balancer: a viewer-request
+function that throws, such as the door with no key in its store, and an origin CloudFront cannot reach
+(ADR 0110). CloudFront's metrics are in `us-east-1`, and an alarm watches only its own Region's, so
+these live there, in `EdgeAlarms`, and send to a second topic there, the `EdgeAlerts` stack's, with the
+same name and a subscription of its own. `EdgeAlarms` reads the distribution's id from `App`, so it is
+disposable as `App` is: `dev-env.mjs resume` deploys it after `App`, `park` destroys it first, and the
+pipeline, which keeps the distribution, never deploys it.
+
+| Name | Fires when |
+|---|---|
+| `mvgl-<env>-edge-5xx-rate` | 5% of the distribution's answers, five at least, were 5xx, in 2 of 3 five-minute windows |
+| `mvgl-<env>-edge-function-errors` | the viewer-request function threw, in any five minutes; made only where the function runs: behind the door, or where a name only redirects, which today is production alone |
+
+They cost $0.10 per metric an alarm reads a month: $0.20 for dev while `App` stands, $0.30 for
+production, before CloudWatch's free allowance (ADR 0110).
+
 **Once, before the first deploy that carries alarms**, in this order, from the repository root with
 the `mvgl-dev` profile signed in. In Git Bash put `MSYS_NO_PATHCONV=1` in front of every command
 naming a path that starts with `/`, or it is rewritten into a Windows path:
@@ -543,6 +563,28 @@ The next `App` deploy - the pipeline's, or a resume - brings the alarms. Deploye
 they would alarm into a topic that does not exist, and nobody would be told.
 
 A new address is the same two commands, with `--overwrite` on the first, and a new confirmation.
+
+**The edge's, once per environment**, the same way in `us-east-1`. The stack reads the parameter by
+its name, and no AWS guide says a name finds another Region's, so it is set there as well, with the
+same address:
+
+```bash
+aws ssm put-parameter --profile mvgl-dev --region us-east-1 --name /mvgl/dev/alarm-email --type String --value "<address>"
+```
+
+```bash
+cdk deploy Mvgl-dev-EdgeAlerts --profile mvgl-dev -c env=dev
+```
+
+Confirm that subscription too, within two days. Then `App` has to be deployed once
+more, by a run of Deploy dev or a resume, because the alarms read an output it gains with this
+change, and then, unless that was a resume, which does it itself:
+
+```bash
+cdk deploy Mvgl-dev-EdgeAlarms --exclusively --profile mvgl-dev -c env=dev
+```
+
+`--exclusively`, as every deploy of a stack that reads `App` is: without it the CLI deploys `App` too.
 
 **Proving it, after that `App` deploy.** Five alarms, each `OK` or `INSUFFICIENT_DATA`:
 
@@ -574,6 +616,19 @@ or two first, so there is a call to find; `failed` in place of `succeeded` finds
 ```bash
 aws logs filter-log-events --profile mvgl-dev --log-group-name /mvgl/dev/api --filter-pattern '{ ($.Category = "MyVideoGameList.Server.Observability.IgdbCalls") && ($.State.Outcome = "succeeded") }' --max-items 3 --query "events[].message"
 ```
+
+**The edge's, after `EdgeAlarms` is deployed.** `dev-check.mjs` with the profile signed in asks AWS
+whether each topic has a confirmed subscription, whether the 5xx alarm watches the distribution `App`
+has now, and whether the function's alarm is there exactly where the function runs. Each email:
+
+```bash
+aws cloudwatch set-alarm-state --profile mvgl-dev --region us-east-1 --alarm-name mvgl-dev-edge-5xx-rate --state-value ALARM --state-reason "Testing the alarm email"
+```
+
+The function's metric has never been published here, since no function of ours has thrown, so its
+name is the guide's until the first error; behind the door, `aws cloudwatch list-metrics --region
+us-east-1 --namespace AWS/CloudFront --metric-name FunctionExecutionErrors` lists it once there has
+been one.
 
 And on the next release deployed after these: no task-stopped email and no `unhealthy-target`. A
 deploy stops the old tasks by the scheduler's hand and starts the new targets as "initial", neither
@@ -616,10 +671,10 @@ cdk deploy Mvgl-prod-Costs --profile mvgl-prod -c env=prod
 
 The balancer, not the containers, is what an idle environment pays for, so the lever that matters
 is destroying the `App` stack; stopping the database afterwards reaches the idle floor
-(ADR 0044). `node scripts/dev-env.mjs park` does both in that order, then destroys the web ACL's
-stack, and gates the pipeline off; `resume` starts the database, migrates it at the newest pushed
-tag, deploys the web ACL's stack and then `App` at that tag, checks the site through the
-distribution and gates it back on; `status` says which cost row the
+(ADR 0044). `node scripts/dev-env.mjs park` does both in that order, the edge's alarms first,
+then destroys the web ACL's stack, and gates the pipeline off; `resume` starts the database,
+migrates it at the newest pushed tag, deploys the web ACL's stack, then `App` at that tag and the
+edge's alarms on its distribution, checks the site through the distribution and gates it back on; `status` says which cost row the
 environment is on. Run Deploy dev first: parked, it builds master's images and stops, which makes
 master's head the newest tag `resume` finds. The migrations are `resume`'s because that run skips
 them along with the deploy: the newest tag can need migrations the database never had, and a failed
@@ -685,7 +740,8 @@ sends 42 requests the rule counts with the pair.
   confirmed within two days, and the unsubscribe link at the foot of every alarm's email removes it
   with one click. Either way CloudFormation still believes in it, so no deploy brings it back. The
   mend is to destroy `Alerts` and deploy it again - the alarms find the new topic by its name - and
-  confirm again.
+  confirm again. `EdgeAlerts` the same, in `us-east-1`. `dev-check.mjs` says when either has no
+  confirmed subscription.
 
 - **The IGDB alarm counts an Information line.** The API writes one line per IGDB call under the
   category `MyVideoGameList.Server.Observability.IgdbCalls` (ADR 0080), and the two metric filters in

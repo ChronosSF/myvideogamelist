@@ -99,10 +99,15 @@ internal static class Program
         // Long-lived and deployed by hand, like Alerts; nothing refers to it (ADR 0111).
         _ = new CostsStack(app, site.StackName("Costs"), new StackProps { Env = alerts }, site);
         // Where the alarms send, long-lived because an email subscription is confirmed by a person.
-        // Long-lived, and not protected: destroying it loses that confirmation and
+        // Not protected: destroying it loses that confirmation and
         // nothing else, and destroying and redeploying it is how a lost subscription is made again.
         // Nothing refers to it; the alarms in App name its topic (ADR 0080).
         _ = new AlertsStack(app, site.StackName("Alerts"), new StackProps { Env = alerts }, site);
+        // The same again in us-east-1, for the edge's alarms: CloudFront publishes its metrics there, and an
+        // alarm watches only a metric in its own Region. Long-lived and deployed by hand for the same reason as
+        // the first, its own subscription confirmed by a person; its address is the same parameter, set in
+        // us-east-1 as well (ADR 0110).
+        _ = new AlertsStack(app, site.StackName("EdgeAlerts"), new StackProps { Env = edge }, site, atTheEdge: true);
 
         // The two per-release stacks exist in every synthesis, tag or no tag, because the Data
         // stack's cross-stack outputs are derived from what consumes them. Cross-stack references
@@ -128,6 +133,12 @@ internal static class Program
         var application = new AppStack(app, site.StackName("App"),
             new StackProps { Env = regional, CrossRegionReferences = true }, site, zone, data, edgeCert.Certificate,
             waf.WebAclArn, tag);
+        // The edge's alarms, in us-east-1 beside CloudFront's metrics, disposable as App is: they read the
+        // distribution's id from it, the same weak cross-region reference the other way, so dev-env.mjs deploys
+        // them after App on a resume and destroys them before it on a park. The pipeline never deploys them;
+        // its App deploy keeps the distribution (ADR 0110).
+        _ = new EdgeAlarmsStack(app, site.StackName("EdgeAlarms"),
+            new StackProps { Env = edge, CrossRegionReferences = true }, site, application.Distribution);
         if (imageTag is null)
         {
             foreach (var stack in new Stack[] { migrate, application })

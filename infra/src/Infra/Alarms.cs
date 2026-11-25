@@ -274,9 +274,19 @@ internal sealed class Alarms : Construct
         }));
     }
 
-    private void Alarm(string name, IMetric metric, double threshold, int windows, int breaching, string description)
+    private void Alarm(string name, IMetric metric, double threshold, int windows, int breaching, string description) =>
+        Add(this, site, notify, name, metric, threshold, windows, breaching, description);
+
+    /// <summary>
+    /// One alarm as every alarm of ours is made: named <c>mvgl-&lt;env&gt;-&lt;name&gt;</c>, which is what the
+    /// Alerts topic's policy admits; at or over its threshold in <paramref name="breaching"/> of the last
+    /// <paramref name="windows"/> windows; missing data is no failure; and the topic told on OK as well as
+    /// ALARM. The edge's alarms in <c>us-east-1</c> are made by it too (ADR 0110).
+    /// </summary>
+    internal static void Add(Construct scope, Site site, SnsAction notify, string name, IMetric metric,
+        double threshold, int windows, int breaching, string description)
     {
-        var alarm = new Alarm(this, name, new AlarmProps
+        var alarm = new Alarm(scope, name, new AlarmProps
         {
             AlarmName = $"{site.Prefix}-{name}",
             AlarmDescription = description,

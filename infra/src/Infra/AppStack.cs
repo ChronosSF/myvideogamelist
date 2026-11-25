@@ -33,6 +33,12 @@ public sealed class AppStack : Stack
     /// </summary>
     private const int BalancerIdleTimeoutSeconds = 60;
 
+    /// <summary>
+    /// The distribution, whose id the edge's alarms in <c>us-east-1</c> read, as a weak cross-region
+    /// reference: a resume makes a new one with a new id (ADR 0110).
+    /// </summary>
+    public Amazon.CDK.AWS.CloudFront.IDistribution Distribution { get; }
+
     public AppStack(Construct scope, string id, IStackProps props, Site site, IHostedZone zone, DataStack data,
         ICertificate edgeCertificate, string webAclArn, string imageTag)
         : base(scope, id, props)
@@ -119,6 +125,7 @@ public sealed class AppStack : Stack
         });
 
         var edge = new Edge(this, "Edge", site, alb, edgeCertificate, webAclArn, data.BasicAuthStore, originVerify);
+        Distribution = edge.Distribution;
 
         // The API takes a withdrawn profile off the edge itself, after the write that withdrew it
         // (ADR 0058), so it is told which distribution - a resume makes a new one with a new id -
