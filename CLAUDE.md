@@ -139,9 +139,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 
 - **Production is the same stacks, and one workflow deploys both.** `-c env=prod` synthesises what dev
   has, in the production account, less `Dns`: the domain's zone was made by hand and is looked up, never
-  made. What differs is three members of `Site`: `www` only redirects to the apex, the SSR server is
-  given `SITE_INDEXABLE=true`, and the site is behind basic auth until a pull request opens it, which is
-  the launch. The redirect and the door are one viewer-request function, since a behaviour holds one for
+  made. What differs is four members of `Site`: `www` only redirects to the apex, the SSR server is
+  given `SITE_INDEXABLE=true`, the database keeps fourteen days of backups where dev's keeps seven
+  (ADR 0107), and the site is behind basic auth until a pull request opens it, which is the launch.
+  The redirect and the door are one viewer-request function, since a behaviour holds one for
   each event, and it is on a behaviour only where it has a job, so dev's distribution names none.
   `Deploy dev` and `Deploy prod` both call `deploy.yml`: a change to the steps is a change to both,
   and production's run waits for the `prod` environment's reviewers. **Each caller says

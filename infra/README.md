@@ -42,13 +42,15 @@ through the distribution, and no parameter that would open one.
 
 `-c env=prod` synthesises the same stacks in the production account, less `Dns`, and beside them
 `Mvgl-prod-Holding`, below, and `Mvgl-prod-Email`, in the next section. Of the application's own,
-none is deployed yet (ADR 0103). What differs from dev is three members of `Site`:
+none is deployed yet (ADR 0103). What differs from dev is four members of `Site`:
 
 - **`www` only redirects to the apex.** The edge certificate covers it, `App` points it at the
   distribution, and the viewer-request function answers it, and any other name, with a 301 to the same
   address on the host.
 - **The site is indexable.** The SSR server is given `SITE_INDEXABLE=true` (ADR 0036).
 - **It is behind basic auth until a pull request opens it**, which is the launch: `Site.BehindBasicAuth`.
+- **Its database keeps fourteen days of backups**, where dev's keeps seven: `Site.BackupRetentionDays`
+  (ADR 0107, and [Restoring the database](#restoring-the-database)).
 
 Three things to know before deploying any of it:
 
@@ -611,6 +613,141 @@ cdk deploy Mvgl-prod-Costs --profile mvgl-prod -c env=prod
   say whether that includes the anomaly calls, so the check after the deploy is the console's Cost
   monitors page: `mvgl-<env>-services`, with its subscription `mvgl-<env>-services-daily`. The first
   anomaly over $5 is the first email, and the only proof there is of the path to the inbox.
+
+## Restoring the database
+
+RDS keeps automated backups of each environment's database, a snapshot a day and the transaction log
+between them, so it can be put back as it was at any moment in the window: seven days, and fourteen for
+production (`Site.BackupRetentionDays`, ADR 0107). The instance refuses deletion, and is snapshotted if
+the stack ever lets go of it. A restore never changes the database it is taken from: it makes a new
+instance beside it.
+
+**Rehearsed on dev on 2026-11-23**, the first time one of these backups was restored (#440). Times are
+UTC.
+
+| | |
+|---|---|
+| The restore point | 15:12:20, the latest RDS offered, about five minutes behind the clock |
+| Asked for | 15:16:56 |
+| Restored, by RDS's events | 15:24:54, eight minutes on |
+| Available | 15:44:29, after the new instance's own first backup, which was eighteen of the twenty-eight minutes |
+| What it held | the live database's thirty-five migrations and its row count in each of twenty-seven tables, read from both |
+| Deleted | asked at 15:48:27; the instance was gone by 15:50:13 and its own backup by 15:50:50 |
+
+The database was small, 20 GB allocated and its largest tables a few hundred rows, so those times are
+RDS's own and not the data's. A restored instance takes the source's backup retention, which is why it
+backs itself up before RDS calls it available. Whether it answers during that backup was not tried.
+
+### 1. What there is to restore
+
+```bash
+aws rds describe-db-instances --profile mvgl-<env> --db-instance-identifier mvgl-<env>-db --query "DBInstances[0].{RetentionDays:BackupRetentionPeriod,LatestRestorable:LatestRestorableTime,SubnetGroup:DBSubnetGroup.DBSubnetGroupName,SecurityGroup:VpcSecurityGroups[0].VpcSecurityGroupId}"
+```
+
+### 2. Restore it beside the live instance
+
+```bash
+aws rds restore-db-instance-to-point-in-time --profile mvgl-<env> --source-db-instance-identifier mvgl-<env>-db --target-db-instance-identifier mvgl-<env>-db-restored --use-latest-restorable-time --db-subnet-group-name <SubnetGroup> --vpc-security-group-ids <SecurityGroup> --db-instance-class db.t4g.micro --no-publicly-accessible --no-multi-az --no-deletion-protection
+aws rds wait db-instance-available --profile mvgl-<env> --db-instance-identifier mvgl-<env>-db-restored
+```
+
+- **An earlier moment** is `--restore-time 2026-11-23T15:12:20Z` in place of `--use-latest-restorable-time`.
+  That form was not run.
+- **Name the subnet group and the security group.** They are the live instance's, so the copy is as
+  private as the original: in the isolated subnets, admitting the API's security group and nothing else.
+- **The parameter group is the default one**, which is what the live instance has. AWS's guide says a
+  restored instance is given the default parameter and option groups unless it is told otherwise.
+- **`aws rds describe-events --source-identifier mvgl-<env>-db-restored --source-type db-instance --duration 120`**
+  says when it was restored and when its backup finished.
+
+### 3. Read it, from inside the VPC
+
+Nothing outside the VPC reaches the database, so the reading is a one-off Fargate task: `psql` from the
+`postgres:18-alpine` image the local database runs, in a session that cannot write, printing table names
+and row counts and nothing of anybody's. It borrows the migration task's execution role, which may read
+the database's secret and write to `/mvgl/<env>/migrate`, and has no task role. Save this as a file,
+with the account and the secret's ARN (`aws secretsmanager describe-secret --secret-id mvgl/<env>/db --query ARN`):
+
+```json
+{
+  "family": "mvgl-<env>-restore-drill",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::<account>:role/mvgl-<env>-migrate-execution",
+  "containerDefinitions": [{
+    "name": "check",
+    "image": "public.ecr.aws/docker/library/postgres:18-alpine",
+    "essential": true,
+    "entryPoint": ["sh", "-c"],
+    "command": ["psql -X -At -v ON_ERROR_STOP=1 -c \"$CHECK_SQL\""],
+    "environment": [
+      { "name": "PGUSER", "value": "mvgl" },
+      { "name": "PGDATABASE", "value": "myvideogamelist" },
+      { "name": "PGSSLMODE", "value": "require" },
+      { "name": "PGOPTIONS", "value": "-c default_transaction_read_only=on" },
+      { "name": "PGCONNECT_TIMEOUT", "value": "15" },
+      { "name": "CHECK_SQL", "value": "select line from (select 1 as o, 'server ' || current_setting('server_version') as line union all select 2, 'latest-migration ' || (select max(\"MigrationId\") from \"__EFMigrationsHistory\") union all select 3, 'table ' || c.relname || ' ' || (xpath('/row/n/text()', query_to_xml(format('select count(*) as n from %I.%I', ns.nspname, c.relname), false, true, '')))[1]::text from pg_class c join pg_namespace ns on ns.oid = c.relnamespace where c.relkind = 'r' and ns.nspname = 'public') t order by o, line;" }
+    ],
+    "secrets": [{ "name": "PGPASSWORD", "valueFrom": "<the secret's ARN>:password::" }],
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": { "awslogs-group": "/mvgl/<env>/migrate", "awslogs-region": "eu-central-1", "awslogs-stream-prefix": "restore-drill" }
+    }
+  }]
+}
+```
+
+Register it, then run it once against each database's address, the live one's from `Data`'s
+`DatabaseEndpoint` output and the copy's from `describe-db-instances`. The subnets and the security group
+are `Data`'s `TaskSubnetIds` and `ApiSecurityGroupId`, and the public address is as the migration task's
+is in that environment, `ENABLED` on dev:
+
+```bash
+aws ecs register-task-definition --profile mvgl-<env> --cli-input-json file://restore-drill.json
+aws ecs run-task --profile mvgl-<env> --cluster mvgl-<env> --task-definition mvgl-<env>-restore-drill --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[<TaskSubnetIds>],securityGroups=[<ApiSecurityGroupId>],assignPublicIp=ENABLED}" --overrides "{\"containerOverrides\":[{\"name\":\"check\",\"environment\":[{\"name\":\"PGHOST\",\"value\":\"<address>\"}]}]}" --query "tasks[0].taskArn" --output text
+aws ecs wait tasks-stopped --profile mvgl-<env> --cluster mvgl-<env> --tasks <task ARN>
+aws logs get-log-events --profile mvgl-<env> --log-group-name /mvgl/<env>/migrate --log-stream-name restore-drill/check/<task id> --start-from-head --query "events[].message" --output text
+```
+
+The two answers are compared line by line. On the day they were the same twenty-nine lines, and the live
+one's were the same again half an hour later. A task of this family sets off no alarm: the rule on stopped
+tasks names the API's and the SSR server's families alone. In Git Bash, put `MSYS_NO_PATHCONV=1` in front
+of the last command, or the log group's name is rewritten as a path and refused.
+
+### 4. Delete the copy
+
+```bash
+aws rds delete-db-instance --profile mvgl-<env> --db-instance-identifier mvgl-<env>-db-restored --skip-final-snapshot --delete-automated-backups
+aws rds wait db-instance-deleted --profile mvgl-<env> --db-instance-identifier mvgl-<env>-db-restored
+aws ecs deregister-task-definition --profile mvgl-<env> --task-definition mvgl-<env>-restore-drill:1
+aws ecs delete-task-definitions --profile mvgl-<env> --task-definitions mvgl-<env>-restore-drill:1
+```
+
+The copy holds everything the live database does, password hashes and addresses included, so it is
+deleted the same day, with its own backups. Its automated snapshot was still listed for half a minute
+after the instance had gone, so look again before calling it done:
+
+```bash
+aws rds describe-db-snapshots --profile mvgl-<env> --db-instance-identifier mvgl-<env>-db-restored --query "length(DBSnapshots)"
+```
+
+What stays is the task's three log streams in `/mvgl/<env>/migrate`, under `restore-drill/`, which hold
+table names and counts.
+
+### What was not rehearsed, and what a restore does not cover
+
+- **Putting a restored copy in service.** The rehearsal stopped at a copy that could be read, since dev
+  was in use. AWS's guide gives renaming as the way to swap one in: "By renaming the database, you can
+  replace the DB instance without having to change any application code that references the DB
+  instance", and says a rename restarts the instance and changes its address. The stack names the
+  instance by its identifier, and what CloudFormation makes of the swap is not known. It is to be tried on
+  production before the door opens, when nobody is using it (#440).
+- **Anything older than the window**, seven days on dev and fourteen on production. Damage noticed a day
+  after it is past undoing, and nothing keeps a longer copy.
+- **The account and the Region.** The backups are where the database is, and there is no copy anywhere
+  else.
 
 ## Parking and resuming
 

@@ -14,6 +14,8 @@ const PRODUCTION = 'prod';
  * - `host`: the one name the site answers by (Site.Host).
  * - `redirectedHosts`: the names that only redirect to it, production's www (Site.RedirectedHosts).
  * - `indexable`: whether a crawler may index it, production's alone (Site.Indexable).
+ * - `backupRetentionDays`: how many days of automated backups the database keeps
+ *   (Site.BackupRetentionDays). No script reads it; check-site.mjs holds each synthesis to it.
  * - `basicAuthVariable`: the shell variable that holds the basic-auth pair as `user:password`, when
  *   whoever runs the script has it. Never in the repository, and never printed.
  */
@@ -24,6 +26,7 @@ export function site(env) {
         host: production ? DOMAIN : `${env}.${DOMAIN}`,
         redirectedHosts: production ? [`www.${DOMAIN}`] : [],
         indexable: production,
+        backupRetentionDays: production ? 14 : 7,
         basicAuthVariable: `MVGL_${env.toUpperCase()}_BASIC_AUTH`,
     };
 }

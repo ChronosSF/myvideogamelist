@@ -6,6 +6,11 @@ not $40: it priced one Fargate task where the design has two and missed the publ
 and the credits it says to collect first are no longer earnable —
 [0044](0044-what-the-deployment-walkthrough-settled.md).
 
+> **Later note.** The two trades this record says to look at again before launch, tasks in public subnets
+> with no NAT gateway and a database in one zone, stay past it. Both were built for production on
+> 2026-11-23 and shelved at the owner's word, until the site earns what they cost:
+> [0108](0108-production-launches-without-a-nat-gateway-and-in-one-zone-until-the-site-earns-them.md).
+
 ## Context
 
 [0007](0007-aws-target-architecture.md) chose ECS Fargate and listed App Runner as "a sensible

@@ -55,6 +55,13 @@ public sealed record Site(string Env)
     /// <summary>The database instance's identifier, which is also what its metrics are named by.</summary>
     public string DatabaseIdentifier => $"{Prefix}-db";
 
+    /// <summary>
+    /// How many days of automated backups RDS keeps of the database, which is how far back it can be
+    /// put: fourteen for production, seven for any other environment (ADR 0107). Damage has to be
+    /// noticed inside that window to be undone.
+    /// </summary>
+    public int BackupRetentionDays => IsProduction ? 14 : 7;
+
     public string DbSecretName => $"mvgl/{Env}/db";
 
     public string IgdbSecretName => $"mvgl/{Env}/igdb";
