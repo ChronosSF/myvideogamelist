@@ -1,6 +1,9 @@
 using Amazon.CDK;
+using Amazon.CDK.AWS.CloudWatch;
+using Amazon.CDK.AWS.CloudWatch.Actions;
 using Amazon.CDK.AWS.IAM;
 using Amazon.CDK.AWS.SES;
+using Amazon.CDK.AWS.SNS;
 using Constructs;
 
 namespace Infra;
@@ -57,10 +60,24 @@ public sealed class EmailStack : Stack
         },
     });
 
+    /// <summary>
+    /// The bounce rate at which AWS places an account under review, as SES publishes it: a fraction, 0.05
+    /// for 5%. It may pause sending at twice that (ADR 0091, 0111).
+    /// </summary>
+    internal const double BounceRateReviewed = 0.05;
+
+    /// <summary>The complaint rate at which AWS places an account under review: 0.1%, as 0.001.</summary>
+    internal const double ComplaintRateReviewed = 0.001;
+
     public EmailStack(Construct scope, string id, IStackProps props, Site sender)
         : base(scope, id, props)
     {
-        SendingConfiguration();
+        // Production's Alerts topic, by its name, in this account and Region (ADR 0080, 0091).
+        var production = new Site(Site.Production);
+        var alerts = AlertsStack.TopicByName(this, "Alerts", production);
+
+        SendingConfiguration(alerts);
+        ReputationAlarms(production, alerts);
 
         var taskRole = $"arn:{Aws.PARTITION}:iam::{sender.Account}:role/{sender.ApiTaskRoleName}";
 
@@ -98,7 +115,7 @@ public sealed class EmailStack : Stack
     /// and the topic's policy is what admits it.
     /// </para>
     /// </remarks>
-    private void SendingConfiguration()
+    private void SendingConfiguration(ITopic alerts)
     {
         var configurationSet = new ConfigurationSet(this, "ConfigurationSet", new ConfigurationSetProps
         {
@@ -109,9 +126,67 @@ public sealed class EmailStack : Stack
         configurationSet.AddEventDestination("BouncesAndComplaints", new ConfigurationSetEventDestinationOptions
         {
             ConfigurationSetEventDestinationName = "bounces-and-complaints",
-            Destination = EventDestination.SnsTopic(
-                AlertsStack.TopicByName(this, "Alerts", new Site(Site.Production))),
+            Destination = EventDestination.SnsTopic(alerts),
             Events = [EmailSendingEvent.BOUNCE, EmailSendingEvent.COMPLAINT],
         });
+    }
+
+    /// <summary>
+    /// The account's bounce and complaint rates, each alarmed at half the level at which AWS reviews the
+    /// account, so that the owner hears of a climb before AWS acts on it (ADR 0111, amending 0091 §4).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The account's rates, not the configuration set's.</b> SES publishes both, the set's under the
+    /// <c>ses:configuration-set</c> dimension. The account's, with no dimension, are what AWS reviews, and
+    /// they count every send from this account, dev's included.
+    /// </para>
+    /// <para>
+    /// <b>Missing data keeps the state</b>, as SES's guide on these alarms recommends. SES publishes a rate
+    /// only around sends, so an hour with none says nothing new: an alarm that is on stays on until a send
+    /// shows the rate back under the line, and one that is OK is not made to say so again.
+    /// </para>
+    /// </remarks>
+    private void ReputationAlarms(Site production, ITopic alerts)
+    {
+        var notify = new SnsAction(alerts);
+
+        RateAlarm(production, notify, "ses-bounce-rate", "Reputation.BounceRate", BounceRateReviewed / 2,
+            "SES's bounce rate for the production account reached 2.5%, half the 5% at which AWS places the account "
+            + "under review; at 10% it may pause sending, and every email of both environments goes through this "
+            + "account. Each bounce is already in this inbox, from the configuration set: a run of them from one "
+            + "form is the sign-up being fed bad addresses. The rate is over SES's representative volume of mail, "
+            + "not a fixed period. ADR 0111.");
+        RateAlarm(production, notify, "ses-complaint-rate", "Reputation.ComplaintRate", ComplaintRateReviewed / 2,
+            "SES's complaint rate for the production account reached 0.05%, half the 0.1% at which AWS places the "
+            + "account under review; at 0.5% it may pause sending, and every email of both environments goes "
+            + "through this account. Each complaint is already in this inbox, from the configuration set, naming "
+            + "the address that marked an email as spam. ADR 0111.");
+    }
+
+    private void RateAlarm(Site production, SnsAction notify, string name, string metricName, double threshold, string description)
+    {
+        var alarm = new Alarm(this, name, new AlarmProps
+        {
+            AlarmName = $"{production.Prefix}-{name}",
+            AlarmDescription = description,
+            // No dimension: the account's own rate, which is the one AWS reviews.
+            Metric = new Metric(new MetricProps
+            {
+                Namespace = "AWS/SES",
+                MetricName = metricName,
+                Period = Duration.Hours(1),
+                Statistic = Stats.MAXIMUM,
+            }),
+            Threshold = threshold,
+            ComparisonOperator = ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            EvaluationPeriods = 1,
+            DatapointsToAlarm = 1,
+            TreatMissingData = TreatMissingData.IGNORE,
+        });
+
+        // OK as well as ALARM, so that the inbox says when it is over, as every alarm of ours does (ADR 0080).
+        alarm.AddAlarmAction(notify);
+        alarm.AddOkAction(notify);
     }
 }

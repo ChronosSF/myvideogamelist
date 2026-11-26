@@ -207,8 +207,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   arrive, and every place that says an email was sent ends with the support address (`StillNothing`). Only
   the owner can lift an address (`infra/README.md`). Never keep a list of the application's own, and never
   send without the set: the role would allow it, but the set is what the events come from.
-  An App deploy of a revision that names the set has to wait until `Mvgl-prod-Email` makes it. See
-  `docs/decisions/0091-*`.
+  An App deploy of a revision that names the set has to wait until `Mvgl-prod-Email` makes it. The same
+  stack alarms on the account's bounce and complaint rates at half the level at which AWS reviews it. See
+  `docs/decisions/0091-*` and `0111-*`.
 
 - **An account signs in only once its address is confirmed, and "confirm first" needs the password.**
   Identity refuses an unconfirmed account before it checks the password and counts nothing, so
