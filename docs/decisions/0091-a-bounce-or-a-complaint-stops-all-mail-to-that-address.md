@@ -99,6 +99,8 @@ identity of the SES user who sent the email", which is how dev's sends and produ
 
 ### 4. No alarm on the two rates
 
+*Amended by [0111](0111-seses-rates-are-alarmed-at-half-the-review-level-and-each-account-watches-its-cost-by-service.md): the metrics exist now, and each rate is alarmed at half the level at which AWS reviews the account. It also found §2's "no reputation metrics of its own" wrong: the set publishes them.*
+
 - AWS writes to the account's address when it starts a review, before any pause.
 - Each bounce and complaint is already in the owner's inbox (§3). At this volume that is earlier warning than
   any rate could give.
