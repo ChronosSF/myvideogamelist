@@ -9,5 +9,5 @@ internal static class Connection
     /// is stated because RDS refuses unencrypted connections from PostgreSQL 15 on.
     /// </summary>
     public static string String(DataStack data, Site site) =>
-        $"Host={data.Database.InstanceEndpoint.Hostname};Port=5432;Database=myvideogamelist;Username=mvgl;SSL Mode=Require";
+        $"Host={data.Database.InstanceEndpoint.Hostname};Port=5432;Database={DataStack.DatabaseName};Username={DataStack.DatabaseUser};SSL Mode=Require";
 }

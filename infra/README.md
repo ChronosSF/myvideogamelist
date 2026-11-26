@@ -86,7 +86,8 @@ In this order, and any time before the day:
 2. What is set by hand, each as dev's was: IGDB's pair in `mvgl/prod/igdb`, a widget's pair in
    `mvgl/prod/turnstile` ([Turnstile, for sign-up](#turnstile-for-sign-up)), the basic-auth pair in the
    `mvgl-prod-basic-auth` store ([The edge](#the-edge)), and `/mvgl/prod/admin-account-id` holding
-   `none` ([Who the admin is](#who-the-admin-is)).
+   dev's admin's account id, which the move carries over unchanged, rather than `none`
+   ([Who the admin is](#who-the-admin-is), ADR 0109).
 3. The `prod` GitHub environment: required reviewers, deployments from `master` only, the variables
    `AWS_ROLE_ARN` (`Data`'s `DeployRoleArn` output), `AWS_REGION`, `AWS_ACCOUNT_ID` and
    `PROD_DEPLOY_ENABLED` set to `false`, and the secret `PROD_BASIC_AUTH`, the pair as
@@ -97,7 +98,9 @@ In this order, and any time before the day:
 ### The first deploy
 
 Made by hand, because it takes the domain from the holding page, and the pipeline only ever updates
-an application stack that exists.
+an application stack that exists. **Dev's accounts and lists go first**: the first `resume` migrates the
+database, and the move restores only into one that holds nothing, so the day starts with
+[Moving dev's accounts and lists](#moving-devs-accounts-and-lists) and comes here at its step 6.
 
 ```bash
 node scripts/dev-env.mjs resume --env prod
@@ -152,6 +155,153 @@ cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
   gives an alternate domain name to one distribution at a time, and the records would collide too:
   destroy this stack first. The destroy empties the bucket itself. `dev-env.mjs resume --env prod`
   refuses to deploy `App` while this stack exists.
+
+### Moving dev's accounts and lists
+
+Dev's database moves into production's at launch, before production's first migration (ADR 0109). A task
+in dev's VPC dumps it, in a session that cannot write, into a bucket in production's account; a task in
+production's VPC restores it into production's database, which has to hold nothing, in one transaction.
+Each counts what it read: the migrations, every table's rows and every sequence, and the dump's digest.
+`scripts/move-data.mjs` runs them and compares the counts. The stacks are `Mvgl-dev-MoveOut` and
+`Mvgl-prod-MoveIn`, deployed by hand for the day and destroyed after it.
+
+**Rehearsed on dev on 2026-11-25**, inside dev's account, into a stand-in made as `Data` makes a
+database, while dev was open. Times are UTC.
+
+| | |
+|---|---|
+| Started | 14:18:01, from `node scripts/move-data.mjs rehearse` |
+| The stack, the stand-in included | 14:18:08 to 14:23:34, 5 m 26 s. RDS made the stand-in PostgreSQL 18.3, as dev's is |
+| The dump | 14:23:38 to 14:24:42, 1 m 3 s for the task. pg_dump 18.7 ran for under a second and wrote 347,426 bytes, and the upload took 4 s |
+| A restore named by another digest | 14:24:42 to 14:25:44, refused with exit code 5 before it touched the stand-in |
+| The restore | 14:25:44 to 14:26:46, 1 m 2 s for the task. The download took 4 s and pg_restore a second, into the stand-in the refusal had left empty |
+| The restore again | 14:26:46 to 14:27:50, refused with exit code 3: the stand-in held 113 relations |
+| Dev's migration task, at dev's tag, on the stand-in | 14:27:50 to 14:28:43: "No migrations were applied. The database is already up to date." |
+| What was compared | the live database just before the dump, just after it, and the copy: the same 39 lines, 35 migrations, the row count of each of 27 tables and the last value of each of 11 sequences. The digest the restore read was the one the dump wrote |
+| Removed | 14:28:43 to 14:31:15, 2 m 31 s, and the account read clean |
+
+Most of each task's minute is Fargate starting it, not the data, which is small. This was the fourth run
+that day, and the first of the code as it is here: the third had passed at 09:45 before the review of #507
+added the refusal of another dump. The two before that failed and removed what they had made; why, and what
+changed, is ADR 0109's last paragraph.
+
+#### Ahead of the day
+
+1. **Rehearse again**, the week before, with the `mvgl-dev` profile signed in. It deploys
+   `Mvgl-dev-MoveRehearsal`, dumps the live database, sees a restore named by another digest refused,
+   restores into a stand-in, sees a second restore refused, migrates the stand-in, compares, and removes
+   everything, then reads the account to show it.
+   Cents, once:
+
+   ```bash
+   node scripts/move-data.mjs rehearse
+   ```
+
+   `--keep` stops before the removal; `node scripts/move-data.mjs clean --rehearsal` does it later, the
+   same day, since the stand-in bills by the hour and holds everybody's data.
+2. **Production's `EdgeCert` and `Data`**, and everything [Before the first deploy](#before-the-first-deploy)
+   lists, with `/mvgl/prod/admin-account-id` holding dev's admin's id: ids move unchanged. **Not
+   production's first `resume`**, which migrates the database: the restore refuses one that holds anything.
+3. **Dev's test accounts deleted**, by their owner.
+4. **The two halves**, from `infra/`:
+
+   ```bash
+   npx cdk deploy Mvgl-dev-MoveOut --exclusively --profile mvgl-dev -c env=dev
+   ```
+
+   ```bash
+   npx cdk deploy Mvgl-prod-MoveIn --exclusively --profile mvgl-prod -c env=prod
+   ```
+
+5. **The members told**, on Discord: when dev stops, that their lists move, and that they sign in again
+   at `myvideogamelist.net` with the same password.
+
+#### On the day
+
+Both profiles signed in, from the repository root.
+
+1. **One commit on both sides.** Run `Deploy dev` and then `Deploy prod` from the same head of master,
+   with nothing merged between them. `dump` prints the tag dev's database was last migrated at, and
+   `node scripts/dev-env.mjs status --env prod` production's newest.
+2. **Dev stops taking writes.** The gate first, so no run of Deploy dev brings the API back, then the API,
+   which is the only writer, its background work included:
+
+   ```bash
+   gh variable set DEV_DEPLOY_ENABLED --repo ChronosSF/myvideogamelist --env dev --body false
+   ```
+
+   ```bash
+   aws ecs update-service --profile mvgl-dev --cluster mvgl-dev --service api --desired-count 0
+   aws ecs wait services-stable --profile mvgl-dev --cluster mvgl-dev --services api
+   ```
+
+   From here every page of dev's that needs the API answers the site's error page, "502 Bad Gateway", and
+   nothing a member does there is saved.
+3. **The dump.** It refuses while the API runs, and fails if the counts moved while it ran:
+
+   ```bash
+   node scripts/move-data.mjs dump
+   ```
+
+4. **The restore.** It first reads the newest dump's log in dev's account, and stops if its upload did not
+   finish or its counts moved. Then it restores that dump and no other, named by its digest, and compares
+   the copy with what the dump counted:
+
+   ```bash
+   node scripts/move-data.mjs restore
+   ```
+
+5. **The dump deleted** and both halves destroyed. It reads the bucket empty before it destroys:
+
+   ```bash
+   node scripts/move-data.mjs clean
+   ```
+
+6. **[The first deploy](#the-first-deploy)**, as it is written: the first `resume` finds dev's migrations
+   applied and migrates nothing that is not newer, then the holding page goes and the second `resume`
+   makes `App`.
+7. **Sign in through the door as the admin.** Your lists are there and `/admin` opens.
+8. **Open the door** (ADR 0103 §5), and tell the members.
+9. **Park dev**: `node scripts/dev-env.mjs park`. Its database is wiped by its owner once production has
+   run long enough that nothing will be wanted from it.
+
+#### If something goes wrong
+
+- **The dump fails, or says the counts moved**: production was not touched. Find what still writes, then
+  `dump` again; the next dump replaces the object.
+- **The restore stops before it starts**, because the newest dump's upload did not finish or its counts
+  moved, or the restore task refuses with exit code 5 because the bucket holds another dump than that one:
+  nothing was written. `dump` again.
+- **The restore fails** before it says it restored: pg_restore runs in one transaction, so production's
+  database is as empty as before. Run `restore` again from the same dump.
+- **The restore is refused**, exit code 3: production's database already holds something, because its
+  first `resume` ran before the move or a restore already succeeded. Nothing was written. How to empty it
+  is not rehearsed (#465).
+- **The restore committed and then failed**, exit code 4 or any failure after its "restored in" line:
+  `ANALYZE` or the count of the copy did not finish, so nothing was compared. Production's database holds
+  the copy and refuses another restore. Do not open the door; emptying it is not rehearsed.
+- **The restore succeeded and does not compare**: do not open the door. As above, emptying production's
+  database is not rehearsed.
+- **Going back altogether**, at any point before the door opens: dev's database was only read. `clean`,
+  then the API back and the gate on, and the members told:
+
+  ```bash
+  aws ecs update-service --profile mvgl-dev --cluster mvgl-dev --service api --desired-count 1
+  ```
+
+  ```bash
+  gh variable set DEV_DEPLOY_ENABLED --repo ChronosSF/myvideogamelist --env dev --body true
+  ```
+
+- **After the door opens** there is no going back that keeps what members did on production.
+
+#### What only the day proves
+
+The rehearsal ran both halves in one account. The write into another account's bucket, the read of an
+object another account wrote, the bucket's denials against production's own administrators, production's
+database as its `Data` stack makes it, its first `resume` finding nothing to migrate, every member's
+password, and the admin's id opening `/admin` are proved by the day itself, before the door opens (ADR
+0109 §8).
 
 ## Production's SES, for dev's email
 

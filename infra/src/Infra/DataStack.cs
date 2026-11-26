@@ -37,6 +37,21 @@ public sealed class DataStack : Stack
     public KeyValueStore BasicAuthStore { get; }
     public Secret OriginVerify { get; }
 
+    /// <summary>
+    /// The database's engine, class and size, and the names it is made with. Named once because the move
+    /// of dev's database is rehearsed into a stand-in of the same shape as production's (ADR 0109).
+    /// </summary>
+    internal static PostgresEngineVersion DatabaseEngineVersion => PostgresEngineVersion.VER_18;
+
+    internal static Amazon.CDK.AWS.EC2.InstanceType DatabaseInstanceType =>
+        Amazon.CDK.AWS.EC2.InstanceType.Of(InstanceClass.BURSTABLE4_GRAVITON, InstanceSize.MICRO);
+
+    internal const int DatabaseStorageGiB = 20;
+
+    internal const string DatabaseName = "myvideogamelist";
+
+    internal const string DatabaseUser = "mvgl";
+
     public DataStack(Construct scope, string id, IStackProps props, Site site, IHostedZone zone)
         : base(scope, id, props)
     {
@@ -88,22 +103,22 @@ public sealed class DataStack : Stack
         DbSecret = new DatabaseSecret(this, "DbSecret", new DatabaseSecretProps
         {
             SecretName = site.DbSecretName,
-            Username = "mvgl",
+            Username = DatabaseUser,
         });
 
         Database = new DatabaseInstance(this, "Database", new DatabaseInstanceProps
         {
-            Engine = DatabaseInstanceEngine.Postgres(new PostgresInstanceEngineProps { Version = PostgresEngineVersion.VER_18 }),
-            InstanceType = Amazon.CDK.AWS.EC2.InstanceType.Of(InstanceClass.BURSTABLE4_GRAVITON, InstanceSize.MICRO),
+            Engine = DatabaseInstanceEngine.Postgres(new PostgresInstanceEngineProps { Version = DatabaseEngineVersion }),
+            InstanceType = DatabaseInstanceType,
             InstanceIdentifier = site.DatabaseIdentifier,
-            DatabaseName = "myvideogamelist",
+            DatabaseName = DataStack.DatabaseName,
             Credentials = Credentials.FromSecret(DbSecret),
             Vpc = Vpc,
             VpcSubnets = new SubnetSelection { SubnetGroupName = "data" },
             SecurityGroups = [dbSecurityGroup],
             PubliclyAccessible = false,
             MultiAz = false,
-            AllocatedStorage = 20,
+            AllocatedStorage = DatabaseStorageGiB,
             StorageType = StorageType.GP3,
             StorageEncrypted = true,
             BackupRetention = Duration.Days(7),

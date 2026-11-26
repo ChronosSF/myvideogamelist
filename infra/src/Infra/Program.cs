@@ -145,6 +145,22 @@ internal static class Program
                 + $"topic {site.StackName("Alerts")} makes in {alerts.Region}. Deploy production with a profile whose Region is that one.");
         }
 
+        // The move of dev's accounts and lists to production at launch (ADR 0109): the half each account
+        // holds, deployed by hand before the day and destroyed after it, and in dev's account the
+        // rehearsal of both, which scripts/move-data.mjs deploys and destroys the same hour. None of them is
+        // in another stack's way, and each reads only the Data outputs the Migrate stack already reads, so
+        // Data's template is the same with them as without. After the per-release stacks, because Data's
+        // outputs are written in the order their consumers are made, and that order is part of its template.
+        if (site.IsProduction)
+        {
+            _ = new MoveInStack(app, site.StackName("MoveIn"), new StackProps { Env = regional }, Move.Launch, data);
+        }
+        else
+        {
+            _ = new MoveOutStack(app, site.StackName("MoveOut"), new StackProps { Env = regional }, Move.Launch, data);
+            _ = new MoveRehearsalStack(app, site.StackName("MoveRehearsal"), new StackProps { Env = regional }, Move.Rehearsal, data);
+        }
+
         app.Synth();
     }
 }
