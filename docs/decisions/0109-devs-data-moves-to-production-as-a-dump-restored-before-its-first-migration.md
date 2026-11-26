@@ -249,9 +249,10 @@ need production's account, and production's database:
 ## Consequences
 
 - **Dev's synthesis holds two more stacks, `MoveOut` and `MoveRehearsal`, and production's one, `MoveIn`.**
-  Dev's seven existing templates and production's eight are byte for byte what they were: the new stacks
-  read only the two `Data` outputs the `Migrate` stack already reads, and are made after the per-release
-  stacks, because `Data` writes its outputs in the order their consumers are made.
+  Every template master synthesises, for either environment, is byte for byte the same with them, which was
+  checked again after master gained the `Costs` stack: the new stacks read only the two `Data` outputs the
+  `Migrate` stack already reads, and are made after every other stack, because `Data` writes its outputs
+  in the order their consumers are made.
 - **`DataStack` names the database's engine, class, size, name and user once**, and the rehearsal's
   stand-in reads them, so a change to production's database changes the stand-in with it.
 - **Each rehearsal costs cents and leaves nothing.** `move-data.mjs rehearse` removes what it made and reads
