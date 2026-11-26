@@ -224,4 +224,8 @@ this, quote …" with the id.
   5xx rate, p99 latency, task restarts, database connections and the IGDB failure rate, which the request
   line's status and duration can feed; the edge dropping a viewer's trace headers on `/api/*` (§3); the
   SSR server's stacks kept to one event; and a deploy check that `/version` and `/api/version` answer the
-  `sha` that was deployed.
+  `sha` that was deployed. That check is now made
+  ([#433](https://github.com/ChronosSF/myvideogamelist/issues/433)): the deploy workflow's smoke test fails a
+  release whose either answer is not the commit it built, `dev-env.mjs resume` keeps the gate off unless both
+  answer the deployed tag's commit, and `dev-check.mjs` holds the two to each other and, signed in, to the
+  image tag ECS runs. Neither path is kept at the edge, so none of them waits for a cache.

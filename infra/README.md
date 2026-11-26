@@ -319,7 +319,12 @@ master's stops before it builds, since it would run old steps against new code. 
 release on a non-zero exit, deploys `App`, waits for both services, invalidates the distribution
 and waits for that too, then checks target health and the site through the distribution: a 401
 without the basic-auth pair, and with it `/readyz` and `/` answering 200; or, where the stack's
-`BasicAuth` output is `off`, all three answering 200 with no pair (ADR 0101). The distribution id is
+`BasicAuth` output is `off`, all three answering 200 with no pair (ADR 0101). Last, `/version` and
+`/api/version` have to answer the commit the run built, so a release that left either process on an
+older image fails. Neither answer is kept at the edge: `/api/*` is never cached, and `/version` says
+`private, no-store`, which the pages policy's minimum TTL of 0 obeys (both were a `Miss` on every
+request when this was written). So the check asks up to six times, ten seconds apart, only to outlast
+a request that fails on the way. The distribution id is
 read from the `App` stack's outputs, since it changes on every resume. It never deploys `Waf`: `App`
 reads the web ACL's ARN from that stack when it deploys, so a change to the rule reaches dev by hand or
 with the next resume ([The rate rule](#the-rate-rule)).
@@ -629,18 +634,21 @@ distribution, so a park and a resume each take several minutes longer than the s
 would; a resume creates a new distribution with a new id, and nothing is cached across one.
 `resume` proves the door is on - a 401 without credentials - and, with `MVGL_DEV_BASIC_AUTH` set
 to the pair as `user:password`, that `/healthz` answers through it. Of a stack deployed open it
-proves `/healthz` answers with no pair, and `status` says which the stack is.
+proves `/healthz` answers with no pair, and `status` says which the stack is. Wherever it asks
+`/healthz` itself, open or with the pair, it then asks `/version` and `/api/version`, and leaves the
+gate off unless both answer the commit the deployed tag names.
 
 `node scripts/dev-check.mjs` is the acceptance test, the walkthrough's Phase 11 as a program: run
 it after any change to the stacks and after every resume. It asks the site whether it is behind
 basic auth and, signed in to AWS, holds the answer against the `App` stack's `BasicAuth` output;
 of an open site it runs everything below with no pair. Behind the door, without the pair it checks the door,
-the three exempt paths and the redirect; with it, health, the crawler headers, `SITE_URL`, every
+the three exempt paths and the redirect; with it, health, that both processes answer one commit (and,
+with the profile signed in, the one ECS runs), the crawler headers, `SITE_URL`, every
 route's `Cache-Control`, where the cache hits and where it never may, that a 404 is a 404, and
 that the write guard survives the edge. `--alb <dns name>` adds the check that the balancer does
 not answer directly. With the `mvgl-dev` profile signed in it first asks AWS whether the web ACL is
 on the distribution, and last whether the run itself stayed under half the rate rule's limit; it
-sends 42 requests the rule counts with the pair.
+sends 45 requests the rule counts with the pair, and 44 of an open site.
 
 ## Things that will bite you
 

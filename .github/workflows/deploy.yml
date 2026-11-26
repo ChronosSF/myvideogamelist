@@ -93,9 +93,11 @@ jobs:
       - name: Name the release
         id: release
         run: |
-          echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$(git rev-parse --short=12 HEAD)"
+            echo "sha=$(git rev-parse HEAD)"
+            echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -290,10 +292,13 @@ jobs:
       # through CloudFront, the balancer and its origin-verify rule, and / is the SSR server doing
       # the same. The pair is the one secret the workflow holds (ADR 0046), and the checks that need
       # it are skipped with a warning until it is set on the environment. Deployed open (ADR 0101),
-      # the same three paths answer 200 to nobody in particular, and the pair is not sent.
+      # the same three paths answer 200 to nobody in particular, and the pair is not sent. Last, both
+      # processes have to say they are the commit this run built: /version is the SSR server's and
+      # /api/version the API's (ADR 0059), so a release that left either on an older image fails here.
       - name: Smoke test
         if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
         env:
+          SHA: ${{ steps.release.outputs.sha }}
           # The pair is the environment's own secret, <ENV>_BASIC_AUTH, and each is written out here.
           # A name worked out from an input, `secrets[...]`, cannot be known before the job runs, so
           # the runner would be handed every secret the job can read to pick one from. The caller
@@ -334,7 +339,7 @@ jobs:
                 exit 1
               fi
               if [ -z "$BASIC_AUTH" ]; then
-                echo "::warning::${ENV_NAME^^}_BASIC_AUTH is not set on the $ENV_NAME environment, so the authenticated checks were skipped."
+                echo "::warning::${ENV_NAME^^}_BASIC_AUTH is not set on the $ENV_NAME environment, so the authenticated checks were skipped, the deployed commit's among them."
                 exit 0
               fi
               CREDENTIALS=(-u "$BASIC_AUTH") ;;
@@ -352,6 +357,25 @@ jobs:
             echo "$SITE$path: $STATUS"
             if [ "$STATUS" != "200" ]; then
               echo "::error::$path answered $STATUS through the distribution."
+              exit 1
+            fi
+          done
+          # Which commit each process was built from. Neither answer is kept at the edge: /api/* is
+          # CachingDisabled, and /version says `private, no-store`, which the pages policy's minimum TTL of 0
+          # obeys, and the distribution was invalidated a moment ago anyway. And the wait above returns only
+          # once each service is down to one deployment, this run's. So the first answer should be the
+          # release's, and the few tries after it, ten seconds apart, are there so that one dropped request
+          # is not a failed release; a wrong sha every time is.
+          for path in /version /api/version; do
+            FOUND=""
+            for attempt in 1 2 3 4 5 6; do
+              FOUND=$(curl -sS --max-time 15 ${CREDENTIALS[@]+"${CREDENTIALS[@]}"} "$SITE$path" | jq -r '.sha // empty' 2>/dev/null || true)
+              echo "$SITE$path: ${FOUND:-no sha} (attempt $attempt of 6)"
+              if [ "$FOUND" = "$SHA" ]; then break; fi
+              if [ "$attempt" -lt 6 ]; then sleep 10; fi
+            done
+            if [ "$FOUND" != "$SHA" ]; then
+              echo "::error::$path answers ${FOUND:-no sha}, and this run deployed $SHA."
               exit 1
             fi
           done

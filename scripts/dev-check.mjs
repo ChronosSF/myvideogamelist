@@ -14,10 +14,11 @@
  * Without MVGL_<ENV>_BASIC_AUTH (MVGL_DEV_BASIC_AUTH for dev) it checks only what needs no
  * credential: that the door is on, that the three exempt paths answer, that plain HTTP redirects,
  * that a name which only redirects does, and - with --alb - that the balancer
- * does not answer directly. With the pair as `user:password` it checks the rest: health, the
- * crawler headers, SITE_URL, every route's Cache-Control, that the cache hits where it should and
- * never where it must not, that a 404 is a 404, and that the write guard survives the edge; with
- * --limiter, that the eleventh wrong password is a 429, at the cost of the caller's own login
+ * does not answer directly. With the pair as `user:password` it checks the rest: health, that both
+ * processes answer the commit that was deployed, the crawler headers, SITE_URL, every route's
+ * Cache-Control, that the cache hits where it should and never where it must not, that a 404 is a
+ * 404, and that the write guard survives the edge; with --limiter, that the eleventh wrong password
+ * is a 429, at the cost of the caller's own login
  * budget for five minutes. Prints one line per check and exits 1 if any failed. Nothing here
  * writes anything anywhere: the one POST that reaches the API is a sign-out by nobody.
  *
@@ -30,12 +31,13 @@
  * With the environment's AWS profile signed in (--profile, mvgl-<env> by default), it first asks AWS,
  * read only, whether the edge's web ACL is on the distribution, holds its one rate rule and logs what
  * it refuses (ADR 0098), and which records the edge certificate is validated by, which it then asks
- * public DNS for: the certificate is renewed only while they are there (ADR 0103 §3). Without the
+ * public DNS for: the certificate is renewed only while they are there (ADR 0103 §3). It also asks ECS
+ * which image tag each service runs, and holds /version and /api/version to it (ADR 0059). Without the
  * profile those checks are skipped, and the run says so. Every request this script sends through the
  * distribution is counted, and when the rule's limit is known the last check
  * is that the run stayed under half of it, which leaves the rest for whoever runs it to browse with
- * from the same address. Behind basic auth a run sends 43 such requests with the pair, 54 with
- * --limiter, and 9 without; of an open site, 42, or 53 with --limiter. Production's is one more each
+ * from the same address. Behind basic auth a run sends 45 such requests with the pair, 56 with
+ * --limiter, and 9 without; of an open site, 44, or 55 with --limiter. Production's is one more each
  * way, for www.
  */
 
@@ -308,6 +310,50 @@ async function health() {
         + (ready.body.trim() === 'Degraded' ? ' - still a 200 by design (ADR 0034), but here it means IGDB is unreachable or the secret is wrong' : ''));
 }
 
+const CLUSTER = `mvgl-${ENV}`;
+
+/**
+ * Which commit each process says it was built from (ADR 0059): the SSR server at /version and the API at
+ * /api/version. Both have to name the same full commit, never `unknown`, which is an image built without
+ * the deploy workflow's arguments. With the profile signed in, that commit also has to be the one ECS was
+ * told to run: each service's task definition names its image by the tag the workflow pushed, the commit's
+ * first twelve characters. Neither answer is kept at the edge (/api/* is never cached, and /version says
+ * `private, no-store`), so what answers is what is running.
+ */
+async function deployedCommit(signedIn) {
+    const answers = {};
+    for (const path of ['/version', '/api/version']) {
+        const r = await get(path, { auth: true });
+        let sha = null;
+        try {
+            sha = JSON.parse(r.body)?.sha ?? null;
+        } catch {
+            // Not JSON: reported below by what it is not.
+        }
+        answers[path] = typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+        report(answers[path] !== null, `${path} names the full commit it was built from`, `${r.status}, ${sha ?? r.body.slice(0, 40)}`);
+    }
+    const [ssr, api] = [answers['/version'], answers['/api/version']];
+    if (ssr === null || api === null) return;
+    report(ssr === api, 'the SSR server and the API were built from one commit', ssr === api ? ssr.slice(0, 12) : `${ssr.slice(0, 12)} and ${api.slice(0, 12)}`);
+
+    if (!signedIn) {
+        skip('that the commit answering is the one deployed', `the ${PROFILE} profile is not signed in, and ECS says which tag each service runs`);
+        return;
+    }
+    const definitions = aws(['ecs', 'describe-services', '--cluster', CLUSTER, '--services', 'api', 'ssr',
+        '--query', 'services[].[serviceName,taskDefinition]']) ?? [];
+    for (const [service, definition] of definitions) {
+        const image = aws(['ecs', 'describe-task-definition', '--task-definition', definition,
+            '--query', 'taskDefinition.containerDefinitions[0].image']);
+        const tag = typeof image === 'string' ? image.split(':').at(-1) : null;
+        const answered = service === 'api' ? api : ssr;
+        report(tag !== null && answered.startsWith(tag), `the ${service} service runs the image tagged with the commit it answers`,
+            `${tag ?? 'no image'}; ${service === 'api' ? '/api/version' : '/version'} says ${answered.slice(0, 12)}`);
+    }
+    if (definitions.length !== 2) report(false, 'ECS names a task definition for both services', `${definitions.length} found in ${CLUSTER}`);
+}
+
 async function crawlers() {
     // What a crawler is told is the environment's to decide (ADR 0036): production is indexable, so it
     // names its sitemap and sends no X-Robots-Tag of its own; anything else names none and says noindex,
@@ -472,6 +518,7 @@ try {
     await theDoor(door);
     if (door === 'off' || AUTH) {
         await health();
+        await deployedCommit(who.ok);
         await crawlers();
         await cacheHeaders();
         await cacheBehaviour();
